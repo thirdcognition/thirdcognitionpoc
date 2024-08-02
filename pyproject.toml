@@ -1,0 +1,31 @@
+[tool.poetry]
+name = "poctimeline"
+version = "0.1.0"
+description = ""
+authors = ["mathatan <mathatan@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.12,<3.13"
+chromadb = "^0.5.5"
+gpt4all = "^2.7.0"
+langchain = "^0.2.11"
+langchain-cli = "^0.0.28"
+langchain-community = "^0.2.10"
+langchain-core = "^0.2.26"
+langchain-experimental = "^0.0.63"
+langserve = "^0.2.2"
+pydantic = "^2.8.2"
+pymupdf = "^1.24.9"
+sqlalchemy = "^2.0.31"
+streamlit = "^1.37.0"
+markdown = "^3.6"
+beautifulsoup4 = "^4.12.3"
+flashrank = "^0.2.8"
+rapidocr-onnxruntime = "^1.3.24"
+transformers = "^4.43.3"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

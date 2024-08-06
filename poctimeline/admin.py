@@ -4,7 +4,8 @@ from io import StringIO
 import numbers
 import os
 import re
-from typing import Iterable, Sequence, Union
+import textwrap
+from typing import Any, Dict, Iterable, List, Sequence, Union
 from bs4 import BeautifulSoup
 import fitz
 from markdown import markdown
@@ -30,13 +31,14 @@ from rapidocr_onnxruntime import RapidOCR
 
 # from rapidocr_paddle import RapidOCR  # type: ignore
 from chain import (
-    CHAR_LIMIT,
+    INSTRUCT_CHAR_LIMIT,
     SQLITE_DB,
     create_document_lists,
     get_chain,
     get_chroma_collection,
     get_journey_format_example,
     get_vectorstore,
+    handle_thinking,
     semantic_splitter,
     split_markdown,
     split_text,
@@ -157,7 +159,7 @@ def recursive_find(obj, key, _ret=[]):
 
 
 # Function to convert PDF to text using PyMuPDFLoader
-def load_pymupdf(file: UploadedFile, filetype, context_size=CHAR_LIMIT):
+def load_pymupdf(file: UploadedFile, filetype):
     st.write("Processing file... ")
     parse_bar = st.progress(0, text="Parsing")
     doc = fitz.open(stream=file.read(), filetype=filetype)
@@ -180,22 +182,6 @@ def load_pymupdf(file: UploadedFile, filetype, context_size=CHAR_LIMIT):
         parse_bar.progress(
             page_percentage_total / total * i + i * step, f"Parsing page {page.number}"
         )
-        # page_string = f"Page {page.number}: \n\n"
-        # blocks = page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)
-        # lines = recursive_find(blocks, "text")
-
-        # pprint.pprint(lines)
-
-        # page_string: str = ""
-
-        # for line in lines:
-        #     if not line.isspace():
-        #         page_string += str(line)
-        #         if len(line) > 10:
-        #             page_string += "\n"
-        #         else:
-        #             page_string += " "
-
         page_string = re.sub(" {2,}", " ", page.get_text())
         page_string += extract_images_from_page(
             doc,
@@ -208,22 +194,10 @@ def load_pymupdf(file: UploadedFile, filetype, context_size=CHAR_LIMIT):
         )
 
         text += page_string
-        # if len(page_string.split()) < 200 and len(chunks) > 0 and len(chunks[-1]) + len(page_string) < context_size:
-        #     chunks[-1] += "\n" + page_string
-        # else:
-        #     chunks.append(page_string)
-        # page_string += "\n\n"
-        # if len(text + page_string) < context_size:
-        #     text += page_string
-        # else:
-        #     chunks.append(text)
-        #     text = page_string
+
         i += 1
 
-    # chunks.append(text)
-
     chunks = semantic_splitter(text)
-    # chunks = split_text(text)
 
     parse_bar.progress(1, text="Done.")
     parse_bar.empty()
@@ -250,8 +224,9 @@ def markdown_to_text(markdown_string):
     return text
 
 
-def llm_edit(chain, texts, guidance=None, strip_md=False):
+def llm_edit(chain, texts, guidance=None, min_len=100, force=False) -> tuple[str, str]:
     text = ""
+    thoughts = ""
 
     i = 0
     total = len(texts)
@@ -259,8 +234,8 @@ def llm_edit(chain, texts, guidance=None, strip_md=False):
     if total > 1 and chain == "summary":
         total += 1
 
-    if texts == None or texts[0] == None or total == 1 and len(texts[0]) < 1000:
-        return None
+    if not force and (texts == None or texts[0] == None or total == 1 and len(texts[0]) < 1000):
+        return None, None
 
     bar = st.progress(0, text="Processing...")
 
@@ -280,17 +255,10 @@ def llm_edit(chain, texts, guidance=None, strip_md=False):
 
             inputs.append(input)
 
-            # st.write("{i}/{total} cycles required, this will take a while...")
-            # if len(sub_text) > char_limit * 3:
-            text += get_chain(chain + guided_llm).invoke(input)["text"] + "\n\n"
-            # else:
-            #     text += (
-            #         get_chain(chain + guided_llm, "small").invoke(input)["text"]
-            #         + "\n\n"
-            #     )
-        # texts = get_chain(chain + guided_llm).batch(inputs)
-        # print(f'\n\n{ texts =}\n\n')
-        # text = "\n\n".join([output["text"] for output in texts])
+            mid_results, mid_thoughts = handle_thinking((lambda: get_chain(chain + guided_llm).invoke(input)["text"]), min_len=min_len)
+
+            text += mid_results + "\n\n"
+            thoughts += mid_thoughts + "\n\n"
 
     else:
         _text = re.sub(r"[pP]age [0-9]+", "", texts[0])
@@ -310,17 +278,11 @@ def llm_edit(chain, texts, guidance=None, strip_md=False):
             guided_llm = "_guided"
             input["question"] = guidance
 
-        # if len(text) > 1024 * 15.5 * 3:
-        #     text = get_chain(chain + guided_llm, "large").invoke(input)["text"]
-        # elif len(text) > 1024 * 7.5 * 3:
-        #     text = get_chain(chain + guided_llm).invoke(input)["text"]
-        # else:
-        #     text = get_chain(chain + guided_llm, "small").invoke(input)["text"]
-        text = get_chain(chain + guided_llm).invoke(input)["text"]
+        text, thoughts = handle_thinking((lambda: get_chain(chain + guided_llm).invoke(input)["text"]), min_len=min_len)
 
     bar.empty()
 
-    return text
+    return text, thoughts
 
 
 def process_file_contents(
@@ -358,7 +320,7 @@ def process_file_contents(
 
         split_texts = []
         for text in texts:
-            if len(text) > CHAR_LIMIT:
+            if len(text) > INSTRUCT_CHAR_LIMIT:
                 st.write("Splitting to fit context...")
                 split_texts = split_texts + split_text(text)
             else:
@@ -407,40 +369,64 @@ def process_file_data(filename, category):
 
         with st.spinner("Rewriting"):
             formatted_text = None
+            format_thoughts = None
             if texts is not None and filetype != "md":
-                formatted_text = llm_edit("text_formatter", texts)
+                if len(texts) > 1:
+                    formatted_text, format_thoughts = llm_edit("text_formatter_compress", texts)
+                else:
+                    formatted_text, format_thoughts = llm_edit("text_formatter", texts)
             elif filetype == "md":
                 if len(texts) > 1 or len(texts[0]) > 1000:
-                    formatted_text = llm_edit(
+                    formatted_text, format_thoughts = llm_edit(
                         "text_formatter", [markdown_to_text("\n".join(texts))]
                     )
                 else:
                     formatted_text = None
+            st.write("### Formatted text:")
+            if format_thoughts is not None and format_thoughts != "":
+                st.write("#### Thoughts")
+                st.caption(format_thoughts)
+            st.write(formatted_text)
+
         st.success("Rewrite complete")
 
         with st.spinner("Summarizing text"):
             summary_text = None
+            shorter_thoughts = None
             if texts is not None:
-                split_texts = split_text("\n".join(texts), CHAR_LIMIT // 3 * 2)
-                if len(split_texts) == 1:
-                    shorter_text = llm_edit("summary", split_texts)
+                # split_texts = split_text("\n".join(texts), CHAR_LIMIT)
+                if len(texts) == 1:
+                    shorter_text = ''
+                    while shorter_text == '' or len(shorter_text) < 10:
+                        shorter_text, shorter_thoughts = llm_edit("summary", texts)
                     if shorter_text is not None:
                         summary_text = shorter_text
                     else:
-                        summary_text = split_texts[0]
+                        summary_text = texts[0]
                 else:
-                    list_of_docs = create_document_lists(split_texts, source=filename)
-                    summary_text = get_chain("summary_documents").invoke(
-                        {"input_documents": list_of_docs}
-                    )["output_text"]
+                    list_of_docs = create_document_lists(texts, source=filename)
+                    # print(f"{ list_of_docs = }")
 
-                    shorter_text = llm_edit("summary", [summary_text])
+                    summary_text, shorter_thoughts = handle_thinking((lambda: get_chain("summary_documents").invoke(
+                        {"input_documents": list_of_docs}
+                    )["output_text"]))
+
+                    # print(f"{ summary_text = } \n\n { shorter_thoughts = }")
+
+                    shorter_text = ''
+                    while shorter_text == '' or len(shorter_text) < 10:
+                        shorter_text, shorter_thoughts = llm_edit("summary", [summary_text])
+
                     if shorter_text is not None:
                         summary_text = shorter_text
+
 
         st.success("Summary complete")
 
         st.write(f"### Summary")
+        if shorter_thoughts is not None and shorter_thoughts != "":
+            st.write("#### Thoughts")
+            st.caption(shorter_thoughts)
         st.write(summary_text)
 
         rag_split = []
@@ -464,7 +450,10 @@ def process_file_data(filename, category):
             ]
 
             if formatted_text is not None and formatted_text:
-                formatted_split = split_text(formatted_text, 128 * 6, 128)
+                if len(formatted_text) > (128 * 6):
+                    formatted_split = split_text(formatted_text, 128 * 6, 128)
+                else:
+                    formatted_split = [formatted_text]
 
                 rag_split = rag_split + formatted_split
                 rag_ids = rag_ids + [
@@ -474,6 +463,7 @@ def process_file_data(filename, category):
                 rag_metadatas = rag_metadatas + [
                     {
                         "file": "formatted_" + filename,
+                        "thoughts": format_thoughts,
                         "category": ", ".join(category),
                         "filetype": filetype,
                         "split": i,
@@ -526,38 +516,6 @@ def process_file_data(filename, category):
             existing_file.last_updated = datetime.now()
 
             st.success(f"{filename} updated within database successfully.")
-            # else:
-            #     # If the file does not exist, create a new row
-
-            #     collections = []
-
-            #     collections.append("rag_all")
-            #     vectorstore = get_vectorstore("rag_all")
-            #     vectorstore.add_texts(
-            #         ids=rag_ids, texts=rag_split, metadatas=rag_metadatas
-            #     )
-
-            #     for cat in category:
-            #         collections.append("rag_" + cat)
-            #         vectorstore = get_vectorstore("rag_" + cat)
-            #         vectorstore.add_texts(
-            #             ids=rag_ids, texts=rag_split, metadatas=rag_metadatas
-            #         )
-
-            #     file = FileDataTable(
-            #         filename=filename,
-            #         texts=texts,
-            #         formatted_text=formatted_text,
-            #         summary=summary_text,
-            #         category_tag=category,
-            #         chroma_collection=collections,
-            #         chroma_ids=rag_ids,
-            #         last_updated=datetime.now(),
-            #         file_data=uploaded_file.getvalue()
-            #     )
-            #     database_session.add(file)
-
-            #     st.success(f"{filename} saved to database successfully.")
 
             database_session.commit()
 
@@ -633,8 +591,6 @@ def upload_files_ui():
         accept_multiple_files=True,
     )
 
-    # category = st.text_input(f"Category Tag", value="antler")
-
     if "existing_files" not in st.session_state:
         st.session_state.existing_files = []
         st.session_state.existing_files_names = []
@@ -678,11 +634,6 @@ def upload_files_ui():
 
     if new_file_count > 0:
         st.write(f"Added {new_file_count} of {unique_files} files to list")
-
-    # st.markdown(
-    #     f"There's already a file with the name _{filename}_ in the database. \n\n Would you want to replace it?"
-    # )
-    # if st.button("Replace"):
 
     if len(existing_files) > 0:
         st.subheader("Existing files:")
@@ -777,20 +728,15 @@ def upload_files_ui():
 
 def manage_file(filename):
     file_categories = get_all_categories()
-
-    # query = database_session.query(FileDataTable).all()
-    # df = pd.DataFrame(
-    #     [(i.filename, i.text[:50]) for i in query], columns=["Filename", "sqla.Text"]
-    # )
-    # st.dataframe(df)
-
     file_entry = get_db_files()[filename]
     # Add Streamlit editors to edit 'disabled' and 'category_tag' fields
 
     if "rewrite_text" not in st.session_state:
         st.session_state.rewrite_text = {}
+        st.session_state.rewrite_thoughts = {}
 
     rewrite_text = st.session_state.rewrite_text
+    rewrite_thoughts = st.session_state.rewrite_thoughts
 
     # for i in range(len(query)):
 
@@ -888,6 +834,7 @@ def manage_file(filename):
 
             if filename in rewrite_text:
                 text = rewrite_text[filename]
+                thoughts = rewrite_thoughts[filename]
 
             tab1, tab2, tab3, tab4 = st.tabs(
                 ["Summary", "Formatted", "Unformatted", "RAG"]
@@ -925,28 +872,33 @@ def manage_file(filename):
                         use_container_width=True,
                     ):
                         text = ""
-                        rewrite_text[filename] = text
+                        rewrite_text[filename] = ""
+                        rewrite_thoughts[filename] = ""
 
                 if rewrite:
                     with st.spinner("Rewriting"):
                         text = None
+                        thoughts = None
                         if raw is not None and filetype != "md":
-                            text = llm_edit(
-                                "text_formatter", raw, guidance, strip_md=True
-                            )
+                            text, thoughts = handle_thinking(llm_edit(
+                                "text_formatter", raw, guidance
+                            ))
                         elif filetype == "md":
                             if len(raw) > 1 or len(raw[0]) > 1000:
-                                text = llm_edit(
+                                text, thoughts = llm_edit(
                                     "text_formatter",
                                     [markdown_to_text("\n".join(raw))],
-                                    guidance,
-                                    strip_md=True,
+                                    guidance
                                 )
                             else:
                                 text = markdown_to_text(raw[0])
 
                     st.success("Markdown rewrite complete")
                     rewrite_text[filename] = text
+                    rewrite_thoughts[filename] = thoughts
+
+                if thoughts != None and len(thoughts) > 0:
+                    st.caption(thoughts, unsafe_allow_html=True)
 
                 if text != None and len(text) > 0:
                     st.write(text, unsafe_allow_html=True)
@@ -980,53 +932,216 @@ def manage_file(filename):
                         st.write(rag_items["embeddings"][i])
 
 
-def gen_journey_doc(list_of_strings, amount=10):
+def gen_journey_doc(list_of_strings = []) -> tuple[str, str]:
     text = "\n".join(list_of_strings)
+    list_of_thoughts = []
+    thoughts = ''
+
+    bar = st.progress(0, text="Compressing journey document")
 
     reduce = False
 
-    reduce = len(text) > 3 * 5 * 1024
+    reduce = len(text) > INSTRUCT_CHAR_LIMIT
 
-    print(f"{reduce = } ({len(text)})")
+    # print(f"{reduce = } ({len(text)})")
 
     if reduce:
         list_of_docs = create_document_lists(list_of_strings)
 
         chain = get_chain("reduce_journey_documents")
 
-        list_of_strings = [
-            chain.invoke(
-                {
-                    "input_documents": [document],
-                    "amount": amount,
-                    "format_example": get_journey_format_example(amount),
-                }
-            )["output_text"]
-            for document in list_of_docs
-        ]
+        list_of_strings = []
+        list_of_thoughts = []
+        total = len(list_of_docs)
+        for i, document in enumerate(list_of_docs):
+            bar.progress(i / total, text=f"Compressing page {i+1}/{total}")
+            result, thinking = handle_thinking((lambda: chain.invoke({"input_documents": [document]})["output_text"]))
+            list_of_strings.append(result[0])
+            list_of_thoughts.append(result[1])
 
         text = "\n".join(list_of_strings)
+        thoughts = "\n".join(list_of_thoughts)
 
-        reduce = len(text) > 3 * 5 * 1024
-
+        reduce = len(text) > INSTRUCT_CHAR_LIMIT
         if reduce:
-            list_of_docs = create_document_lists(list_of_strings)
-            text = chain.invoke(
+            bar.progress(1 - 1/total, text="Result too long, 2nd pass")
+            list_of_docs = create_document_lists(list_of_strings, list_of_thoughts)
+            text, thoughts = handle_thinking(
+                (lambda: chain.invoke(
+                    {
+                        "input_documents": list_of_docs,
+                        # "amount": amount,
+                        # "format_example": get_journey_format_example(amount)
+                    }
+                )["output_text"])
+            )
+        bar.progress(1.0, text="Compression complete")
+
+    bar.empty()
+
+    return text, thoughts
+
+    # return handle_thinking((lambda: get_chain("journey_text").invoke(
+    #     {
+    #         "context": text,
+    #         "amount": amount,
+    #         "format_example": get_journey_format_example(amount),
+    #     }
+    # )["text"]))
+
+def gen_journey(content, amount=10) -> Dict:
+    bar = st.progress(0, text="Generating curriculum")
+
+    journey_steps_chain = get_chain("journey_steps")
+    success = False
+    steps: str = None
+    retries = 0
+    while not success and retries < 3:
+        retries += 1
+        bar.progress(0, text="Generate subjects for each day")
+        steps = (journey_steps_chain.invoke(
+            {
+                "context": content,
+                "amount": amount,
+                # "format_example": get_journey_format_example(amount)
+            }
+        )["text"])
+        steps = re.sub(r':\s*\n', ': ', steps)
+        steps = re.sub(r'\n\s*:', ':', steps)
+        steps = "\n".join([step.strip() for step in steps.split("\n") if step.strip()])
+        correct_response = False
+        resp_retr = 0
+        while(not correct_response and resp_retr < 3):
+            resp_retr += 1
+            bar.progress(0.1, text="Verify the generated list of subjects")
+            check_response = (get_chain("check").invoke({
+                "context": steps,
+                "options": "if matches the format respond: yes, if matches the format but not right amount of items respond: maybe, if does not match respond: no",
+                # "expected_count": "",
+                "expected_count": f"Expected approximately {amount} items.",
+                "count": len(steps.split("\n")),
+                "format":
+"""
+Format for 5 items:
+Title: Description (optional)
+Title: Description (optional)
+Title: Description (optional)
+Title: Description (optional)
+Title: Description (optional)
+"""
+            })["text"])
+            resp = check_response.lower().split('\n')[0].strip()
+            print(f"{resp = }")
+            correct_response = resp in ["yes", "y", "no", "n", "maybe", "m"]
+            success = resp in ["yes", "y", "maybe", "m"]
+
+    list_of_steps = [step.strip() for step in steps.split("\n") if step.strip()]
+
+    days = []
+    total_steps = len(list_of_steps)
+    for i, subject in enumerate(list_of_steps):
+        success = False
+        retries = 0
+        while not success and retries < 3:
+            retries += 1
+            bar.progress(0.1 + (0.25 * (i+1)/total_steps), text=f"Generating curriculum for day {i+1} of {total_steps}")
+            sub_steps_response = (get_chain("journey_substeps").invoke(
                 {
-                    "input_documents": list_of_docs,
-                    "amount": amount,
-                    "format_example": get_journey_format_example(amount),
+                    "context": content,
+                    "subject": subject,
                 }
-            )["output_text"]
+            )["text"])
+            sub_steps_response = re.sub(r':\s*\n', ': ', sub_steps_response)
+            sub_steps_response = re.sub(r'\n\s*:', ':', sub_steps_response)
+            sub_steps_response = "\n".join([step.strip() for step in sub_steps_response.split("\n") if step.strip()])
+            correct_response = False
+            success = True
+            resp_retr = 0
+            while(not correct_response and resp_retr < 3):
+                resp_retr += 1
+                bar.progress(0.1 + (0.25 * (i+1.5)/total_steps), text=f"Verify step for day {i+1} of {total_steps}")
+                check_response: str = (get_chain("check").invoke({
+                    "context": sub_steps_response,
+                    "options": "if matches the format respond: yes, if matches the format but not right amount of items respond: maybe, if does not match respond: no",
+                    "expected_count": f"Expected maximum of 5 items.",
+                    "count": len(sub_steps_response.split("\n")),
+                    "format":
+"""
+Format for 5 items:
+Title: Description (optional)
+Title: Description (optional)
+Title: Description (optional)
+Title: Description (optional)
+Title: Description (optional)
+"""
+                })["text"])
+                resp = check_response.lower().split('\n')[0].strip()
+                correct_response = resp in ["yes", "y", "no", "n", "maybe", "m"]
+                success = resp in ["yes", "y", "maybe", "m"]
+        sub_steps = [step.strip() for step in sub_steps_response.split("\n") if step.strip()]
+        if success or retries >= 3:
+            days.append({"subject": subject, "steps": sub_steps})
 
-    return get_chain("journey_text").invoke(
-        {
-            "context": text,
-            "amount": amount,
-            "format_example": get_journey_format_example(amount),
+
+    total_items = sum(len(item["steps"]) for item in days)
+    cur_item = 0
+    for i, day in enumerate(days):
+        for j, item in enumerate(day["steps"]):
+            bar.progress(0.35 + (0.65 * cur_item/total_items), text=f"Generating curriculum for day {i+1}: item {j+1} of {len(day["steps"])}")
+            class_content, sub_steps_thoughts = handle_thinking(
+                (lambda: get_chain("journey_step_details").invoke(
+                    {
+                        "context": content,
+                        "subject": item,
+                    }
+                )["text"])
+            )
+            class_intro, sub_steps_thoughts = handle_thinking(
+                (lambda: get_chain("journey_step_intro").invoke(
+                    {
+                        "context": class_content,
+                        "subject": item,
+                    }
+                )["text"]), 50
+            )
+            days[i]["steps"][j] = {
+                "subject": item,
+                "content": class_content,
+                "intro": class_intro
+            }
+            cur_item = cur_item + 1
+        day_intro, sub_steps_thoughts = handle_thinking(
+            (lambda: get_chain("journey_step_intro").invoke(
+                {
+                    "context": "\n".join([day["steps"][j]['intro'] for j in range(len(day["steps"]))]),
+                    "subject": day["subject"],
+                }
+            )["text"]), 50
+        )
+        days[i] = {
+            "title": day["subject"],
+            "intro": day_intro,
+            "steps": day["steps"]
         }
-    )["text"]
 
+    title, title_thoughts = handle_thinking(
+        (lambda: get_chain("action").invoke(
+            {
+                "context": "\n".join([f"Day {i+1}: {day['intro']}" for i, day in enumerate(days)]),
+                "action": "Summarize context with 10 words or less to a title for the curriculum",
+            }
+        )["text"])
+    )
+
+    summary, summary_thoughts = llm_edit("summary", [f"Day {i+1}: {day['intro']}" for i, day in enumerate(days)], "Summarize the following list of daily intros into a description of the whole curriculum.", 10, force=True)
+
+    bar.progress(1.0, text="Curriculum generation complete.")
+    bar.empty()
+    return {
+        "title": title,
+        "summary": summary,
+        "days": days
+    }
 
 def gen_journey_json(source):
     result = get_chain("journey_json").invoke({"input": source})["text"]
@@ -1086,7 +1201,7 @@ def get_journey_gen(journey_name):
         amount = 0
         with col1:
             amount = st.number_input(
-                "Number of journey to generate", min_value=1, max_value=20, value=10
+                "Number of subjects to generate (approximate)", min_value=1, max_value=20, value=5
             )
         if col2.button("Generate"):
             with st.status(f"Building journey"):
@@ -1102,127 +1217,134 @@ def get_journey_gen(journey_name):
                             markdown_to_text("\n".join(gen_from[filename]["texts"]))
                         )
 
+                compressed = ''
+
                 with st.spinner("Generating journey document"):
-                    compressed = gen_journey_doc(list_of_strings, amount)
-                    descriptions = get_chain("action").invoke(
-                        {
-                            "context": compressed,
-                            "action": """Write me one descriptive title and one description for the whole context with following format.
-Format:
-Title: One sentence descriptive title for the context
-Description: Up to 5 sentence description with relevant details from the context
-""",
-                        }
-                    )["text"]
+                    compressed, compress_thoughts = gen_journey_doc(list_of_strings)
 
                 st.success("Generating journey document done.")
 
-                i = 0
+                structured_journey = None
+                with st.spinner("Generating curriculum"):
+                    structured_journey = gen_journey(compressed, amount)
 
-                for line in descriptions.split("\n"):
-                    text = line
-                    if re.search("([:]?)", text, flags=re.IGNORECASE):
-                        text = re.split("[:\\-]?", line, maxsplit=1)[1].strip()
+                journey_details["days"] = structured_journey["days"]
+                journey_details["title"] = structured_journey["title"]
+                journey_details["summary"] = structured_journey["summary"]
 
-                    if len(text) > 0:
-                        key = "title" if i == 0 else "summary"
-                        journey_details[key] = text
-                    i += 1
-
-                # print(f"{descriptions =}")
-
-                st.write(
-                    f'##### {journey_details["title"]} \n\n {journey_details["summary"]}'
-                )
+                save_journey(journey_name, journey_details)
 
                 with st.spinner("Generating JSON for journey"):
-                    bar = st.progress(0)
-                    journey = re.split(
-                        r"task [0-9]+[_\-: ]?", compressed, flags=re.IGNORECASE
-                    )
-                    journey = list(
-                        filter(
-                            lambda item: len(str(item)) != 0
-                            and not str(item).isspace(),
-                            journey,
-                        )
-                    )
-                    journey_steps = []
-                    # print(f"{journey =}")
-                    bar.progress(0.1)
-                    total = len(journey)
-                    i = 0
-                    for step in journey:
-                        if re.search(
-                            "(description[_\\-: ]?)", step, flags=re.IGNORECASE
-                        ):
-                            journey_steps = journey_steps + gen_journey_json(step)
-                            bar.progress(min(1, 0.1 + i / (total - 0.1)))
-                        i += 1
+                    bar = st.progress(0, "Generating JSON for journey")
 
+                    journey_steps = []
+
+                    total_items = sum(len(item["steps"]) for item in journey_details["days"])
+                    cur_item = 0
+                    for i, day in enumerate(journey_details["days"]):
+                        for j, step in enumerate(day["steps"]):
+                            journey_steps = journey_steps + gen_journey_json(
+                                f"""
+                                    Subject:
+                                    {step["subject"]}
+                                    Intro:
+                                    {step["intro"]}
+                                    Content:
+                                    {step["content"]}
+                                """
+                            )
+                            bar.progress(cur_item/total_items, f"Generating JSON for Day {i}: Class {j} of {len(day)}")
+                        cur_item += 1
+
+                    journey_details["days"][i]["json"] = journey_steps
                     bar.empty()
                 st.success("Generating JSON for journey done.")
-
-            journey_details["steps"] = journey_steps
 
             journey_details["__complete"] = True
 
     return journey_details
 
 
-def edit_journey_step(journey_name, journey, index):
-    step = journey["steps"][index]
-    col1, col2 = st.columns([1, 3])
-    col1.write(f"##### Step {index+1}:")
-    journey["steps"][index]["name"] = col2.text_input(
-        "Title", value=step["name"], key=f"journey_step_name_{journey_name}_{index}"
-    )
+def edit_journey_step(journey_name, journey, day_index, step_index):
+    if journey["days"][day_index]["steps"][step_index].get("json", None):
+        step = journey["days"][day_index]["steps"][step_index]["json"]
+        col1, col2 = st.columns([1, 3])
+        col1.write(f"##### Step {step_index+1}:")
+        journey["days"][day_index]["steps"][step_index]["json"]["subject"] = col2.text_input(
+            "Subject", value=step["subject"], key=f"journey_step_subject_{journey_name}_{step_index}"
+        )
 
-    journey["steps"][index]["description"] = col2.text_area(
-        "Description",
-        value=step["description"],
-        key=f"journey_step_description_{journey_name}_{index}",
-    )
+        journey["days"][day_index]["steps"][step_index]["json"]["intro"] = col2.text_area(
+            "Intro",
+            value=step["intro"],
+            key=f"journey_step_intro_{journey_name}_{step_index}",
+        )
 
-    if not isinstance(journey["steps"][index]["priority"], numbers.Number):
-        journey["steps"][index]["priority"] = step["priority"] = 1
+        journey["days"][day_index]["steps"][step_index]["json"]["content"] = col2.text_area(
+            "Content",
+            value=step["content"],
+            key=f"journey_step_content_{journey_name}_{step_index}",
+        )
 
-    journey["steps"][index]["priority"] = col2.select_slider(
-        "Priority",
-        options=list(range(1, 6)),
-        value=max(1, min(5, step["priority"])),
-        key=f"journey_step_priority_{journey_name}_{index}",
-    )
+        if not isinstance(journey["days"][day_index]["steps"][step_index]["json"]["priority"], numbers.Number):
+            journey["days"][day_index]["steps"][step_index]["json"]["priority"] = step["priority"] = 1
 
-    col1, col2 = st.columns([1, 3])
-    col1.write(f"##### Actions:")
-    for j, action in enumerate(journey["steps"][index]["actions"]):
-        journey["steps"][index]["actions"][j] = col2.text_area(
-            f"Action {j+1}",
-            value=action,
-            key=f"journey_step_actions_{journey_name}_{index}_{j}",
+        journey["days"][day_index]["steps"][step_index]["json"]["priority"] = col2.select_slider(
+            "Priority",
+            options=list(range(1, 6)),
+            value=max(1, min(5, step["priority"])),
+            key=f"journey_step_priority_{journey_name}_{step_index}",
+        )
+
+        col1, col2 = st.columns([1, 3])
+        col1.write(f"##### Actions:")
+        for j, action in enumerate(journey["days"][day_index]["steps"][step_index]["json"]["actions"]):
+            journey["days"][day_index]["steps"][step_index]["json"]["actions"][j] = col2.text_area(
+                f"Action {j+1}",
+                value=action,
+                key=f"journey_step_actions_{journey_name}_{step_index}_{j}",
+            )
+    else:
+        step = journey["days"][day_index]["steps"][step_index]
+        col1, col2 = st.columns([1, 3])
+        col1.write(f"##### Step {step_index+1}:")
+        journey["days"][day_index]["steps"][step_index]["subject"] = col2.text_input(
+            "Subject", value=step["subject"], key=f"journey_step_subject_{journey_name}_{step_index}"
+        )
+
+        journey["days"][day_index]["steps"][step_index]["intro"] = col2.text_area(
+            "Intro",
+            value=step["intro"],
+            key=f"journey_step_intro_{journey_name}_{step_index}",
         )
 
     return journey
 
 
-def edit_journey_details(journey_name, journey):
-    col1, col2 = st.columns([1, 3])
-    journey["title"] = col2.text_input(
-        "Title", value=journey["title"], key=f"title_{journey_name}"
-    )
-    journey["summary"] = col2.text_area(
-        "Summary", value=journey["summary"], key=f"summary_{journey_name}"
-    )
+def edit_journey_details(journey_name, journey:Dict):
+    # print(journey_name, journey)
+    if "title" in journey.keys():
+        col1, col2 = st.columns([1, 3])
+        col1.write("Journey title:")
+        journey["title"] = col2.text_input(
+            f"Journey title", value=journey["title"], key=f"journey_title_{journey_name}"
+        )
+    if "summary" in journey.keys():
+        col1, col2 = st.columns([1, 3])
+        col1.write("Journey summary:")
+        journey["summary"] = col2.text_input(
+            f"Journey summary", value=journey["summary"], key=f"journey_summary_{journey_name}"
+        )
 
-    col1, col2 = st.columns([1, 3])
-    col1.write("Files used:")
-    col2.write("* " + "\n* ".join(journey["files"]))
+    if "files" in journey.keys():
+        col1, col2 = st.columns([1, 3])
+        col1.write("Files used:")
+        col2.write("* " + "\n* ".join(journey["files"]))
 
     return journey
 
 
-def save_journey(journey_name, journey):
+def save_journey(journey_name, journey:Dict):
     journey_db = (
         database_session.query(JourneyDataTable)
         .filter(JourneyDataTable.journeyname == journey_name)
@@ -1231,10 +1353,10 @@ def save_journey(journey_name, journey):
 
     if journey_db is not None:
         print("Modify journey")
-        journey_db.files = journey["files"]
-        journey_db.steps = journey["steps"]
-        journey_db.title = journey["title"]
-        journey_db.summary = journey["summary"]
+        journey_db.files = journey.get("files", None)
+        journey_db.days = journey.get("days", None)
+        journey_db.title = journey.get("title", None)
+        journey_db.summary = journey.get("summary", None)
 
         journey_db.last_updated = datetime.now()
         # st.success(f"{filename} updated within database successfully.")
@@ -1243,26 +1365,28 @@ def save_journey(journey_name, journey):
         print("Create journey")
         journey_db = JourneyDataTable(
             journeyname=journey_name,
-            files=journey["files"],
-            steps=journey["steps"],
-            title=journey["title"],
-            summary=journey["summary"],
+            files=journey.get("files", None),
+            days=journey.get("days", None),
+            title=journey.get("title", None),
+            summary=journey.get("summary", None),
             last_updated=datetime.now(),
         )
         database_session.add(journey_db)
     database_session.commit()
 
 
-def edit_journey(journey_name, journey):
+def edit_journey(journey_name, journey:Dict):
     st.header(f"Edit journey: {journey_name}")
 
     journey = edit_journey_details(journey_name, journey)
 
-    st.subheader("Journey steps")
-
-    for i, step in enumerate(journey["steps"]):
-        with st.expander(f"Journey step {i}: {step['name']}"):
-            journey = edit_journey_step(journey_name, journey, i)
+    if "days" in journey.keys():
+        st.subheader("Journey days")
+        for i, day in enumerate(journey["days"]):
+            st.write(f"### Journey day {i}: {day['title']}")
+            for j, step in enumerate(day["steps"]):
+                with st.expander(f"Day step {j}: {step['title']}"):
+                    journey = edit_journey_step(journey_name, journey, i, j)
 
     if st.button("Save into database"):
         save_journey(journey_name, journey)
@@ -1271,7 +1395,7 @@ def edit_journey(journey_name, journey):
 # Streamlit app
 def main():
     init_db()
-    st.title("Admin interface for Antler buddy")
+    st.title("Admin interface for TC POC")
 
     page_tab1, page_tab2, page_tab3 = st.tabs(
         ["Upload files", "Manage files", "Manage journeys"]
@@ -1333,14 +1457,9 @@ def main():
 
         st.header("Journey database")
 
-        # if "journey_edit_data" in st.session_state:
-        #     journey_edit = st.session_state.journey_edit_data
-        # else:
-        #     journey_edit = None
-
         for journey_name in db_journey.keys():
             journey = db_journey[journey_name]
-            col1, col2 = st.columns([2, 5])
+            col1, col2 = st.columns([1, 3])
             col1.header(f"{journey_name}")
             if (
                 col1.button("Edit details", key=f"edit_button_{journey_name}")
@@ -1360,74 +1479,95 @@ def main():
             else:
                 col2.write(f'##### {journey["title"]}')
                 col2.write(journey["summary"])
-            # st.write(journey)
-            # st.write(f"Creating {journey_name}")
 
-            # journey_steps = []
-            # print(f"{journey = }")
-            # for j in range(0, len(journey), 4):
-            #     journey_steps.append({
-            #         "task": journey[j].split(":", maxsplit=1)[1].strip(),
-            #         "description": journey[j+1].split(":", maxsplit=1)[1].strip(),
-            #         "actions": journey[j+2].split(":", maxsplit=1)[1].strip(),
-            #         "priority": journey[j+3].split(":", maxsplit=1)[1].strip(),
-            #     })
-
-            # st.write("journey:")
             i = 0
-            # print(f"{journey_steps =}")
-            with st.container(border=True):
-                for step in journey["steps"]:
-                    with st.expander(f'##### Step {i+1}: {step["name"]}'):
+            if (col1.toggle("Show subjects", key=f"show_toggle_{journey_name}")):
+                for i, day in enumerate(journey["days"]):
+                    with st.container(border=True):
+                        col1, col2 = st.columns([1, 3])
+                        col1.write(f"#### Subject {i+1}:")
                         if (
-                            st.button(
-                                "Edit step", key=f"edit_button_{journey_name}_{i}"
+                            col1.button(
+                                "Edit subject", key=f"edit_button_{journey_name}_{i}"
                             )
                             or "editing_journey" in st.session_state
                             and st.session_state.editing_journey == journey_name
                             and "editing_journey_step" in st.session_state
-                            and st.session_state.editing_journey_step == i
+                            and st.session_state.editing_journey_day == i
+                            and st.session_state.editing_journey_step == None
                         ):
+                            journey_edit = journey
                             st.session_state.editing_journey = journey_name
-                            st.session_state.editing_journey_step = i
-                            journey_edit = edit_journey_step(journey_name, journey, i)
+                            st.session_state.editing_journey_day = i
+                            st.session_state.editing_journey_step = None
+                            col1, col2 = st.columns([1, 3])
+                            journey_edit["days"][i]["title"] = col2.text_input(
+                                f"Day {i+1} Title", value=day["title"], key=f"day_title_{journey_name}_{i}"
+                            )
+                            journey_edit["days"][i]["intro"] = col2.text_area(
+                                f"Day {i+1} intro", value=day["intro"], key=f"day_intro_{journey_name}_{i}"
+                            )
                             if st.button("Save", key=f"save_button_{journey_name}_{i}"):
                                 save_journey(journey_name, journey_edit)
                                 st.session_state.editing_journey = None
+                                st.session_state.editing_journey_details = None
+                                st.session_state.editing_journey_day = None
                                 st.session_state.editing_journey_step = None
                                 st.rerun()
                         else:
-                            col1, col2 = st.columns([1, 5])
-                            col1.write("##### Description:")
-                            col2.write(step["description"])
+                            col2.write(day["title"] + ":")
+                            col2.write(day["intro"])
 
-                            col1, col2 = st.columns([1, 5])
-                            col1.write("##### Actions:")
-                            col2.write("* " + "\n* ".join(step["actions"]))
+                        if (col1.toggle("Show steps", key=f"show_toggle_{journey_name}_{i}")):
+                            for j, step in enumerate(day["steps"]):
+                                with st.expander(f'##### Step {j+1}: {step["subject"]}'):
+                                    if (
+                                        st.button(
+                                            "Edit step", key=f"edit_button_{journey_name}_{i}_{j}"
+                                        )
+                                        or "editing_journey" in st.session_state
+                                        and st.session_state.editing_journey == journey_name
+                                        and "editing_journey_step" in st.session_state
+                                        and st.session_state.editing_journey_day == i
+                                        and st.session_state.editing_journey_step == j
+                                    ):
+                                        st.session_state.editing_journey = journey_name
+                                        st.session_state.editing_journey_day = i
+                                        st.session_state.editing_journey_step = j
+                                        journey_edit = edit_journey_step(journey_name, journey, i, j)
+                                        if st.button("Save", key=f"save_button_{journey_name}_{i}_{j}"):
+                                            save_journey(journey_name, journey_edit)
+                                            st.session_state.editing_journey = None
+                                            st.session_state.editing_journey_details = None
+                                            st.session_state.editing_journey_day = None
+                                            st.session_state.editing_journey_step = None
+                                            st.rerun()
+                                    else:
+                                        if step.get("json", None):
+                                            json = step["json"]
+                                            col1, col2 = st.columns([1, 5])
+                                            col1.write("##### Intro:")
+                                            col2.write(json["intro"])
 
-                            col1, col2 = st.columns([1, 5])
-                            col1.write("##### Priority:")
-                            col2.write(step["priority"])
+                                            col1, col2 = st.columns([1, 5])
+                                            col1.write("##### Content:")
+                                            col2.write(json["content"])
 
-                    i = i + 1
+                                            col1, col2 = st.columns([1, 5])
+                                            col1.write("##### Actions:")
+                                            col2.write("* " + "\n* ".join(json["actions"]))
 
-        # st.write("journey:")
-        # st.write(compressed)
-        # col1, col2 = st.columns([3, 1])
-        # col1.write("Generating journey json")
-        # resulting_json = get_chain("journey_json").invoke({"input": compressed})["text"]
-        # col2.success("Complete")
-        # print(f"{resulting_json =}")
-        # foo = """
-        # [{'name': 'Prepare Validation Story', 'description': 'Create an effective validation story that answers why you are solving this problem and how it solves the pain point. Provide evidence of traction to back up your claims.', 'actions': ['Gather data, user feedback, market research, financial projections, etc.'], 'priority': 1, 'length': 2}, {'name': 'Research Competitors & Market Size', 'description': 'Conduct thorough research on competitors and market size to understand the competitive landscape, potential moat against competition, and overall business viability.', 'actions': ['Identify key players in your industry', 'Analyze their strengths/weaknesses', "Assess target markets' sizes and growth rates"], 'priority': 2, 'length': 3}, {'name': 'Develop Team & Product Fit Narrative', 'description': "Create a compelling narrative that highlights your team's complementary skills and chemistry as well as the fit between you and this business idea.", 'actions': ["Identify each member's unique strengths & contributions to the project", 'Discuss how these abilities align with building, growing, or scaling the company effectively'], 'priority': 3, 'length': 3}, {'name': 'Create Data Management & Privacy Plan', 'description': 'Develop a comprehensive data management, privacy and security plan that addresses investor concerns regarding user consent collection methods, transparency about usage of collected information, adherence to international laws (GDPR/COPPA), encryption techniques for protecting sensitive info at rest or in transit.', 'actions': ['Research best practices & regulations'], 'priority': 4, 'length': 3}, {'name': 'Develop Data Security Measures & Compliance Plan', 'description': 'Create a data security measures and compliance plan that addresses investor questions regarding cybersecurity frameworks, international laws (ISO27001/NIST), incident response plans for breaches.', 'actions': ['Research best practices & regulations'], 'priority': 4, 'length': 3}, {'name': 'Identify & Assess Risks and Mitigants', 'description': 'Develop an understanding of potential risks to your data privacy, security practices as well as third-party vendors/partners. Create a plan for assessing these risks and mitigation strategies accordingly (risk assessment).', 'actions': ['Identify key areas where risk may arise'], 'priority': 5, 'length': 3}, {'name': 'Develop Workforce Awareness & Training Plan', 'description': 'Create a plan for ongoing training and awareness programs that ensure employees understand the importance of data protection, cybersecurity best practices.', 'actions': ['Research available resources'], 'priority': 6, 'length': 2}]}
-        # """
+                                            col1, col2 = st.columns([1, 5])
+                                            col1.write("##### Priority:")
+                                            col2.write(json["priority"])
+                                        else:
+                                            col1, col2 = st.columns([1, 5])
+                                            col1.write("##### Intro:")
+                                            col2.write(step["intro"])
 
-        # if len(resulting_json) > 0:
-        #     st.write("Data editor")
-        #     st.data_editor(resulting_json)
-
-    # # Display all files in the database
-    # st.subheader("Saved Files")
+                                            col1, col2 = st.columns([1, 5])
+                                            col1.write("##### Content:")
+                                            col2.write(step["content"])
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@ from functools import cache
 import os
 import random
 import textwrap
+from typing import List
 import chromadb
 from langchain.chains.hyde.base import HypotheticalDocumentEmbedder
 from langchain.chains.combine_documents.stuff import StuffDocumentsChain
@@ -32,9 +33,32 @@ from langchain_community.vectorstores.chroma import Chroma
 from langchain.globals import set_debug, set_verbose
 from dotenv import load_dotenv
 
-# Load .env file from the parent directory
-load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
+from prompts import (
+    PromptFormatter,
+    text_formatter,
+    text_formatter_compress,
+    text_formatter_guided,
+    md_formatter,
+    md_formatter_guided,
+    action,
+    check,
+    helper,
+    chat,
+    question,
+    hyde,
+    summary,
+    summary_guided,
+    journey_steps,
+    journey_substeps,
+    journey_step_details,
+    journey_step_intro
+)
 
+# Load .env file from the parent directory
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+print("Loading env: ", os.path.join(os.path.dirname(__file__), "..", ".env"))
+# for key, value in os.environ.items():
+#     print(f'\t{key}= {value}')
 
 set_debug(os.getenv("DEBUG", False))
 set_verbose(os.getenv("VERBOSE", True))
@@ -43,111 +67,58 @@ CHROMA_PATH = os.getenv("CHROMA_PATH", "db/chroma_db")
 SQLITE_DB = os.getenv("SQLITE_DB", "db/files.db")
 
 chat_llm = os.getenv("CHAT_LLM", "phi3:mini")
-instruct_llm = os.getenv("INSTRUCT_LLM", "phi3:instruct")
-ollama_url = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
 
-CTX_MULTP = int(os.getenv("CTX_MULTP", 16))
-CONTEXT_SIZE = int(os.getenv("CONTEXT_SIZE", 1024 )) * CTX_MULTP * 2
-CHAR_LIMIT = int(os.getenv("CONTEXT_SIZE", 1024 )) * (CTX_MULTP // 3 * 2) * 2
+ollama_url = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
+CHAT_CONTEXT_SIZE = int(os.getenv("CHAT_CTX_SIZE", 8192))
+CHAT_CHAR_LIMIT = int(os.getenv("CHAT_CHAR_LIMIT", 1024))
+
+instruct_llm = os.getenv("INSTRUCT_LLM", "phi3:instruct")
+INSTRUCT_CONTEXT_SIZE = int(os.getenv("INSTRUCT_CTX_SIZE", 8192))
+INSTRUCT_CHAR_LIMIT = int(os.getenv("INSTRUCT_CHAR_LIMIT", 1024))
+
+tool_llm = os.getenv("TOOL_LLM", "phi3:instruct")
+TOOL_CONTEXT_SIZE = int(os.getenv("TOOL_CTX_SIZE", 8192))
+TOOL_CHAR_LIMIT = int(os.getenv("TOOL_CHAR_LIMIT", 1024))
+
+print(f"{chat_llm=} {CHAT_CONTEXT_SIZE=} {CHAT_CHAR_LIMIT}")
+print(f"{instruct_llm=} {INSTRUCT_CONTEXT_SIZE=} {INSTRUCT_CHAR_LIMIT}")
+print(f"{tool_llm=} {TOOL_CONTEXT_SIZE=} {TOOL_CHAR_LIMIT}")
 
 llms = {}
 embeddings = {}
 prompts = {}
 chains = {}
-templates = {
-    "text_formatter": {
-        "system": """Act as a document formatter. Rewrite the text specified by the user in full detail. Use only information from the text. Don't add or remove anything, just return the result. Return only the unformatted text.""",
-        "user": """{context}""",
-    },
-    "text_formatter_compress": {
-        "system": """Act as a document formatter. The text is a part of a longer document. Rewrite the text specified by the user in full detail. Use only information from the available in the text. Don't add or remove anything, just return the result. Return only the unformatted text.""",
-        "user": """{context}""",
-    },
-    "text_formatter_guided": {
-        "system": """Act as a document formatter. Use only information from the context. Don't add or remove anything, just return the result. Return only the unformatted text.""",
-        "user": """Instructions: {question}
-        Context: {context}
-        Answer:""",
-    },
-    "md_formatter": {
-        "system": """Act as a document formatter. Rewrite the text in context using markdown syntax. Use only information from the context. Don't add or remove anything, just return the result.""",
-        "user": """Context: {context}
-        Answer:""",
-    },
-    "md_formatter_guided": {
-        "system": """Act as a document formatter. Rewrite the text in context using markdown syntax. Use only information from the context. Don't add or remove anything, just return the result.""",
-        "user": """Instructions: {question}
-        Context: {context}
-        Answer:""",
-    },
-    "action": {
-        "system": """Act as a task completing machine. Use the following pieces of retrieved context to complete the task. If you don't know the answer, just say that you don't know how.""",
-        "user": """Task: {action}
-        Context: {context}
-        Answer:""",
-    },  # Use ten sentences maximum and
-    "helper": {
-        "system": """Act as a startup coach and answer questions thoroughly and exactly. Use the context to answer the question. If you don't know the answer, just say that you don't know. Keep the answer concise.
-            Do not mention that you are using the context. Avoid sentences like: Based on the provided context.
-            Terms:
-            PRE-IC Pre-IC refers to Pre-Investment Committee
-            IC refers to Investment Committee
-            POC refers to Proof of Concept
-            MVP refers to Minimum viable product""",
-        "user": """Context: {context}
-        Question: {question}""",
-    },
-    "question": {
-        "system": """You are a helpful startup coach from antler trying to answer questions thoroughly and exactly. Use the following pieces of retrieved context to answer the question. Use history if you don't undestand the question. If you don't know the answer, just say that you don't know. Use five sentences maximum and keep the answer concise unless question requests for more.""",
-        "user": """Question: {question}
-        Context: {context}
-        """,
-    },
-    "hyde": {
-        "system": """Act as a startup coach and answer questions thoroughly and exactly. If you don't know the answer, just say that you don't know. Answer the question. Use five sentences maximum, keep the answer concise and discover keywords from the question.
-        Terms:
-        PRE-IC Pre-IC refers to Pre-Investment Committee
-        IC refers to Investment Committee
-        POC refers to Proof of Concept
-        MVP refers to Minimum viable product""",
-        "user": """{question}""",
-    },  # <|start_header_id|>user<|end_header_id|>Question: {question}<|eot_id|>
-    "summary": {
-        "system": """Summarize this content: """,
-        "user": """Content: {context} """,
-    },
-    "journey_text": {
-        "system": """Act as a task orginizer and scheduler. Create a schedule with {amount} tasks using the specified format using context.""",
-        "user": """Format: {format_example}
-        Context: {context}""",
-    },
-}
 
 journey_json_template = {
     "properties": {
-        "name": {
+        "title": {
             "type": "string",
-            "description": "Name of the task",
-            "title": "Name",
+            "description": "Title of the class",
+            "title": "Title",
         },
-        "description": {
+        "intro": {
             "type": "string",
-            "description": "Description for the task",
-            "title": "Description",
+            "description": "Introduction to the class",
+            "title": "Intro",
+        },
+        "content": {
+            "type": "string",
+            "description": "Detailed content of the class",
+            "title": "Content",
         },
         "actions": {
-            "description": "List actions within the task.",
+            "description": "List actions within the class.",
             "items": {"type": "string"},
             "title": "Actions",
             "type": "array",
         },
         "priority": {
             "type": "int",
-            "description": "How important the task is",
+            "description": "How important the class is",
             "title": "Priority",
         },
     },
-    "required": ["name", "description"],
+    "required": ["name", "intro", "content"],
 }
 
 
@@ -204,78 +175,106 @@ def get_llm_prompt(llm_id="default", prompt_id="helper", size=""):
     return {"llm": llm, "prompt": prompts[prompt_id]}
 
 
+import re
+from fuzzywuzzy import fuzz
+
+
+def handle_thinking(text_provider, min_len=100, retry=True) -> tuple[str, str]:
+
+    # Rest of the function remains the same
+    # Define the tags to match
+    start_tag = "thinking_start"
+    end_tag = "thinking_end"
+
+    # Initialize the lists to store the thinking contents and remaining contents
+    thinking_contents = []
+    text_contents = []
+
+    text_contents_joined = ""
+    thinking_contents_joined = ""
+
+    if isinstance(text_provider, str):
+        text = text_provider
+    else:
+        text = text_provider()
+
+    # Split the text into matches using regex
+    matches = re.split(r"([\[{\(][/ ]*[^\[\]]+[\]}\)])", text, 0, re.IGNORECASE)
+
+    # Initialize a flag to indicate whether we're inside a thinking block
+    in_thinking = False
+
+    # print(f"Start matching fors {len(matches)} matches")
+
+    # Iterate over the matches
+    for match in matches:
+        match=match.strip()
+        # print(f"Match: {match}")
+        # If the match is a start tag, set the flag to True
+        if fuzz.ratio(match, start_tag) > 80:
+            in_thinking = True
+        # If the match is an end tag, set the flag to False
+        elif fuzz.ratio(match, end_tag) > 80:
+            in_thinking = False
+        # If we're inside a thinking block, add the match to the thinking contents
+        elif in_thinking:
+            thinking_contents.append(match)
+        # Otherwise, add the match to the text contents
+        else:
+            text_contents.append(match)
+
+    text_contents_joined = "\n".join(text_contents)
+    thinking_contents_joined = "\n".join(thinking_contents)
+
+    if retry and not isinstance(text_provider, str) and (
+        text_contents_joined == "" or len(text_contents_joined) < min_len
+    ):
+        max_retries = 5
+        try_nmb = 0
+        while text_contents_joined == "" or (len(text_contents_joined) < min_len and try_nmb < max_retries):
+            try_nmb += 1
+            text_contents_joined, thinking_contents_joined = handle_thinking(
+                text_provider,
+                min_len=min_len,
+                retry=False
+            )
+
+    return text_contents_joined, thinking_contents_joined
+
+
 def init_chain(
-    id, llm="default", input_variables=["context"], templates=templates, init_llm=True
+    id, llm="default", prompt: PromptFormatter = text_formatter, init_llm=True
 ):  # templates_mistral
     if f"{id}" not in prompts:
-        messages = [
-            ("system", templates[f"{id}"]["system"])
-        ]
-        if id == "helper" or id == "question" or id == "hyde":
-            messages.append(MessagesPlaceholder("chat_history"))
-        messages.append(("user", templates[f"{id}"]["user"]))
-        prompts[f"{id}"] = ChatPromptTemplate.from_messages(messages)
-        # prompts[f"{id}"] = PromptTemplate(
-        #     template=templates[f"{id}"], input_variables=input_variables
-        # )
+        prompts[f"{id}"] = (
+            prompt.get_chat_prompt_template()
+        )  # ChatPromptTemplate.from_messages(messages)
 
-    # if f"{id}_large" not in chains:
-    #     chains[f"{id}_large"] = LLMChain(
-    #         llm=llms[f"{llm}_large"], prompt=prompts[f"{id}"]
-    #     )
     if f"{id}" not in chains and init_llm:
         chains[f"{id}"] = LLMChain(llm=llms[llm], prompt=prompts[f"{id}"])
-    # if f"{id}_small" not in chains:
-    #     chains[f"{id}_small"] = LLMChain(
-    #         llm=llms[f"{llm}_small"], prompt=prompts[f"{id}"]
-    #     )
 
 
 def init_llm(
     id,
     model=chat_llm,
-    temperature=0,
+    temperature=0.2,
     verbose=True,
     Type=Ollama,
+    ctx_size=CHAT_CONTEXT_SIZE,
 ):
     if f"{id}" not in llms:
+        print(f"Initialize llm {id}: {model=} with {ctx_size=} and {temperature=}...")
         llms[f"{id}"] = Type(
             base_url=ollama_url,
             model=model,
             verbose=verbose,
             temperature=temperature,
-            num_ctx=CONTEXT_SIZE,
-            num_predict=CONTEXT_SIZE,
-            # num_ctx=CONTEXT_SIZE,
-            # num_predict=CONTEXT_SIZE,
+            num_ctx=ctx_size,
+            num_predict=ctx_size,
             repeat_penalty=1.5,
             timeout=20 * 1000,
             callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
         )
-
-    # if f"{id}_large" not in llms:
-    #     llms[f"{id}_large"] = Type(
-    #         model=model_small,
-    #         verbose=verbose,
-    #         temperature=temperature,
-    #         num_ctx=1024 * 32,
-    #         num_predict=1024 * 32,
-    #         repeat_penalty=1.5,
-    #         timeout=300*1000,
-    #         # callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
-    #     )
-
-    # if f"{id}_small" not in llms:
-    #     llms[f"{id}_small"] = Type(
-    #         model=model_large,
-    #         verbose=verbose,
-    #         temperature=temperature,
-    #         num_ctx=1024 * 8,
-    #         num_predict=1024 * 8,
-    #         repeat_penalty=1.5,
-    #         timeout=100*1000,
-    #         # callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
-    #     )
 
 
 initialized = False
@@ -286,56 +285,83 @@ def init_llms():
     initialized = True
 
     init_llm("default")
-    init_llm("instruct", model=instruct_llm)
+    init_llm(
+        "instruct", temperature=0.2, model=instruct_llm, ctx_size=INSTRUCT_CONTEXT_SIZE
+    )
+    init_llm(
+        "instruct_0", temperature=0, model=instruct_llm, ctx_size=INSTRUCT_CONTEXT_SIZE
+    )
+    init_llm(
+        "instruct_warm", temperature=0.5, model=instruct_llm, ctx_size=INSTRUCT_CONTEXT_SIZE
+    )
 
     # init_llm("json", Type=OllamaFunctions)
 
     if "json" not in llms:
-        llms["json"] = OllamaFunctions(
+        llms["json"] = ChatOllama(
+            format="json",
             # model=llama3_llm,
             base_url=ollama_url,
-            model=instruct_llm,
+            model=tool_llm,
             temperature=0,
-            # num_ctx=1024 * 8,
-            # num_predict=1024 * 8,
+            num_ctx=TOOL_CONTEXT_SIZE,
+            num_predict=TOOL_CONTEXT_SIZE,
+            verbose=True,
             callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
         )
 
-    init_llm("chat", temperature=0.1, Type=ChatOllama)
+    init_llm("tool", temperature=0, model=tool_llm, ctx_size=TOOL_CONTEXT_SIZE)
 
-    init_llm("warm", temperature=0.3, model=instruct_llm)
+    init_llm("chat", temperature=0.5, Type=ChatOllama)
 
-    init_chain("summary", "instruct", templates=templates)
+    init_llm("warm", temperature=0.4)
+
+    init_chain("summary", "instruct", summary)
+    init_chain("summary_guided", "instruct", summary_guided)
     init_chain(
         "action",
-        input_variables=["context", "action"],
-        llm="instruct",
-        templates=templates,
+        "instruct_0",
+        action,
     )
-    init_chain("text_formatter", llm="instruct", templates=templates)
-    init_chain("text_formatter_compress", llm="instruct", templates=templates)
     init_chain(
-        "text_formatter_guided",
-        "warm",
-        input_variables=["context", "question"],
-        templates=templates,
+        "check",
+        "instruct_0",
+        check,
     )
-    init_chain("md_formatter", llm="instruct", templates=templates)
+    init_chain("text_formatter", "instruct", text_formatter)
+    init_chain("text_formatter_compress", "instruct", text_formatter_compress)
+    init_chain(
+        "text_formatter_guided_0",
+        "instruct",
+        text_formatter_guided,
+    )
+    init_chain("md_formatter", "instruct", md_formatter)
     init_chain(
         "md_formatter_guided",
-        "warm",
-        input_variables=["context", "question"],
-        templates=templates,
+        "instruct_0",
+        md_formatter_guided,
     )
     init_chain(
-        "journey_text",
-        input_variables=["context", "amount"],
-        llm="instruct",
-        templates=templates,
+        "journey_steps",
+        "instruct",
+        journey_steps,
     )
     init_chain(
-        "question", llm="chat", input_variables=["context", "question", "history"]
+        "journey_substeps",
+        "instruct",
+        journey_substeps,
     )
+    init_chain(
+        "journey_step_details",
+        "instruct_warm",
+        journey_step_details,
+    )
+    init_chain(
+        "journey_step_intro",
+        "instruct_warm",
+        journey_step_intro
+    )
+    init_chain("question", "chat", chat)
 
     # template = """<s> <<SYS>> Act as a a helpful startup coach from antler trying to answer questions thoroughly. Use the following pieces of retrieved context to answer the question. If you don't know the answer, just say that you don't know.<</SYS>> </s>
 
@@ -345,10 +371,10 @@ def init_llms():
     if "helper" not in prompts:
         # prompts["helper"] = ChatPromptTemplate.from_template(templates["helper"])
         # prompts["helper"] = ChatPromptTemplate.from_template(templates["helper"])
-        init_chain("helper", llm="chat", templates=templates, init_llm=False)
+        init_chain("helper", "chat", helper, init_llm=False)
 
     if "hyde" not in prompts:
-        init_chain("hyde", llm="chat", templates=templates, init_llm=False)
+        init_chain("hyde", "chat", hyde, init_llm=False)
         # prompts["hyde"] = PromptTemplate(
         #     template=templates["hyde"],
         #     input_variables=["question"],
@@ -376,7 +402,7 @@ def init_llms():
 
     if "summary_documents" not in chains:
         chain = StuffDocumentsChain(
-            llm_chain=chains["summary"],
+            llm_chain=chains["text_formatter_compress"],
             document_prompt=PromptTemplate(
                 input_variables=["page_content"], template="{page_content}"
             ),
@@ -384,7 +410,7 @@ def init_llms():
             verbose=True,
         )
         chains["summary_documents"] = ReduceDocumentsChain(
-            combine_documents_chain=chain, token_max=CONTEXT_SIZE
+            combine_documents_chain=chain
         )
 
     if "reduce_journey_documents" not in chains:
@@ -408,11 +434,27 @@ def init_llms():
 chroma_client = None
 
 
-def create_document_lists(list_of_strings, source="local"):
+def create_document_lists(
+    list_of_strings: List[str], list_of_thoughts: List[str] = None, source="local"
+):
     doc_list = []
 
-    for item in list_of_strings:
-        doc_list.append(Document(page_content=item, metadata={"source": source}))
+    for index, item in enumerate(list_of_strings):
+        thinking = list_of_thoughts[index] if list_of_thoughts else None
+        if len(item) > 3000:
+            split_texts = split_text(item, split=3000, overlap=100)
+            for split_item in split_texts:
+                doc = Document(
+                    page_content=split_item,
+                    metadata={"source": source, "thoughts": thinking, "index": index},
+                )
+                doc_list.append(doc)
+        else:
+            doc = Document(
+                page_content=item,
+                metadata={"source": source, "thoughts": thinking, "index": index},
+            )
+            doc_list.append(doc)
 
     return doc_list
 
@@ -466,12 +508,17 @@ def rerank_documents(list_of_documents: list[Document], query: str, amount=5):
     return list_of_documents
 
 
-def split_text(text, split=CHAR_LIMIT, overlap=0):
-    splitter = get_text_splitter(chunk_size=split, chunk_overlap=overlap)
-    return splitter.split_text(text)
+def split_text(text, split=INSTRUCT_CHAR_LIMIT, overlap=100):
+    text_len = len(text)
+    split = text_len // (text_len / split)
+    if (text_len - split) > overlap:
+        splitter = get_text_splitter(chunk_size=split, chunk_overlap=overlap)
+        return splitter.split_text(text)
+    else:
+        return [text]
 
 
-def join_documents(texts, split=CHAR_LIMIT):
+def join_documents(texts, split=INSTRUCT_CHAR_LIMIT):
     joins = []
     text_join = ""
 
@@ -508,7 +555,7 @@ def join_documents(texts, split=CHAR_LIMIT):
     return joins
 
 
-def semantic_splitter(text, split=CHAR_LIMIT):
+def semantic_splitter(text, split=INSTRUCT_CHAR_LIMIT):
     init_llms()
 
     if len(text) > 1000:
@@ -528,7 +575,7 @@ def semantic_splitter(text, split=CHAR_LIMIT):
     return join_documents(texts, split)
 
 
-def split_markdown(text, split=CHAR_LIMIT):
+def split_markdown(text, split=INSTRUCT_CHAR_LIMIT):
     headers_to_split_on = [
         ("#", "Header 1"),
         ("##", "Header 2"),

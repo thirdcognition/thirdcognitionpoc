@@ -40,7 +40,7 @@ class JourneyDataTable(Base):
     # id = Column(Integer, primary_key=True)
     journeyname = sqla.Column(sqla.String, primary_key=True)
     files = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
-    days = sqla.Column(sqla.PickleType)
+    subjects = sqla.Column(sqla.PickleType)
     chroma_collection = sqla.Column(sqla.String, default="rag_all")
     disabled = sqla.Column(sqla.Boolean, default=False)
     title = sqla.Column(sqla.String)

@@ -43,6 +43,7 @@ from chain import (
     split_markdown,
     split_text,
     validate_json_format,
+    verify_step_result,
 )
 
 # Define the database and table
@@ -393,18 +394,22 @@ def process_file_data(filename, category):
         with st.spinner("Summarizing text"):
             summary_text = None
             shorter_thoughts = None
-            if texts is not None:
+            summary_texts = texts
+            if formatted_text is not None and formatted_text != "":
+                summary_texts = split_text(formatted_text, INSTRUCT_CHAR_LIMIT, 128)
+
+            if summary_texts is not None:
                 # split_texts = split_text("\n".join(texts), CHAR_LIMIT)
                 if len(texts) == 1:
                     shorter_text = ''
                     while shorter_text == '' or len(shorter_text) < 10:
-                        shorter_text, shorter_thoughts = llm_edit("summary", texts)
+                        shorter_text, shorter_thoughts = llm_edit("summary", summary_texts)
                     if shorter_text is not None:
                         summary_text = shorter_text
                     else:
-                        summary_text = texts[0]
+                        summary_text = summary_texts[0]
                 else:
-                    list_of_docs = create_document_lists(texts, source=filename)
+                    list_of_docs = create_document_lists(summary_texts, source=filename)
                     # print(f"{ list_of_docs = }")
 
                     summary_text, shorter_thoughts = handle_thinking((lambda: get_chain("summary_documents").invoke(
@@ -545,7 +550,7 @@ def write_categories(add_new=True):
 
     st.write(f"Current categories: {', '.join(file_categories)}")
 
-    cat_col1, cat_col2 = st.columns([3, 1])
+    cat_col1, cat_col2 = st.columns([3, 1], vertical_alignment="bottom")
     with cat_col1:
         new_categories_input = st.text_input(
             "Add" if add_new else "Show" + " more categories: _(split with ```,```)_",
@@ -739,81 +744,82 @@ def manage_file(filename):
     rewrite_thoughts = st.session_state.rewrite_thoughts
 
     # for i in range(len(query)):
-
-    header_col1, header_col2 = st.columns([1, 4])
+    col1, col2 = st.columns([1, 12], vertical_alignment="center")
+    col2.subheader(filename, divider=True)
+    if col1.button(":x:", key=f"delete_{filename}"):
+        instance = (
+            database_session.query(FileDataTable)
+            .where(FileDataTable.filename == filename)
+            .first()
+        )
+        database_session.delete(instance)
+        st.rerun()
+    header_col1, header_col2 = st.columns([1, 4], vertical_alignment="bottom")
     with header_col1:
-        show_details = st.toggle("Show file", key=f"show_{filename}")
+        show_details = st.toggle("Extend", key=f"show_{filename}")
+        disable_checkbox = st.toggle(
+            f"Disable", value=file_entry["disabled"], key=f"disable_{filename}"
+        )
         st.download_button("Download", file_entry["file_data"], file_name=filename)
 
+
     with header_col2:
-        st.subheader(filename)
+        with st.form(f"edit_fields_{filename}", border=False):
+            col1, col4 = st.columns([4, 1], vertical_alignment="bottom")
 
-    with st.form(f"edit_fields_{filename}"):
-        col1, col2, col3, col4 = st.columns([1, 2, 2, 1])
+            with col1:
+                category_tags = st.multiselect(
+                    "Category",
+                    file_categories,
+                    default=file_entry["category_tag"],
+                    key=f"category_{filename}",
+                )
 
-        with col1:
-            delete_checkbox = st.checkbox(
-                f"Delete", value=False, key=f"delete_{filename}"
-            )
-            disable_checkbox = st.checkbox(
-                f"Disabled", value=file_entry["disabled"], key=f"disable_{filename}"
-            )
+                chroma_collection = st.text_input(
+                    f"Chroma collection",
+                    value=", ".join(file_entry["chroma_collection"]),
+                    key=f"chroma_{filename}",
+                )
+            with col4:
+                submitted = st.form_submit_button("Save", use_container_width=True)
 
-        with col2:
-            category_tags = st.multiselect(
-                "Category",
-                file_categories,
-                default=file_entry["category_tag"],
-                key=f"category_{filename}",
-            )
+        if submitted:
+            updates = {
+                "disabled": disable_checkbox,
+                "category_tag": category_tags,
+                "chroma_collection": [col.strip() for col in chroma_collection.split(",")],
+            }
 
-        with col3:
-            chroma_collection = st.text_input(
-                f"Chroma collection",
-                value=", ".join(file_entry["chroma_collection"]),
-                key=f"chroma_{filename}",
-            )
-        with col4:
-            submitted = st.form_submit_button("Save", use_container_width=True)
+            changes = False
 
-    if submitted:
-        updates = {
-            "disabled": disable_checkbox,
-            "category_tag": category_tags,
-            "chroma_collection": [col.strip() for col in chroma_collection.split(",")],
-        }
+            for key in updates.keys():
+                changes = changes or updates[key] != file_entry[key]
 
-        changes = False
+            if changes:
+                instance = (
+                    database_session.query(FileDataTable)
+                    .where(FileDataTable.filename == filename)
+                    .first()
+                )
 
-        for key in updates.keys():
-            changes = changes or updates[key] != file_entry[key]
+            if changes:
+                instance = (
+                    database_session.query(FileDataTable)
+                    .where(FileDataTable.filename == filename)
+                    .first()
+                )
+                instance.disabled = updates["disabled"]
+                instance.category_tag = updates["category_tag"]
+                instance.chroma_collection = [
+                    col.strip() for col in updates["chroma_collection"].split(",")
+                ]
 
-        if changes or delete_checkbox:
-            instance = (
-                database_session.query(FileDataTable)
-                .where(FileDataTable.filename == filename)
-                .first()
-            )
 
-        if changes:
-            instance = (
-                database_session.query(FileDataTable)
-                .where(FileDataTable.filename == filename)
-                .first()
-            )
-            instance.disabled = updates["disabled"]
-            instance.category_tag = updates["category_tag"]
-            instance.chroma_collection = [
-                col.strip() for col in updates["chroma_collection"].split(",")
-            ]
 
-        if delete_checkbox:
-            database_session.delete(instance)
-
-        if delete_checkbox or changes:
-            database_session.commit()
-            get_db_files(reset=True)
-            st.rerun()
+            if changes:
+                database_session.commit()
+                get_db_files(reset=True)
+                st.rerun()
 
     if show_details:
         with st.container(border=True):
@@ -821,6 +827,7 @@ def manage_file(filename):
             filetype = filename.split(".")[-1]
             summary = file_entry["summary"]
             text = file_entry["formatted_text"]
+            thoughts = None #file_entry["format_thoughts"]
             raw = file_entry["texts"]
 
             rag_id = file_entry["chroma_collection"][0]
@@ -875,10 +882,10 @@ def manage_file(filename):
                         rewrite_text[filename] = ""
                         rewrite_thoughts[filename] = ""
 
+
                 if rewrite:
+                    text = None
                     with st.spinner("Rewriting"):
-                        text = None
-                        thoughts = None
                         if raw is not None and filetype != "md":
                             text, thoughts = handle_thinking(llm_edit(
                                 "text_formatter", raw, guidance
@@ -1037,7 +1044,7 @@ Title: Description (optional)
 
     list_of_steps = [step.strip() for step in steps.split("\n") if step.strip()]
 
-    days = []
+    subjects = []
     total_steps = len(list_of_steps)
     for i, subject in enumerate(list_of_steps):
         success = False
@@ -1080,12 +1087,12 @@ Title: Description (optional)
                 success = resp in ["yes", "y", "maybe", "m"]
         sub_steps = [step.strip() for step in sub_steps_response.split("\n") if step.strip()]
         if success or retries >= 3:
-            days.append({"subject": subject, "steps": sub_steps})
+            subjects.append({"subject": subject, "steps": sub_steps})
 
 
-    total_items = sum(len(item["steps"]) for item in days)
+    total_items = sum(len(item["steps"]) for item in subjects)
     cur_item = 0
-    for i, day in enumerate(days):
+    for i, day in enumerate(subjects):
         for j, item in enumerate(day["steps"]):
             bar.progress(0.35 + (0.65 * cur_item/total_items), text=f"Generating curriculum for day {i+1}: item {j+1} of {len(day["steps"])}")
             class_content, sub_steps_thoughts = handle_thinking(
@@ -1104,7 +1111,7 @@ Title: Description (optional)
                     }
                 )["text"]), 50
             )
-            days[i]["steps"][j] = {
+            subjects[i]["steps"][j] = {
                 "subject": item,
                 "content": class_content,
                 "intro": class_intro
@@ -1118,7 +1125,7 @@ Title: Description (optional)
                 }
             )["text"]), 50
         )
-        days[i] = {
+        subjects[i] = {
             "title": day["subject"],
             "intro": day_intro,
             "steps": day["steps"]
@@ -1127,20 +1134,85 @@ Title: Description (optional)
     title, title_thoughts = handle_thinking(
         (lambda: get_chain("action").invoke(
             {
-                "context": "\n".join([f"Day {i+1}: {day['intro']}" for i, day in enumerate(days)]),
+                "context": "\n".join([f"Day {i+1}: {day['intro']}" for i, day in enumerate(subjects)]),
                 "action": "Summarize context with 10 words or less to a title for the curriculum",
             }
         )["text"])
     )
 
-    summary, summary_thoughts = llm_edit("summary", [f"Day {i+1}: {day['intro']}" for i, day in enumerate(days)], "Summarize the following list of daily intros into a description of the whole curriculum.", 10, force=True)
+    summary, summary_thoughts = llm_edit("summary", [f"Day {i+1}: {day['intro']}" for i, day in enumerate(subjects)], "Summarize the following list of daily intros into a description of the whole curriculum.", 10, force=True)
 
     bar.progress(1.0, text="Curriculum generation complete.")
     bar.empty()
     return {
         "title": title,
         "summary": summary,
-        "days": days
+        "subjects": subjects
+    }
+
+def gen_subject(content, amount=10) -> Dict:
+    bar = st.progress(0, text="Generating curriculum")
+
+    bar.progress(0, text="Generate subjects for each day")
+    steps = verify_step_result(
+        lambda: (get_chain("journey_steps").invoke(
+            {
+                "context": content,
+                "amount": amount,
+                # "format_example": get_journey_format_example(amount)
+            }
+        )["text"]),
+        amount
+    )
+    bar.progress(0.1, text="Generate subjects for each day")
+
+    step_items = [step.strip() for step in steps.split("\n") if step.strip()]
+    steps = []
+
+    total_items = len(step_items)
+    for i, step_title in enumerate(step_items):
+        bar.progress(0.35 + (0.6 * i/total_items), text=f"Generating curriculum for step {i+1} of {total_items}")
+        class_content, sub_steps_thoughts = handle_thinking(
+            (lambda: get_chain("journey_step_details").invoke(
+                {
+                    "context": content,
+                    "subject": step_title,
+                }
+            )["text"])
+        )
+        class_intro, sub_steps_thoughts = handle_thinking(
+            (lambda: get_chain("journey_step_intro").invoke(
+                {
+                    "context": class_content,
+                    "subject": step_title,
+                }
+            )["text"]), 50
+        )
+        step = {
+            "subject": step_title,
+            "content": class_content,
+            "intro": class_intro
+        }
+        steps.append(step)
+    bar.progress(0.95, text="Generating title for the curriculum")
+    title, title_thoughts = handle_thinking(
+        (lambda: get_chain("action").invoke(
+            {
+                "context": "\n".join([f"{step["subject"]}:\n {step['intro']}" for i, step in enumerate(steps)]),
+                "action": "Summarize context with 10 words or less to a title for the curriculum",
+            }
+        )["text"])
+    )
+    bar.progress(1.0, text="Curriculum generation complete.")
+
+    summary, summary_thoughts = llm_edit("summary", [f"{step["subject"]}:\n {step['intro']}" for i, step in enumerate(steps)], "Summarize the following list of daily intros into a description of the whole curriculum.", 10, force=True)
+
+
+    bar.empty()
+    return {
+        "subject": title,
+        "summary": summary,
+        "steps": steps
     }
 
 def gen_journey_json(source):
@@ -1152,12 +1224,7 @@ def gen_journey_json(source):
     return result
 
 
-def get_journey_gen(journey_name):
-    # st.subheader("Journey generator")
-    file_categories = get_all_categories()
-
-    default_category = st.multiselect("Filter files by category", file_categories)
-
+def get_files_for_journey(default_category, journey_name, step, gen_from: Dict = None) -> List[Any]:
     db_files = get_db_files()
     shown_files = {}
 
@@ -1170,126 +1237,171 @@ def get_journey_gen(journey_name):
             if len([i for i in category_tags if i in default_category]) > 0:
                 shown_files[filename] = db_files[filename]
 
-    if "gen_checklist_from" not in st.session_state:
-        st.session_state.gen_checklist_from = {}
+    if gen_from is None:
+        gen_from = {}
 
-    gen_from = st.session_state.gen_checklist_from
+    # gen_from = st.session_state.gen_checklist_from
 
     if len(shown_files) > 0:
-        st.write("#### Available files")
+        st.write(f"Files:")
         for filename in shown_files.keys():
-            col1, col2 = st.columns([1, 5])
             file = shown_files[filename]
 
-            with col1:
-                select = st.checkbox(
-                    "Use",
-                    value=filename in gen_from.keys(),
-                    key=f"select_for_journey_gen_{filename}",
-                )
-
-                if select:
-                    gen_from[filename] = file
-
-            with col2:
-                st.write(filename)
-
-    journey_details = {"journeyname": journey_name}
-    if len(gen_from) > 0:
-        journey_details["files"] = list(gen_from.keys())
-        col1, col2 = st.columns([5, 1])
-        amount = 0
-        with col1:
-            amount = st.number_input(
-                "Number of subjects to generate (approximate)", min_value=1, max_value=20, value=5
+            select = st.checkbox(
+                filename,
+                value=filename in gen_from.keys(),
+                key=f"select_for_journey_gen_{journey_name}_{step}",
             )
-        if col2.button("Generate"):
-            with st.status(f"Building journey"):
-                list_of_strings = []
-                for filename in gen_from.keys():
-                    if (
-                        gen_from[filename]["formatted_text"] is not None
-                        and gen_from[filename]["formatted_text"] != ""
-                    ):
-                        list_of_strings.append(gen_from[filename]["formatted_text"])
-                    else:
-                        list_of_strings.append(
-                            markdown_to_text("\n".join(gen_from[filename]["texts"]))
-                        )
 
-                compressed = ''
+            if select:
+                gen_from[filename] = file
 
-                with st.spinner("Generating journey document"):
-                    compressed, compress_thoughts = gen_journey_doc(list_of_strings)
+    return gen_from
 
-                st.success("Generating journey document done.")
+def gen_journey_doc_from_files(files: List[Any]) -> str:
+    list_of_strings = []
+    for filename in files.keys():
+        if (
+            files[filename]["formatted_text"] is not None
+            and files[filename]["formatted_text"] != ""
+        ):
+            list_of_strings.append(files[filename]["formatted_text"])
+        else:
+            list_of_strings.append(
+                markdown_to_text("\n".join(files[filename]["texts"]))
+            )
 
-                structured_journey = None
-                with st.spinner("Generating curriculum"):
-                    structured_journey = gen_journey(compressed, amount)
+    compressed = ''
 
-                journey_details["days"] = structured_journey["days"]
-                journey_details["title"] = structured_journey["title"]
-                journey_details["summary"] = structured_journey["summary"]
+    with st.spinner("Generating journey document"):
+        compressed, compress_thoughts = gen_journey_doc(list_of_strings)
 
-                save_journey(journey_name, journey_details)
+    return compressed
 
-                with st.spinner("Generating JSON for journey"):
-                    bar = st.progress(0, "Generating JSON for journey")
+def build_journey_subject(journey_details, journey_name, subject_index, amount) -> None:
+    with st.status(f"Building subject document"):
+        compressed = gen_journey_doc_from_files(journey_details["subjects"][subject_index]["files"])
+        st.success("Generating subject document done.")
+    with st.status(f"Building subject curriculum"):
+        subject = None
+        with st.spinner("Generating subject curriculum"):
+            subject = gen_subject(compressed, amount)
+        st.success("Generating subject curriculum done.")
+        subject["files"] = journey_details["subjects"][subject_index]["files"]
+        journey_details["subjects"][subject_index] = subject
 
-                    journey_steps = []
+    for i, sub_step in enumerate(subject["steps"]):
+        subject["steps"][i] = edit_journey_subject(journey_name, journey_details, subject_index, i)
 
-                    total_items = sum(len(item["steps"]) for item in journey_details["days"])
-                    cur_item = 0
-                    for i, day in enumerate(journey_details["days"]):
-                        for j, step in enumerate(day["steps"]):
-                            journey_steps = journey_steps + gen_journey_json(
-                                f"""
-                                    Subject:
-                                    {step["subject"]}
-                                    Intro:
-                                    {step["intro"]}
-                                    Content:
-                                    {step["content"]}
-                                """
-                            )
-                            bar.progress(cur_item/total_items, f"Generating JSON for Day {i}: Class {j} of {len(day)}")
-                        cur_item += 1
+        # with st.spinner("Generating JSON for journey"):
+        #     bar = st.progress(0, "Generating JSON for journey")
 
-                    journey_details["days"][i]["json"] = journey_steps
-                    bar.empty()
-                st.success("Generating JSON for journey done.")
+        #     journey_steps = []
 
-            journey_details["__complete"] = True
+        #     total_items = sum(len(item["steps"]) for item in journey_details["subjects"])
+        #     cur_item = 0
+        #     for i, day in enumerate(journey_details["subjects"]):
+        #         for j, step in enumerate(day["steps"]):
+        #             journey_steps = journey_steps + gen_journey_json(
+        #                 f"""
+        #                     Subject:
+        #                     {step["subject"]}
+        #                     Intro:
+        #                     {step["intro"]}
+        #                     Content:
+        #                     {step["content"]}
+        #                 """
+        #             )
+        #             bar.progress(cur_item/total_items, f"Generating JSON for Day {i}: Class {j} of {len(day)}")
+        #         cur_item += 1
 
+        #     journey_details["subjects"][i]["json"] = journey_steps
+        #     bar.empty()
+        # st.success("Generating JSON for journey done.")
+    return subject
+
+def get_journey_gen(journey_name):
+    st.subheader("Journey generator")
+    if "journey_get_details" not in st.session_state or st.session_state.journey_get_details == None:
+        st.session_state.journey_get_details = {}
+        st.session_state.journey_create = False
+
+    file_categories = get_all_categories()
+    default_category = None
+    if journey_name not in st.session_state.journey_get_details or st.session_state.journey_get_details[journey_name] == None:
+        journey_details = {"journeyname": journey_name, "category": default_category}
+        st.session_state.journey_get_details[journey_name] = journey_details
+    else:
+        journey_details = st.session_state.journey_get_details[journey_name]
+        default_category = journey_details["category"]
+
+    default_category = st.multiselect("Select categories for journey", file_categories, key=f"journey_gen_category_{journey_name}", default=default_category)
+    journey_details["category"] = default_category
+
+    if len(default_category) > 0:
+    # journey_details["files"] = list(gen_from.keys())
+        col1, col2 = st.columns([5, 1], vertical_alignment="bottom")
+        amount = 0
+        amount = col1.number_input(
+            "Number of subjects", min_value=1, max_value=20, value=1
+        )
+        if col2.button("Create") or st.session_state.journey_create:
+            st.session_state.journey_create = True
+            journey_details["subjects"] = []
+            for i in range(amount):
+                st.subheader(f"Subject {i+1}")
+                col1, col2 = st.columns([4, 1], vertical_alignment="top")
+                step_amount = col2.number_input(
+                    "Items in subject", min_value=1, max_value=20, value=1, key=f"journey_gen_step_amount_{journey_name}_{i}"
+                )
+                with col1:
+                    subject = {
+                        "files": get_files_for_journey(default_category, journey_name, i)
+                    }
+
+                journey_details["subjects"].append(subject)
+
+                if col2.button("Generate", key=f"generate_subject_{journey_name}_{i}"):
+                    gen_sub = build_journey_subject(journey_details, journey_name, i, step_amount)
+                    for key, value in gen_sub.items():
+                        subject[key] = value
+
+
+
+    if st.button("Save", key=f"save_subjects_{journey_name}"):
+        save_journey(journey_name, journey_details)
+        journey_details["__complete"] = True
+
+    st.session_state.journey_get_details[journey_name] = journey_details
     return journey_details
 
 
-def edit_journey_step(journey_name, journey, day_index, step_index):
-    if journey["days"][day_index]["steps"][step_index].get("json", None):
-        step = journey["days"][day_index]["steps"][step_index]["json"]
+def edit_journey_subject(journey_name, journey, subject_index, step_index):
+    print(f"{journey["subjects"][subject_index]["steps"] = }")
+    if journey["subjects"][subject_index]["steps"][step_index].get("json", None):
+        step = journey["subjects"][subject_index]["steps"][step_index]["json"]
         col1, col2 = st.columns([1, 3])
         col1.write(f"##### Step {step_index+1}:")
-        journey["days"][day_index]["steps"][step_index]["json"]["subject"] = col2.text_input(
+        journey["subjects"][subject_index]["steps"][step_index]["json"]["subject"] = col2.text_input(
             "Subject", value=step["subject"], key=f"journey_step_subject_{journey_name}_{step_index}"
         )
 
-        journey["days"][day_index]["steps"][step_index]["json"]["intro"] = col2.text_area(
+        journey["subjects"][subject_index]["steps"][step_index]["json"]["intro"] = col2.text_area(
             "Intro",
             value=step["intro"],
             key=f"journey_step_intro_{journey_name}_{step_index}",
         )
 
-        journey["days"][day_index]["steps"][step_index]["json"]["content"] = col2.text_area(
+        journey["subjects"][subject_index]["steps"][step_index]["json"]["content"] = col2.text_area(
             "Content",
             value=step["content"],
             key=f"journey_step_content_{journey_name}_{step_index}",
         )
 
-        if not isinstance(journey["days"][day_index]["steps"][step_index]["json"]["priority"], numbers.Number):
-            journey["days"][day_index]["steps"][step_index]["json"]["priority"] = step["priority"] = 1
+        if not isinstance(journey["subjects"][subject_index]["steps"][step_index]["json"]["priority"], numbers.Number):
+            journey["subjects"][subject_index]["steps"][step_index]["json"]["priority"] = step["priority"] = 1
 
-        journey["days"][day_index]["steps"][step_index]["json"]["priority"] = col2.select_slider(
+        journey["subjects"][subject_index]["steps"][step_index]["json"]["priority"] = col2.select_slider(
             "Priority",
             options=list(range(1, 6)),
             value=max(1, min(5, step["priority"])),
@@ -1298,24 +1410,30 @@ def edit_journey_step(journey_name, journey, day_index, step_index):
 
         col1, col2 = st.columns([1, 3])
         col1.write(f"##### Actions:")
-        for j, action in enumerate(journey["days"][day_index]["steps"][step_index]["json"]["actions"]):
-            journey["days"][day_index]["steps"][step_index]["json"]["actions"][j] = col2.text_area(
+        for j, action in enumerate(journey["subjects"][subject_index]["steps"][step_index]["json"]["actions"]):
+            journey["subjects"][subject_index]["steps"][step_index]["json"]["actions"][j] = col2.text_area(
                 f"Action {j+1}",
                 value=action,
                 key=f"journey_step_actions_{journey_name}_{step_index}_{j}",
             )
     else:
-        step = journey["days"][day_index]["steps"][step_index]
+        step = journey["subjects"][subject_index]["steps"][step_index]
         col1, col2 = st.columns([1, 3])
         col1.write(f"##### Step {step_index+1}:")
-        journey["days"][day_index]["steps"][step_index]["subject"] = col2.text_input(
+        journey["subjects"][subject_index]["steps"][step_index]["subject"] = col2.text_input(
             "Subject", value=step["subject"], key=f"journey_step_subject_{journey_name}_{step_index}"
         )
 
-        journey["days"][day_index]["steps"][step_index]["intro"] = col2.text_area(
+        journey["subjects"][subject_index]["steps"][step_index]["intro"] = col2.text_area(
             "Intro",
             value=step["intro"],
             key=f"journey_step_intro_{journey_name}_{step_index}",
+        )
+
+        journey["subjects"][subject_index]["steps"][step_index]["content"] = col2.text_area(
+            "Content",
+            value=step["content"],
+            key=f"journey_step_content_{journey_name}_{step_index}",
         )
 
     return journey
@@ -1343,6 +1461,22 @@ def edit_journey_details(journey_name, journey:Dict):
 
     return journey
 
+def delete_journey(journey_name):
+    journey_db = (
+        database_session.query(JourneyDataTable)
+        .filter(JourneyDataTable.journeyname == journey_name)
+        .first()
+    )
+
+    if journey_db is not None:
+        database_session.delete(journey_db)
+        database_session.commit()
+        st.success(f"{journey_name} has been deleted successfully.")
+        st.rerun()
+    else:
+        st.warning(f"{journey_name} does not exist in the database.")
+
+
 
 def save_journey(journey_name, journey:Dict):
     journey_db = (
@@ -1354,7 +1488,7 @@ def save_journey(journey_name, journey:Dict):
     if journey_db is not None:
         print("Modify journey")
         journey_db.files = journey.get("files", None)
-        journey_db.days = journey.get("days", None)
+        journey_db.subjects = journey.get("subjects", None)
         journey_db.title = journey.get("title", None)
         journey_db.summary = journey.get("summary", None)
 
@@ -1366,13 +1500,14 @@ def save_journey(journey_name, journey:Dict):
         journey_db = JourneyDataTable(
             journeyname=journey_name,
             files=journey.get("files", None),
-            days=journey.get("days", None),
+            subjects=journey.get("subjects", None),
             title=journey.get("title", None),
             summary=journey.get("summary", None),
             last_updated=datetime.now(),
         )
         database_session.add(journey_db)
     database_session.commit()
+    st.rerun()
 
 
 def edit_journey(journey_name, journey:Dict):
@@ -1380,13 +1515,13 @@ def edit_journey(journey_name, journey:Dict):
 
     journey = edit_journey_details(journey_name, journey)
 
-    if "days" in journey.keys():
-        st.subheader("Journey days")
-        for i, day in enumerate(journey["days"]):
+    if "subjects" in journey.keys():
+        st.subheader("Journey subjects")
+        for i, day in enumerate(journey["subjects"]):
             st.write(f"### Journey day {i}: {day['title']}")
             for j, step in enumerate(day["steps"]):
                 with st.expander(f"Day step {j}: {step['title']}"):
-                    journey = edit_journey_step(journey_name, journey, i, j)
+                    journey = edit_journey_subject(journey_name, journey, i, j)
 
     if st.button("Save into database"):
         save_journey(journey_name, journey)
@@ -1432,7 +1567,7 @@ def main():
 
             if "creating_journey" not in st.session_state:
                 st.header("Create new journey")
-                col1, col2 = st.columns([2, 1])
+                col1, col2 = st.columns([2, 1], vertical_alignment="bottom")
 
                 journey_name = col1.text_input(
                     "Unique name for the journey", value="test"
@@ -1459,8 +1594,12 @@ def main():
 
         for journey_name in db_journey.keys():
             journey = db_journey[journey_name]
-            col1, col2 = st.columns([1, 3])
-            col1.header(f"{journey_name}")
+            col1, col2 = st.columns([1, 12], vertical_alignment="center")
+            if col1.button(":x:", key=f"delete_button_{journey_name}"):
+                delete_journey(journey_name)
+            col2.subheader(f"{journey_name}", divider=True)
+
+            col1, col2 = st.columns([1, 4], vertical_alignment="top")
             if (
                 col1.button("Edit details", key=f"edit_button_{journey_name}")
                 or "editing_journey" in st.session_state
@@ -1470,19 +1609,19 @@ def main():
             ):
                 st.session_state.editing_journey = journey_name
                 st.session_state.editing_journey_details = True
-                journey_edit = edit_journey_details(journey_name, journey)
-                if st.button("Save", key=f"save_button_{journey_name}"):
-                    save_journey(journey_name, journey_edit)
-                    st.session_state.editing_journey = None
-                    st.session_state.editing_journey_details = None
-                    st.rerun()
+                with col2:
+                    journey_edit = edit_journey_details(journey_name, journey)
+                    if col1.button("Save", key=f"save_button_{journey_name}"):
+                        save_journey(journey_name, journey_edit)
+                        st.session_state.editing_journey = None
+                        st.session_state.editing_journey_details = None
+                        st.rerun()
             else:
-                col2.write(f'##### {journey["title"]}')
+                col2.write(f'#### {journey["title"].strip()}')
                 col2.write(journey["summary"])
 
-            i = 0
-            if (col1.toggle("Show subjects", key=f"show_toggle_{journey_name}")):
-                for i, day in enumerate(journey["days"]):
+            if (col1.toggle("Extend", key=f"show_toggle_{journey_name}")):
+                for i, subject in enumerate(journey["subjects"]):
                     with st.container(border=True):
                         col1, col2 = st.columns([1, 3])
                         col1.write(f"#### Subject {i+1}:")
@@ -1493,33 +1632,33 @@ def main():
                             or "editing_journey" in st.session_state
                             and st.session_state.editing_journey == journey_name
                             and "editing_journey_step" in st.session_state
-                            and st.session_state.editing_journey_day == i
+                            and st.session_state.editing_journey_subject == i
                             and st.session_state.editing_journey_step == None
                         ):
                             journey_edit = journey
                             st.session_state.editing_journey = journey_name
-                            st.session_state.editing_journey_day = i
+                            st.session_state.editing_journey_subject = i
                             st.session_state.editing_journey_step = None
                             col1, col2 = st.columns([1, 3])
-                            journey_edit["days"][i]["title"] = col2.text_input(
-                                f"Day {i+1} Title", value=day["title"], key=f"day_title_{journey_name}_{i}"
+                            journey_edit["subjects"][i]["title"] = col2.text_input(
+                                f"subject {i+1} Title", value=subject["subject"], key=f"subject_subject_{journey_name}_{i}"
                             )
-                            journey_edit["days"][i]["intro"] = col2.text_area(
-                                f"Day {i+1} intro", value=day["intro"], key=f"day_intro_{journey_name}_{i}"
+                            journey_edit["subjects"][i]["intro"] = col2.text_area(
+                                f"subject {i+1} intro", value=subject["intro"], key=f"subject_intro_{journey_name}_{i}"
                             )
                             if st.button("Save", key=f"save_button_{journey_name}_{i}"):
                                 save_journey(journey_name, journey_edit)
                                 st.session_state.editing_journey = None
                                 st.session_state.editing_journey_details = None
-                                st.session_state.editing_journey_day = None
+                                st.session_state.editing_journey_subject = None
                                 st.session_state.editing_journey_step = None
                                 st.rerun()
                         else:
-                            col2.write(day["title"] + ":")
-                            col2.write(day["intro"])
+                            col2.write(subject["subject"] + ":")
+                            col2.write(subject["intro"])
 
-                        if (col1.toggle("Show steps", key=f"show_toggle_{journey_name}_{i}")):
-                            for j, step in enumerate(day["steps"]):
+                        if (col1.toggle("Extend", key=f"show_toggle_{journey_name}_{i}")):
+                            for j, step in enumerate(subject["steps"]):
                                 with st.expander(f'##### Step {j+1}: {step["subject"]}'):
                                     if (
                                         st.button(
@@ -1528,18 +1667,18 @@ def main():
                                         or "editing_journey" in st.session_state
                                         and st.session_state.editing_journey == journey_name
                                         and "editing_journey_step" in st.session_state
-                                        and st.session_state.editing_journey_day == i
+                                        and st.session_state.editing_journey_subject == i
                                         and st.session_state.editing_journey_step == j
                                     ):
                                         st.session_state.editing_journey = journey_name
-                                        st.session_state.editing_journey_day = i
+                                        st.session_state.editing_journey_subject = i
                                         st.session_state.editing_journey_step = j
-                                        journey_edit = edit_journey_step(journey_name, journey, i, j)
+                                        journey_edit = edit_journey_subject(journey_name, journey, i, j)
                                         if st.button("Save", key=f"save_button_{journey_name}_{i}_{j}"):
                                             save_journey(journey_name, journey_edit)
                                             st.session_state.editing_journey = None
                                             st.session_state.editing_journey_details = None
-                                            st.session_state.editing_journey_day = None
+                                            st.session_state.editing_journey_subject = None
                                             st.session_state.editing_journey_step = None
                                             st.rerun()
                                     else:

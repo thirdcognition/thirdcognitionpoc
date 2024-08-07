@@ -4,6 +4,7 @@ import random
 import textwrap
 from typing import List
 import chromadb
+from langchain_core.language_models.llms import BaseLLM
 from langchain.chains.hyde.base import HypotheticalDocumentEmbedder
 from langchain.chains.combine_documents.stuff import StuffDocumentsChain
 from langchain.chains.combine_documents.reduce import ReduceDocumentsChain
@@ -21,6 +22,7 @@ from langchain_core.prompts import (
 )
 from langchain_core.prompts.prompt import PromptTemplate
 from langchain_community.document_compressors import FlashrankRerank
+from langchain_groq import ChatGroq
 from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
     MarkdownHeaderTextSplitter,
@@ -66,23 +68,47 @@ set_verbose(os.getenv("VERBOSE", True))
 CHROMA_PATH = os.getenv("CHROMA_PATH", "db/chroma_db")
 SQLITE_DB = os.getenv("SQLITE_DB", "db/files.db")
 
-chat_llm = os.getenv("CHAT_LLM", "phi3:mini")
+use_ollama = os.getenv("USE_OLLAMA", "True") == "True" or False
+use_groq = os.getenv("USE_GROQ", "True") == "True" or False
+DEFAULT_LLM_MODEL:BaseLLM = None
 
-ollama_url = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
-CHAT_CONTEXT_SIZE = int(os.getenv("CHAT_CTX_SIZE", 8192))
-CHAT_CHAR_LIMIT = int(os.getenv("CHAT_CHAR_LIMIT", 1024))
+if use_ollama:
+    DEFAULT_LLM_MODEL = ChatOllama
+    ollama_url = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
+    chat_llm = os.getenv("OLLAMA_CHAT_LLM", "phi3:mini")
+    CHAT_CONTEXT_SIZE = int(os.getenv("OLLAMA_CHAT_CTX_SIZE", 8192))
+    CHAT_CHAR_LIMIT = int(os.getenv("OLLAMA_CHAT_CHAR_LIMIT", 1024))
 
-instruct_llm = os.getenv("INSTRUCT_LLM", "phi3:instruct")
-INSTRUCT_CONTEXT_SIZE = int(os.getenv("INSTRUCT_CTX_SIZE", 8192))
-INSTRUCT_CHAR_LIMIT = int(os.getenv("INSTRUCT_CHAR_LIMIT", 1024))
+    instruct_llm = os.getenv("OLLAMA_INSTRUCT_LLM", "phi3:instruct")
+    INSTRUCT_CONTEXT_SIZE = int(os.getenv("OLLAMA_INSTRUCT_CTX_SIZE", 8192))
+    INSTRUCT_CHAR_LIMIT = int(os.getenv("OLLAMA_INSTRUCT_CHAR_LIMIT", 1024))
 
-tool_llm = os.getenv("TOOL_LLM", "phi3:instruct")
-TOOL_CONTEXT_SIZE = int(os.getenv("TOOL_CTX_SIZE", 8192))
-TOOL_CHAR_LIMIT = int(os.getenv("TOOL_CHAR_LIMIT", 1024))
+    tool_llm = os.getenv("OLLAMA_TOOL_LLM", "phi3:instruct")
+    TOOL_CONTEXT_SIZE = int(os.getenv("OLLAMA_TOOL_CTX_SIZE", 8192))
+    TOOL_CHAR_LIMIT = int(os.getenv("OLLAMA_TOOL_CHAR_LIMIT", 1024))
 
-print(f"{chat_llm=} {CHAT_CONTEXT_SIZE=} {CHAT_CHAR_LIMIT}")
-print(f"{instruct_llm=} {INSTRUCT_CONTEXT_SIZE=} {INSTRUCT_CHAR_LIMIT}")
-print(f"{tool_llm=} {TOOL_CONTEXT_SIZE=} {TOOL_CHAR_LIMIT}")
+    print(f"Ollama: {chat_llm=} {CHAT_CONTEXT_SIZE=} {CHAT_CHAR_LIMIT}")
+    print(f"Ollama: {instruct_llm=} {INSTRUCT_CONTEXT_SIZE=} {INSTRUCT_CHAR_LIMIT}")
+    print(f"Ollama: {tool_llm=} {TOOL_CONTEXT_SIZE=} {TOOL_CHAR_LIMIT}")
+
+if use_groq:
+    DEFAULT_LLM_MODEL = ChatGroq
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY", None)
+    chat_llm = os.getenv("GROQ_CHAT_LLM", "llama-3.1-8b-instant")
+    CHAT_CONTEXT_SIZE = int(os.getenv("GROQ_CHAT_CTX_SIZE", 8192))
+    CHAT_CHAR_LIMIT = int(os.getenv("GROQ_CHAT_CHAR_LIMIT", 1024))
+
+    instruct_llm = os.getenv("GROQ_INSTRUCT_LLM", "llama-3.1-8b-instant")
+    INSTRUCT_CONTEXT_SIZE = int(os.getenv("GROQ_INSTRUCT_CTX_SIZE", 8192))
+    INSTRUCT_CHAR_LIMIT = int(os.getenv("GROQ_INSTRUCT_CHAR_LIMIT", 1024))
+
+    tool_llm = os.getenv("GROQ_TOOL_LLM", "llama-3.1-8b-instant")
+    TOOL_CONTEXT_SIZE = int(os.getenv("GROQ_TOOL_CTX_SIZE", 8192))
+    TOOL_CHAR_LIMIT = int(os.getenv("GROQ_TOOL_CHAR_LIMIT", 1024))
+
+    print(f"Groq: {chat_llm=} {CHAT_CONTEXT_SIZE=} {CHAT_CHAR_LIMIT}")
+    print(f"Groq: {instruct_llm=} {INSTRUCT_CONTEXT_SIZE=} {INSTRUCT_CHAR_LIMIT}")
+    print(f"Groq: {tool_llm=} {TOOL_CONTEXT_SIZE=} {TOOL_CHAR_LIMIT}")
 
 llms = {}
 embeddings = {}
@@ -198,6 +224,15 @@ def handle_thinking(text_provider, min_len=100, retry=True) -> tuple[str, str]:
     else:
         text = text_provider()
 
+#     print(f"""Provider response:
+# === RESPONSE START ===
+
+# Length: {len(text)}
+# {text}
+
+# === RESPONSE END ===
+# """)
+
     # Split the text into matches using regex
     matches = re.split(r"([\[{\(][/ ]*[^\[\]]+[\]}\)])", text, 0, re.IGNORECASE)
 
@@ -241,6 +276,48 @@ def handle_thinking(text_provider, min_len=100, retry=True) -> tuple[str, str]:
 
     return text_contents_joined, thinking_contents_joined
 
+def verify_step_result(get_result, amount: int, format:str = None) -> str:
+    if format is None:
+        format = """
+Format for 5 items:
+Title: Description (optional)
+Title: Description (optional)
+Title: Description (optional)
+Title: Description (optional)
+Title: Description (optional)
+"""
+
+    max_retries = 3
+
+    success = False
+    steps: str = None
+    retries = 0
+    while not success and retries < max_retries:
+        retries += 1
+
+        steps = get_result()
+        steps = re.sub(r':\s*\n', ': ', steps)
+        steps = re.sub(r'\n\s*:', ':', steps)
+        steps = "\n".join([step.strip() for step in steps.split("\n") if step.strip()])
+        correct_response = False
+        resp_retr = 0
+        while(not correct_response and resp_retr < max_retries):
+            resp_retr += 1
+
+            check_response = (get_chain("check").invoke({
+                "context": steps,
+                "options": "if matches the format respond: yes, if matches the format but not right amount of items respond: maybe, if does not match respond: no",
+                "expected_count": f"Expected approximately {amount} items.",
+                "count": len(steps.split("\n")),
+                "format": format
+
+            })["text"])
+            resp = check_response.lower().split('\n')[0].strip()
+            print(f"{resp = }")
+            correct_response = resp in ["yes", "y", "no", "n", "maybe", "m"]
+            success = resp in ["yes", "y", "maybe", "m"]
+
+    return steps
 
 def init_chain(
     id, llm="default", prompt: PromptFormatter = text_formatter, init_llm=True
@@ -259,22 +336,34 @@ def init_llm(
     model=chat_llm,
     temperature=0.2,
     verbose=True,
-    Type=Ollama,
+    Type=DEFAULT_LLM_MODEL,
     ctx_size=CHAT_CONTEXT_SIZE,
 ):
     if f"{id}" not in llms:
         print(f"Initialize llm {id}: {model=} with {ctx_size=} and {temperature=}...")
-        llms[f"{id}"] = Type(
-            base_url=ollama_url,
-            model=model,
-            verbose=verbose,
-            temperature=temperature,
-            num_ctx=ctx_size,
-            num_predict=ctx_size,
-            repeat_penalty=1.5,
-            timeout=20 * 1000,
-            callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
-        )
+        if use_ollama:
+            llms[f"{id}"] = Type(
+                base_url=ollama_url,
+                model=model,
+                verbose=verbose,
+                temperature=temperature,
+                num_ctx=ctx_size,
+                num_predict=ctx_size,
+                repeat_penalty=1.5,
+                timeout=20 * 1000,
+                callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
+            )
+        else:
+            llms[f"{id}"] = Type(
+                streaming=True,
+                api_key=GROQ_API_KEY,
+                model=model,
+                verbose=verbose,
+                temperature=temperature,
+                timeout=30000,
+                max_retries=5,
+                callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
+            )
 
 
 initialized = False
@@ -298,21 +387,32 @@ def init_llms():
     # init_llm("json", Type=OllamaFunctions)
 
     if "json" not in llms:
-        llms["json"] = ChatOllama(
-            format="json",
-            # model=llama3_llm,
-            base_url=ollama_url,
-            model=tool_llm,
-            temperature=0,
-            num_ctx=TOOL_CONTEXT_SIZE,
-            num_predict=TOOL_CONTEXT_SIZE,
-            verbose=True,
-            callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
-        )
+        if use_ollama:
+            llms["json"] = DEFAULT_LLM_MODEL(
+                format="json",
+                # model=llama3_llm,
+                base_url=ollama_url,
+                model=tool_llm,
+                temperature=0,
+                num_ctx=TOOL_CONTEXT_SIZE,
+                num_predict=TOOL_CONTEXT_SIZE,
+                verbose=True,
+                callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
+            )
+        if use_groq:
+            llms["json"] = DEFAULT_LLM_MODEL(
+                api_key=GROQ_API_KEY,
+                format="json",
+                model=tool_llm,
+                temperature=0,
+                timeout=30000,
+                verbose=True,
+                callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
+            )
 
     init_llm("tool", temperature=0, model=tool_llm, ctx_size=TOOL_CONTEXT_SIZE)
 
-    init_llm("chat", temperature=0.5, Type=ChatOllama)
+    init_llm("chat", temperature=0.5, Type=DEFAULT_LLM_MODEL)
 
     init_llm("warm", temperature=0.4)
 

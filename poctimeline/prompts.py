@@ -134,7 +134,8 @@ text_formatter_compress = PromptFormatter(
         Act as a document formatter.
         {pre_think_instruct}
         {keep_pre_think_together}
-        Rewrite the text specified by the user between the context start and context end in full detail using natural language.
+        Summarise, compress and reduce the text specified by the user between the context start and context end in retaining details using natural language.
+        Don't return the context text as it is, process it to shorter form.
         The context is a part of a longer document. Don't use html tags or markdown. Remove all mentions of confidentiality.
         Use only information from the available in the text."""
     ),

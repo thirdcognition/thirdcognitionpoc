@@ -35,17 +35,17 @@ from chain import (
     INSTRUCT_CHAR_LIMIT,
     SQLITE_DB,
     create_document_lists,
+    exec_structured_chain,
     get_chain,
     get_chroma_collection,
-    get_journey_format_example,
     get_vectorstore,
     handle_thinking,
     semantic_splitter,
     split_markdown,
     split_text,
-    validate_json_format,
     verify_step_result,
 )
+from prompts import JourneyStructure
 
 # Define the database and table
 # SQLITE_DB = "../databases/files.db"
@@ -257,7 +257,7 @@ def llm_edit(chain, texts, guidance=None, min_len=100, force=False) -> tuple[str
 
             inputs.append(input)
 
-            mid_results, mid_thoughts = handle_thinking((lambda: get_chain(chain + guided_llm).invoke(input)["text"]), min_len=min_len)
+            mid_results, mid_thoughts = handle_thinking((lambda: get_chain(chain + guided_llm).invoke(input)), min_len=min_len)
 
             text += mid_results + "\n\n"
             thoughts += mid_thoughts + "\n\n"
@@ -280,7 +280,7 @@ def llm_edit(chain, texts, guidance=None, min_len=100, force=False) -> tuple[str
             guided_llm = "_guided"
             input["question"] = guidance
 
-        text, thoughts = handle_thinking((lambda: get_chain(chain + guided_llm).invoke(input)["text"]), min_len=min_len)
+        text, thoughts = handle_thinking((lambda: get_chain(chain + guided_llm).invoke(input)), min_len=min_len)
 
     bar.empty()
 
@@ -1010,7 +1010,7 @@ def gen_subject(content, instructions="", amount=10) -> Dict:
                 "instructions": instructions
                 # "format_example": get_journey_format_example(amount)
             }
-        )["text"]),
+        )),
         amount
     )
     bar.progress(0.1, text="Generate subjects for each day")
@@ -1027,7 +1027,7 @@ def gen_subject(content, instructions="", amount=10) -> Dict:
                     "context": content,
                     "subject": step_title,
                 }
-            )["text"])
+            ))
         )
         class_intro, _ = handle_thinking(
             (lambda: get_chain("journey_step_intro").invoke(
@@ -1035,12 +1035,12 @@ def gen_subject(content, instructions="", amount=10) -> Dict:
                     "context": class_content,
                     "subject": step_title,
                 }
-            )["text"]), 50
+            )), 50
         )
         step = {
-            "title": step_title,
-            "content": class_content,
-            "intro": class_intro
+            "title": step_title.strip(),
+            "content": class_content.strip(),
+            "intro": class_intro.strip()
         }
         steps.append(step)
     bar.progress(0.95, text="Generating title for the curriculum")
@@ -1064,7 +1064,7 @@ def gen_title_summary(context) -> tuple[str, str]:
                 "context": context,
                 "action": "Summarize context with 10 words or less to a title",
             }
-        )["text"]),
+        )),
         10
     )
 
@@ -1073,10 +1073,13 @@ def gen_title_summary(context) -> tuple[str, str]:
     return title.strip(), summary.strip()
 
 def gen_journey_json(source):
-    result = get_chain("journey_json").invoke({"input": source})["text"]
-    for i, item in enumerate(result):
-        item["_source"] = source
-        result[i] = validate_json_format(item)
+    result = exec_structured_chain(
+        "journey_structured",
+        {
+            "context": source
+        }
+    )
+    print(result)
 
     return result
 
@@ -1118,15 +1121,15 @@ def get_files_for_journey(default_category, journey_name, step, gen_from: Dict =
 def gen_journey_doc_from_files(files: List[Any]) -> str:
     list_of_strings = []
     for filename in files.keys():
-        if (
-            files[filename]["formatted_text"] is not None
-            and files[filename]["formatted_text"] != ""
-        ):
-            list_of_strings.append(files[filename]["formatted_text"])
-        else:
-            list_of_strings.append(
-                markdown_to_text("\n".join(files[filename]["texts"]))
-            )
+        # if (
+        #     files[filename]["formatted_text"] is not None
+        #     and files[filename]["formatted_text"] != ""
+        # ):
+        #     list_of_strings.append(files[filename]["formatted_text"])
+        # else:
+        list_of_strings.append(
+            markdown_to_text("\n".join(files[filename]["texts"]))
+        )
 
     compressed = ''
 
@@ -1139,45 +1142,41 @@ def build_journey_subject(journey_name, files, instructions, subject_index, amou
     if len(files) > 0:
         st.session_state.journey_generator_running = True
 
+    subject = None
     with st.status(f"Building subject document"):
         compressed = gen_journey_doc_from_files(files)
         st.success("Generating subject document done.")
     with st.status(f"Building subject curriculum"):
-        subject = None
-        with st.spinner("Generating subject curriculum"):
-            subject = gen_subject(compressed, instructions, amount)
+        subject = gen_subject(compressed, instructions, amount)
         st.success("Generating subject curriculum done.")
         subject["files"] = list(files.keys())
+
+    with st.spinner("Generating JSON for journey"):
+        bar = st.progress(0, "Generating JSON for journey")
+
+        total_items = len(subject["steps"])
+        for i, step in enumerate(subject["steps"]):
+            bar.progress(i/total_items, f"Generating JSON for step {i+1}/{total_items} ")
+            structured = gen_journey_json(
+                f"""
+                    Title:
+                    {step["title"]}
+                    Intro:
+                    {step["intro"]}
+                    Content:
+                    {step["content"]}
+                """
+            )
+
+            subject["steps"][i]["json"] = structured
+        bar.empty()
+        st.success("Generating JSON for journey done.")
+
 
     for i, sub_step in enumerate(subject["steps"]):
         subject["steps"][i] = edit_journey_subject_step(journey_name, subject["steps"][i], subject_index, i)
 
-        # with st.spinner("Generating JSON for journey"):
-        #     bar = st.progress(0, "Generating JSON for journey")
-
-        #     journey_steps = []
-
-        #     total_items = sum(len(item["steps"]) for item in journey_details["subjects"])
-        #     cur_item = 0
-        #     for i, day in enumerate(journey_details["subjects"]):
-        #         for j, step in enumerate(day["steps"]):
-        #             journey_steps = journey_steps + gen_journey_json(
-        #                 f"""
-        #                     Subject:
-        #                     {step["subject"]}
-        #                     Intro:
-        #                     {step["intro"]}
-        #                     Content:
-        #                     {step["content"]}
-        #                 """
-        #             )
-        #             bar.progress(cur_item/total_items, f"Generating JSON for Day {i}: Class {j} of {len(day)}")
-        #         cur_item += 1
-
-        #     journey_details["subjects"][i]["json"] = journey_steps
-        #     bar.empty()
-        # st.success("Generating JSON for journey done.")
-    st.session_state.journey_generator_running = False
+        st.session_state.journey_generator_running = False
     return subject
 
 def get_journey_gen(journey_name):
@@ -1185,7 +1184,7 @@ def get_journey_gen(journey_name):
     if "journey_get_details" not in st.session_state or st.session_state.journey_get_details == None:
         st.session_state.journey_get_details = {}
         st.session_state.journey_create = False
-        st.session_state.journey_generator_running = False
+        st.session_state.journey_generator_running = None
 
     file_categories = get_all_categories()
     default_category = None
@@ -1202,18 +1201,16 @@ def get_journey_gen(journey_name):
     if len(default_category) > 0:
         col1, col2 = st.columns([5, 1], vertical_alignment="bottom")
         amount = 0
-        if not st.session_state.journey_generator_running:
+        generate_start = False
+        if st.session_state.journey_generator_running is None:
             amount = col1.number_input(
                 "Number of subjects", min_value=1, max_value=20, value=1
             )
-        if col2.button("Create") or st.session_state.journey_create:
-            st.session_state.journey_create = True
-            if journey_details.get("subjects", None) is None:
-               journey_details["subjects"] = []
-            if not st.session_state.journey_generator_running:
-                for i in range(amount):
-                    st.subheader(f"Subject {i+1}")
-                    if i >= len(journey_details["subjects"]):
+            if col2.button("Create") or st.session_state.journey_create:
+                st.session_state.journey_create = True
+                if journey_details.get("subjects", None) is None:
+                    for i in range(amount):
+                        st.subheader(f"Subject {i+1}")
                         instructions = st.text_area("Instructions for generator", key=f"journey_gen_instructions_{journey_name}_{i}")
 
                         col1, col2 = st.columns([4, 1], vertical_alignment="bottom")
@@ -1224,20 +1221,32 @@ def get_journey_gen(journey_name):
                             "Items in subject", min_value=1, max_value=20, value=1, key=f"journey_gen_step_amount_{journey_name}_{i}"
                         )
 
-                    subject = None
+                        generate_start = col2.button("Generate", key=f"generate_subject_{journey_name}_{i}")
+                        if generate_start:
+                            st.session_state.journey_generator_running = [journey_name, files, instructions, i, step_amount]
 
-                    if col2.button("Generate", key=f"generate_subject_{journey_name}_{i}"):
-                        subject = build_journey_subject(journey_name, files, instructions, i, step_amount)
+        if st.session_state.journey_generator_running is not None or generate_start:
+            journey_name = st.session_state.journey_generator_running[0]
+            files = st.session_state.journey_generator_running[1]
+            instructions = st.session_state.journey_generator_running[2]
+            i = st.session_state.journey_generator_running[3]
+            step_amount = st.session_state.journey_generator_running[4]
+            print(f"Generating subject {i+1} for journey {journey_name} with {len(files)} files and {instructions} instructions.")
+            subject = build_journey_subject(journey_name, files, instructions, i, step_amount)
 
-                    if subject is not None:
-                        if len(journey_details["subjects"]) <= i:
-                            journey_details["subjects"].append(subject)
-                        else:
-                            journey_details["subjects"][i] = subject
-                        st.session_state.journey_get_details[journey_name] = journey_details
+            if subject is not None:
+                if journey_details.get("subjects", None) is None:
+                    journey_details["subjects"] = []
+                if len(journey_details["subjects"]) <= i:
+                    journey_details["subjects"].append(subject)
+                else:
+                    journey_details["subjects"][i] = subject
+                st.session_state.journey_get_details[journey_name] = journey_details
+                st.session_state.journey_generator_running = None
+
 
     save_button = False
-    if len(journey_details.get("subjects", [])) > 0 and st.session_state.journey_create == True and not st.session_state.journey_generator_running:
+    if len(journey_details.get("subjects", [])) > 0 and st.session_state.journey_create and st.session_state.journey_generator_running is None:
         save_button = st.button("Save", key=f"save_subjects_{journey_name}")
 
     if save_button:
@@ -1265,7 +1274,10 @@ def get_journey_gen(journey_name):
 
         save_journey(journey_name, journey_details)
         journey_details["__complete"] = True
-        st.session_state.journey_get_details[journey_name] = journey_details
+        # st.session_state.journey_get_details[journey_name] = journey_details
+        st.session_state.journey_get_details = {}
+        st.session_state.journey_create = False
+        st.session_state.journey_generator_running = None
         st.rerun()
 
     return journey_details
@@ -1274,45 +1286,47 @@ def get_journey_gen(journey_name):
 def edit_journey_subject_step(journey_name, step, subject_index, step_index):
     # print(f"{journey["subjects"][subject_index]["steps"] = }")
     # step = journey["subjects"][subject_index]["steps"][step_index]
-    if step.get("json", None):
-        step_json = step["json"]
+    try:
+        step_json:JourneyStructure = step["json"]
+        print(f"{step_json = }")
         col1, col2 = st.columns([1, 3])
         col1.write(f"##### Step {step_index+1}:")
-        step_json["title"] = col2.text_input(
-            "Title", value=step_json["title"], key=f"journey_step_title_{journey_name}_{step_index}"
+        step_json.title = col2.text_input(
+            "Title", value=step_json.title, key=f"journey_step_title_{journey_name}_{step_index}"
         )
 
-        step_json["intro"] = col2.text_area(
+        step_json.intro = col2.text_area(
             "Intro",
-            value=step_json["intro"],
+            value=step_json.intro,
             key=f"journey_step_intro_{journey_name}_{step_index}",
         )
 
-        step_json["content"] = col2.text_area(
+        step_json.content = col2.text_area(
             "Content",
-            value=step_json["content"],
+            value=step_json.content,
             key=f"journey_step_content_{journey_name}_{step_index}",
         )
 
-        if not isinstance(step_json["priority"], numbers.Number):
-            step_json["priority"] = 1
+        if not isinstance(step_json.priority, numbers.Number):
+            step_json.priority = 1
 
-        step_json["priority"] = col2.select_slider(
+        step_json.priority = col2.select_slider(
             "Priority",
             options=list(range(1, 6)),
-            value=max(1, min(5, step["priority"])),
+            value=max(1, min(5, step_json.priority)),
             key=f"journey_step_priority_{journey_name}_{step_index}",
         )
 
         col1, col2 = st.columns([1, 3])
         col1.write(f"##### Actions:")
-        for j, action in enumerate(step_json["actions"]):
-            step_json["actions"][j] = col2.text_area(
+        for j, action in enumerate(step_json.actions):
+            step_json.actions[j] = col2.text_area(
                 f"Action {j+1}",
                 value=action,
                 key=f"journey_step_actions_{journey_name}_{step_index}_{j}",
             )
-    else:
+    except Exception as e:
+        print(f"Failed to use JSON: {e}")
         col1, col2 = st.columns([1, 3])
         col1.write(f"##### Step {step_index+1}:")
         step["title"] = col2.text_input(
@@ -1475,6 +1489,7 @@ def main():
             ):
                 journey_name = st.session_state.creating_journey
                 st.header(f"Create new journey: {journey_name}")
+                st.session_state.journey_create_data = {}
                 journey_create = get_journey_gen(journey_name)
                 st.session_state.journey_create_data = journey_create
                 if "__complete" in journey_create.keys():
@@ -1574,22 +1589,22 @@ def main():
 
                                     else:
                                         if step.get("json", None):
-                                            json = step["json"]
+                                            json:JourneyStructure = step["json"]
                                             col1, col2 = st.columns([1, 5])
                                             col1.write("##### Intro:")
-                                            col2.write(json["intro"])
+                                            col2.write(json.intro)
 
                                             col1, col2 = st.columns([1, 5])
                                             col1.write("##### Content:")
-                                            col2.write(json["content"])
+                                            col2.write(json.content)
 
                                             col1, col2 = st.columns([1, 5])
                                             col1.write("##### Actions:")
-                                            col2.write("* " + "\n* ".join(json["actions"]))
+                                            col2.write("* " + "\n* ".join(json.actions))
 
                                             col1, col2 = st.columns([1, 5])
                                             col1.write("##### Priority:")
-                                            col2.write(json["priority"])
+                                            col2.write(json.priority)
                                         else:
                                             col1, col2 = st.columns([1, 5])
                                             col1.write("##### Intro:")

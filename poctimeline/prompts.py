@@ -8,7 +8,8 @@ from langchain_core.prompts.prompt import PromptTemplate
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage, HumanMessage, ChatMessage
 from langchain_core.prompts.chat import MessagesPlaceholder, HumanMessagePromptTemplate
-
+from langchain_core.output_parsers.base import BaseOutputParser
+from langchain_core.output_parsers import PydanticOutputParser
 # from fewshot_data import FewShotItem, example_tasks
 
 pre_think_instruct = """Before starting plan how to proceed step by step and place your thinking between
@@ -51,6 +52,8 @@ keep_pre_think_together = """While following your plan don't explain what you ar
 class PromptFormatter(BaseModel):
     system: str = Field(description="The system message template")
     user: str = Field(description="The user message template")
+    parser: Optional[BaseOutputParser] = Field(description="The parser for response", default=None)
+
     def format(
         self,
         system_format: Optional[Tuple[str, str]] = None,
@@ -89,7 +92,7 @@ class PromptFormatter(BaseModel):
             )
 
     def get_agent_prompt_template(self) -> ChatPromptTemplate:
-        return ChatPromptTemplate.from_messages(
+        prompt = ChatPromptTemplate.from_messages(
             [
                 ("system", self.system),
                 MessagesPlaceholder(variable_name="chat_history", optional=True),
@@ -97,15 +100,27 @@ class PromptFormatter(BaseModel):
                 # MessagesPlaceholder(variable_name="agent_scratchpad", optional=True),
             ]
         )
+        if self.parser is not None:
+            prompt.partial_variables["format_instructions"] = self.parser.get_format_instructions()
+
+        return prompt
 
     def get_chat_prompt_template(self) -> ChatPromptTemplate:
-        return ChatPromptTemplate.from_messages(
+        prompt = ChatPromptTemplate.from_messages(
             [
                 SystemMessage(content=self.system),
                 MessagesPlaceholder(variable_name="chat_history", optional=True),
-                HumanMessagePromptTemplate.from_template(self.user),
+                HumanMessagePromptTemplate.from_template(self.user)
             ]
         )
+        if self.parser is not None:
+            prompt.partial_variables["format_instructions"] = self.parser.get_format_instructions()
+
+        return prompt
+
+    def get_prompt_format(self) -> str:
+        return self.parser.get_format_instructions()
+
 
 
 text_formatter = PromptFormatter(
@@ -388,7 +403,9 @@ journey_steps = PromptFormatter(
         separated by : and keep each item within one line.
         Do not add "Here's the list" or any other text before or after the list.
         Only respond with the expected format.
-        If instructions are provided, follow them exactly.
+        If instructions are provided, follow them exactly. If instructions specify
+        a topic or subject, make sure the list includes only items which fall within
+        within that topic.
         Make sure the list has exactly {amount} items."""
     ),
 )
@@ -447,45 +464,76 @@ journey_step_intro = PromptFormatter(
     ),
 )
 
+class JourneyStructure(BaseModel):
+    title: str = Field(description="Title of the class", title="Title")
+    intro: str = Field(description="Introduction to the class", title="Intro")
+    content: str = Field(description="Detailed content of the class", title="Content")
+    actions: List[str] = Field(description="List actions within the class.", title="Actions")
+    priority: int = Field(description="How important the class is", title="Priority")
+
+journey_structured = PromptFormatter(
+    system="""
+    Act as a structured data formatter and use specified format instructions exactly
+    to format the context data.
+    Return only the JSON object with the formatted data.
+    """,
+    user="""
+    context start
+    {context}
+    context end
+    ----------------
+    format instructions start
+    {format_instructions}
+    format instructions end
+    ----------------
+    Format the context data using the format instructions.
+    For actions try to find suitable actions from context and populate the list with them.
+    For priority estimate the priority for this class and set a value between 1-5.
+    1 being not important and 5 being very important.
+    Return only the JSON object with the formatted data.
+    """
+)
+journey_structured.parser=PydanticOutputParser(pydantic_object=JourneyStructure)
+
 DEFAULT_PROMPT_FORMATTER = chat
 
-journey_json_template = {
-    "properties": {
-        "name": {
-            "type": "string",
-            "description": "Name of the task",
-            "title": "Name",
-        },
-        "description": {
-            "type": "string",
-            "description": "Description for the task",
-            "title": "Description",
-        },
-        "actions": {
-            "description": "List actions within the task.",
-            "items": {"type": "string"},
-            "title": "Actions",
-            "type": "array",
-        },
-        "priority": {
-            "type": "int",
-            "description": "How important the task is",
-            "title": "Priority",
-        },
-    },
-    "required": ["name", "description"],
-}
+# journey_json_template = {
+#     "properties": {
+#         "name": {
+#             "type": "string",
+#             "description": "Name of the task",
+#             "title": "Name",
+#         },
+#         "description": {
+#             "type": "string",
+#             "description": "Description for the task",
+#             "title": "Description",
+#         },
+#         "actions": {
+#             "description": "List actions within the task.",
+#             "items": {"type": "string"},
+#             "title": "Actions",
+#             "type": "array",
+#         },
+#         "priority": {
+#             "type": "int",
+#             "description": "How important the task is",
+#             "title": "Priority",
+#         },
+#     },
+#     "required": ["name", "description"],
+# }
 
 
-def validate_json_format(data, template=journey_json_template):
-    keys = data.keys()
-    template_keys = template["properties"].keys()
+# def validate_json_format(data, template=journey_json_template):
+#     keys = data.keys()
+#     template_keys = template["properties"].keys()
 
-    for key in template_keys:
-        if key not in keys:
-            data[key] = None
+#     for key in template_keys:
+#         if key not in keys:
+#             data[key] = None
 
-    return data
+#     return data
 
 
 # def generate_result_sample(tasks: List[FewShotItem], amount = 3) -> dict:

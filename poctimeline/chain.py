@@ -1,8 +1,9 @@
 from functools import cache
+import json
 import os
-import random
-import textwrap
-from typing import List
+import re
+from fuzzywuzzy import fuzz
+from typing import Dict, List
 import chromadb
 from langchain_core.language_models.llms import BaseLLM
 from langchain.chains.hyde.base import HypotheticalDocumentEmbedder
@@ -11,15 +12,11 @@ from langchain.chains.combine_documents.reduce import ReduceDocumentsChain
 from langchain.chains.openai_functions import create_extraction_chain
 from langchain.chains.llm import LLMChain
 from langchain_community.chat_models import ChatOllama
-from langchain_community.llms.ollama import Ollama
-from langchain_experimental.llms.ollama_functions import OllamaFunctions
 from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain.callbacks.manager import CallbackManager
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
-from langchain_core.prompts import (
-    ChatPromptTemplate,
-    MessagesPlaceholder,
-)
+from langchain_core.runnables.base import RunnableSequence
+from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts.prompt import PromptTemplate
 from langchain_community.document_compressors import FlashrankRerank
 from langchain_groq import ChatGroq
@@ -32,8 +29,11 @@ from langchain.schema.document import Document
 
 from langchain_community.vectorstores.chroma import Chroma
 
+from langchain_core.output_parsers import PydanticOutputParser
+
 from langchain.globals import set_debug, set_verbose
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 
 from prompts import (
     PromptFormatter,
@@ -52,7 +52,8 @@ from prompts import (
     summary_guided,
     journey_steps,
     journey_step_details,
-    journey_step_intro
+    journey_step_intro,
+    journey_structured,
 )
 
 # Load .env file from the parent directory
@@ -69,7 +70,7 @@ SQLITE_DB = os.getenv("SQLITE_DB", "db/files.db")
 
 use_ollama = os.getenv("USE_OLLAMA", "True") == "True" or False
 use_groq = os.getenv("USE_GROQ", "True") == "True" or False
-DEFAULT_LLM_MODEL:BaseLLM = None
+DEFAULT_LLM_MODEL: BaseLLM = None
 
 if use_ollama:
     DEFAULT_LLM_MODEL = ChatOllama
@@ -112,83 +113,17 @@ if use_groq:
 llms = {}
 embeddings = {}
 prompts = {}
-chains = {}
-
-journey_json_template = {
-    "properties": {
-        "title": {
-            "type": "string",
-            "description": "Title of the class",
-            "title": "Title",
-        },
-        "intro": {
-            "type": "string",
-            "description": "Introduction to the class",
-            "title": "Intro",
-        },
-        "content": {
-            "type": "string",
-            "description": "Detailed content of the class",
-            "title": "Content",
-        },
-        "actions": {
-            "description": "List actions within the class.",
-            "items": {"type": "string"},
-            "title": "Actions",
-            "type": "array",
-        },
-        "priority": {
-            "type": "int",
-            "description": "How important the class is",
-            "title": "Priority",
-        },
-    },
-    "required": ["name", "intro", "content"],
-}
+chains: Dict[str, RunnableSequence] = {}
 
 
-def validate_json_format(data, template=journey_json_template):
-    keys = data.keys()
-    template_keys = template["properties"].keys()
-
-    for key in template_keys:
-        if key not in keys:
-            data[key] = None
-
-    return data
-
-
-def get_journey_format_example(amount=10):
-    template_text = """
-Task [number]: Title
-* Description: Task description
-* Actions: Actions in the task
-* Priority: [priority]
-"""
-
-    result_text = ""
-
-    priorities = ["LOW", "MEDIUM", "HIGH"]
-
-    for i in range(0, amount):
-        result_text += template_text.replace("[number]", str(i + 1)).replace(
-            "[priority]", random.choice(priorities)
-        )
-
-    return result_text
-
-
-def get_chain(chain, size="") -> LLMChain:
+def get_chain(chain) -> RunnableSequence:
     if len(chains.keys()) == 0:
         init_llms()
 
-    if size:
-        return chains[chain + "_" + size]
-    else:
-        return chains[chain]
+    return chains[chain]
 
 
-def get_llm_prompt(llm_id="default", prompt_id="helper", size=""):
+def get_llm_prompt(llm_id="default", prompt_id="helper"):
     if len(chains.keys()) == 0:
         init_llms()
 
@@ -198,10 +133,6 @@ def get_llm_prompt(llm_id="default", prompt_id="helper", size=""):
         llm = llms["default"]
 
     return {"llm": llm, "prompt": prompts[prompt_id]}
-
-
-import re
-from fuzzywuzzy import fuzz
 
 
 def handle_thinking(text_provider, min_len=100, retry=True) -> tuple[str, str]:
@@ -221,16 +152,25 @@ def handle_thinking(text_provider, min_len=100, retry=True) -> tuple[str, str]:
     if isinstance(text_provider, str):
         text = text_provider
     else:
-        text = text_provider()
+        tries = 0
+        max_tries = 3
+        text = None
+        while text is None and tries < max_tries:
+            tries += 1
+            try:
+                text = text_provider()
+            except Exception as e:
+                text = None
+                print(f"Error: {e}")
 
-#     print(f"""Provider response:
-# === RESPONSE START ===
+    #     print(f"""Provider response:
+    # === RESPONSE START ===
 
-# Length: {len(text)}
-# {text}
+    # Length: {len(text)}
+    # {text}
 
-# === RESPONSE END ===
-# """)
+    # === RESPONSE END ===
+    # """)
 
     # Split the text into matches using regex
     matches = re.split(r"([\[{\(][/ ]*[^\[\]]+[\]}\)])", text, 0, re.IGNORECASE)
@@ -242,7 +182,7 @@ def handle_thinking(text_provider, min_len=100, retry=True) -> tuple[str, str]:
 
     # Iterate over the matches
     for match in matches:
-        match=match.strip()
+        match = match.strip()
         # print(f"Match: {match}")
         # If the match is a start tag, set the flag to True
         if fuzz.ratio(match, start_tag) > 80:
@@ -260,22 +200,25 @@ def handle_thinking(text_provider, min_len=100, retry=True) -> tuple[str, str]:
     text_contents_joined = "\n".join(text_contents)
     thinking_contents_joined = "\n".join(thinking_contents)
 
-    if retry and not isinstance(text_provider, str) and (
-        text_contents_joined == "" or len(text_contents_joined) < min_len
+    if (
+        retry
+        and not isinstance(text_provider, str)
+        and (text_contents_joined == "" or len(text_contents_joined) < min_len)
     ):
         max_retries = 5
         try_nmb = 0
-        while text_contents_joined == "" or (len(text_contents_joined) < min_len and try_nmb < max_retries):
+        while text_contents_joined == "" or (
+            len(text_contents_joined) < min_len and try_nmb < max_retries
+        ):
             try_nmb += 1
             text_contents_joined, thinking_contents_joined = handle_thinking(
-                text_provider,
-                min_len=min_len,
-                retry=False
+                text_provider, min_len=min_len, retry=False
             )
 
     return text_contents_joined, thinking_contents_joined
 
-def verify_step_result(get_result, amount: int, format:str = None) -> str:
+
+def verify_step_result(get_result, amount: int, format: str = None) -> str:
     if format is None:
         format = """
 Format for 5 items:
@@ -294,29 +237,37 @@ Title: Description (optional)
     while not success and retries < max_retries:
         retries += 1
 
-        steps = get_result()
-        steps = re.sub(r':\s*\n', ': ', steps)
-        steps = re.sub(r'\n\s*:', ':', steps)
-        steps = "\n".join([step.strip() for step in steps.split("\n") if step.strip()])
-        correct_response = False
-        resp_retr = 0
-        while(not correct_response and resp_retr < max_retries):
-            resp_retr += 1
+        try:
+            steps = get_result()
+            steps = re.sub(r":\s*\n", ": ", steps)
+            steps = re.sub(r"\n\s*:", ":", steps)
+            steps = "\n".join(
+                [step.strip() for step in steps.split("\n") if step.strip()]
+            )
+            correct_response = False
+            resp_retr = 0
+            print(f"{steps = }")
+            while not correct_response and resp_retr < max_retries:
+                resp_retr += 1
 
-            check_response = (get_chain("check").invoke({
-                "context": steps,
-                "options": "if matches the format respond: yes, if matches the format but not right amount of items respond: maybe, if does not match respond: no",
-                "expected_count": f"Expected approximately {amount} items.",
-                "count": len(steps.split("\n")),
-                "format": format
-
-            })["text"])
-            resp = check_response.lower().split('\n')[0].strip()
-            # print(f"{resp = }")
-            correct_response = resp in ["yes", "y", "no", "n", "maybe", "m"]
-            success = resp in ["yes", "y", "maybe", "m"]
+                check_response = get_chain("check").invoke(
+                    {
+                        "context": steps,
+                        "options": "if matches the format respond: yes, if matches the format but not right amount of items respond: maybe, if does not match respond: no",
+                        "expected_count": f"Expected approximately {amount} items.",
+                        "count": len(steps.split("\n")),
+                        "format": format,
+                    }
+                )
+                print(f"{check_response = }")
+                resp = check_response.lower().split("\n")[0].strip()
+                correct_response = resp in ["yes", "y", "no", "n", "maybe", "m"]
+                success = resp in ["yes", "y", "maybe", "m"]
+        except Exception as e:
+            print(f"Error: {e}")
 
     return steps
+
 
 def init_chain(
     id, llm="default", prompt: PromptFormatter = text_formatter, init_llm=True
@@ -327,7 +278,20 @@ def init_chain(
         )  # ChatPromptTemplate.from_messages(messages)
 
     if f"{id}" not in chains and init_llm:
-        chains[f"{id}"] = LLMChain(llm=llms[llm], prompt=prompts[f"{id}"])
+        # if prompt.parser is not None:
+        #     chains[f"{id}"] = prompts[f"{id}"] | llms[llm] | prompt.parser
+        # else:
+        #     chains[f"{id}"] = prompts[f"{id}"] | llms[llm] | StrOutputParser()
+        llm_chain = LLMChain(llm=llms[llm], prompt=prompts[f"{id}"])
+        if prompt.parser is not None:
+            chains[f"{id}"] = (
+                llm_chain
+                | (lambda resp: resp["text"])
+                | prompt.parser
+            )
+                # | (lambda resp: json.loads(resp["text"]) if isinstance(resp["text"], str) else resp)
+        else:
+            chains[f"{id}"] = llm_chain | (lambda resp: resp["text"])
 
 
 def init_llm(
@@ -380,7 +344,10 @@ def init_llms():
         "instruct_0", temperature=0, model=instruct_llm, ctx_size=INSTRUCT_CONTEXT_SIZE
     )
     init_llm(
-        "instruct_warm", temperature=0.5, model=instruct_llm, ctx_size=INSTRUCT_CONTEXT_SIZE
+        "instruct_warm",
+        temperature=0.5,
+        model=instruct_llm,
+        ctx_size=INSTRUCT_CONTEXT_SIZE,
     )
 
     # init_llm("json", Type=OllamaFunctions)
@@ -388,10 +355,10 @@ def init_llms():
     if "json" not in llms:
         if use_ollama:
             llms["json"] = DEFAULT_LLM_MODEL(
-                format="json",
                 # model=llama3_llm,
                 base_url=ollama_url,
                 model=tool_llm,
+                model_kwargs={"response_format": {"type": "json_object"}},
                 temperature=0,
                 num_ctx=TOOL_CONTEXT_SIZE,
                 num_predict=TOOL_CONTEXT_SIZE,
@@ -401,8 +368,8 @@ def init_llms():
         if use_groq:
             llms["json"] = DEFAULT_LLM_MODEL(
                 api_key=GROQ_API_KEY,
-                format="json",
                 model=tool_llm,
+                model_kwargs={"response_format": {"type": "json_object"}},
                 temperature=0,
                 timeout=30000,
                 verbose=True,
@@ -440,6 +407,7 @@ def init_llms():
         "instruct_0",
         md_formatter_guided,
     )
+    init_chain("journey_structured", "json", journey_structured)
     init_chain(
         "journey_steps",
         "instruct",
@@ -450,11 +418,7 @@ def init_llms():
         "instruct_warm",
         journey_step_details,
     )
-    init_chain(
-        "journey_step_intro",
-        "instruct_warm",
-        journey_step_intro
-    )
+    init_chain("journey_step_intro", "instruct_warm", journey_step_intro)
     init_chain("question", "chat", chat)
 
     # template = """<s> <<SYS>> Act as a a helpful startup coach from antler trying to answer questions thoroughly. Use the following pieces of retrieved context to answer the question. If you don't know the answer, just say that you don't know.<</SYS>> </s>
@@ -496,7 +460,10 @@ def init_llms():
 
     if "summary_documents" not in chains:
         chain = StuffDocumentsChain(
-            llm_chain=chains["text_formatter_compress"],
+            # llm_chain=chains["text_formatter_compress"],
+            llm_chain=LLMChain(
+                llm=llms["instruct"], prompt=prompts["text_formatter_compress"]
+            ),
             document_prompt=PromptTemplate(
                 input_variables=["page_content"], template="{page_content}"
             ),
@@ -509,7 +476,10 @@ def init_llms():
 
     if "reduce_journey_documents" not in chains:
         chains["reduce_journey_documents"] = StuffDocumentsChain(
-            llm_chain=chains["text_formatter_compress"],
+            # llm_chain=chains["text_formatter_compress"],
+            llm_chain=LLMChain(
+                llm=llms["instruct"], prompt=prompts["text_formatter_compress"]
+            ),
             document_prompt=PromptTemplate(
                 input_variables=["page_content"], template="{page_content}"
             ),
@@ -518,11 +488,35 @@ def init_llms():
         )
     chains["reduce_journey_documents"].verbose = True
 
-    if "journey_json" not in chains:
-        chains["journey_json"] = create_extraction_chain(
-            journey_json_template,
-            llms["json"],
-        )
+    # if "journey_json" not in chains:
+    # chains["journey_json"] = create_extraction_chain(
+    #     journey_json_template,
+    #     llms["json"],
+    # )
+
+
+def exec_structured_chain(chain, input: Dict[str, any]):
+    new_input = {}
+    for key, value in input.items():
+        new_input[key] = value
+
+    new_input["format_instructions"] = (
+        journey_structured.parser.get_format_instructions()
+    )
+
+    output = None
+    tries = 0
+    max_retries = 5
+    while output is None and tries < max_retries:
+        tries += 1
+        try:
+            output = get_chain(chain).invoke(new_input)
+            print(f"Output: {output}")
+        except Exception as e:
+            print(f"Error: {e}")
+            output = None
+
+    return output
 
 
 chroma_client = None

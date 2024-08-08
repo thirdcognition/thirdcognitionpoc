@@ -5,6 +5,7 @@ import numbers
 import os
 import re
 import textwrap
+import time
 from typing import Any, Dict, Iterable, List, Sequence, Union
 from bs4 import BeautifulSoup
 import fitz
@@ -997,7 +998,7 @@ def gen_journey_doc(list_of_strings = []) -> tuple[str, str]:
     #     }
     # )["text"]))
 
-def gen_subject(content, amount=10) -> Dict:
+def gen_subject(content, instructions="", amount=10) -> Dict:
     bar = st.progress(0, text="Generating curriculum")
 
     bar.progress(0, text="Generate subjects for each day")
@@ -1006,6 +1007,7 @@ def gen_subject(content, amount=10) -> Dict:
             {
                 "context": content,
                 "amount": amount,
+                "instructions": instructions
                 # "format_example": get_journey_format_example(amount)
             }
         )["text"]),
@@ -1019,7 +1021,7 @@ def gen_subject(content, amount=10) -> Dict:
     total_items = len(step_items)
     for i, step_title in enumerate(step_items):
         bar.progress(0.35 + (0.6 * i/total_items), text=f"Generating curriculum for step {i+1} of {total_items}")
-        class_content, sub_steps_thoughts = handle_thinking(
+        class_content, _ = handle_thinking(
             (lambda: get_chain("journey_step_details").invoke(
                 {
                     "context": content,
@@ -1027,7 +1029,7 @@ def gen_subject(content, amount=10) -> Dict:
                 }
             )["text"])
         )
-        class_intro, sub_steps_thoughts = handle_thinking(
+        class_intro, _ = handle_thinking(
             (lambda: get_chain("journey_step_intro").invoke(
                 {
                     "context": class_content,
@@ -1133,14 +1135,17 @@ def gen_journey_doc_from_files(files: List[Any]) -> str:
 
     return compressed
 
-def build_journey_subject(journey_details, journey_name, files, subject_index, amount) -> None:
+def build_journey_subject(journey_name, files, instructions, subject_index, amount) -> None:
+    if len(files) > 0:
+        st.session_state.journey_generator_running = True
+
     with st.status(f"Building subject document"):
         compressed = gen_journey_doc_from_files(files)
         st.success("Generating subject document done.")
     with st.status(f"Building subject curriculum"):
         subject = None
         with st.spinner("Generating subject curriculum"):
-            subject = gen_subject(compressed, amount)
+            subject = gen_subject(compressed, instructions, amount)
         st.success("Generating subject curriculum done.")
         subject["files"] = list(files.keys())
 
@@ -1172,6 +1177,7 @@ def build_journey_subject(journey_details, journey_name, files, subject_index, a
         #     journey_details["subjects"][i]["json"] = journey_steps
         #     bar.empty()
         # st.success("Generating JSON for journey done.")
+    st.session_state.journey_generator_running = False
     return subject
 
 def get_journey_gen(journey_name):
@@ -1179,6 +1185,7 @@ def get_journey_gen(journey_name):
     if "journey_get_details" not in st.session_state or st.session_state.journey_get_details == None:
         st.session_state.journey_get_details = {}
         st.session_state.journey_create = False
+        st.session_state.journey_generator_running = False
 
     file_categories = get_all_categories()
     default_category = None
@@ -1195,35 +1202,45 @@ def get_journey_gen(journey_name):
     if len(default_category) > 0:
         col1, col2 = st.columns([5, 1], vertical_alignment="bottom")
         amount = 0
-        amount = col1.number_input(
-            "Number of subjects", min_value=1, max_value=20, value=1
-        )
+        if not st.session_state.journey_generator_running:
+            amount = col1.number_input(
+                "Number of subjects", min_value=1, max_value=20, value=1
+            )
         if col2.button("Create") or st.session_state.journey_create:
             st.session_state.journey_create = True
             if journey_details.get("subjects", None) is None:
                journey_details["subjects"] = []
-            for i in range(amount):
-                st.subheader(f"Subject {i+1}")
-                col1, col2 = st.columns([4, 1], vertical_alignment="top")
-                step_amount = col2.number_input(
-                    "Items in subject", min_value=1, max_value=20, value=1, key=f"journey_gen_step_amount_{journey_name}_{i}"
-                )
-                with col1:
-                    files = get_files_for_journey(default_category, journey_name, i)
+            if not st.session_state.journey_generator_running:
+                for i in range(amount):
+                    st.subheader(f"Subject {i+1}")
+                    if i >= len(journey_details["subjects"]):
+                        instructions = st.text_area("Instructions for generator", key=f"journey_gen_instructions_{journey_name}_{i}")
 
-                subject = None
+                        col1, col2 = st.columns([4, 1], vertical_alignment="bottom")
+                        with col1:
+                            files = get_files_for_journey(default_category, journey_name, i)
 
-                if col2.button("Generate", key=f"generate_subject_{journey_name}_{i}"):
-                    subject = build_journey_subject(journey_details, journey_name, files, i, step_amount)
+                        step_amount = col2.number_input(
+                            "Items in subject", min_value=1, max_value=20, value=1, key=f"journey_gen_step_amount_{journey_name}_{i}"
+                        )
 
-                if subject is not None:
-                    if len(journey_details["subjects"]) <= i:
-                        journey_details["subjects"].append(subject)
-                    else:
-                        journey_details["subjects"][i] = subject
-                    st.session_state.journey_get_details[journey_name] = journey_details
+                    subject = None
 
-    if st.button("Save", key=f"save_subjects_{journey_name}"):
+                    if col2.button("Generate", key=f"generate_subject_{journey_name}_{i}"):
+                        subject = build_journey_subject(journey_name, files, instructions, i, step_amount)
+
+                    if subject is not None:
+                        if len(journey_details["subjects"]) <= i:
+                            journey_details["subjects"].append(subject)
+                        else:
+                            journey_details["subjects"][i] = subject
+                        st.session_state.journey_get_details[journey_name] = journey_details
+
+    save_button = False
+    if len(journey_details.get("subjects", [])) > 0 and st.session_state.journey_create == True and not st.session_state.journey_generator_running:
+        save_button = st.button("Save", key=f"save_subjects_{journey_name}")
+
+    if save_button:
         with st.spinner("Generating journey titles and summaries"):
             files = []
             for i, subject in enumerate(journey_details["subjects"]):
@@ -1449,7 +1466,9 @@ def main():
                 )
                 if col2.button("Create", disabled=journey_name in db_journey.keys()):
                     st.session_state.creating_journey = journey_name
+                    time.sleep(0.01)
                     st.rerun()
+
 
             if "creating_journey" in st.session_state and (
                 journey_create is None or "__complete" not in journey_create.keys()

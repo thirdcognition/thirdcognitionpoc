@@ -51,7 +51,6 @@ from prompts import (
     summary,
     summary_guided,
     journey_steps,
-    journey_substeps,
     journey_step_details,
     journey_step_intro
 )
@@ -313,7 +312,7 @@ Title: Description (optional)
 
             })["text"])
             resp = check_response.lower().split('\n')[0].strip()
-            print(f"{resp = }")
+            # print(f"{resp = }")
             correct_response = resp in ["yes", "y", "no", "n", "maybe", "m"]
             success = resp in ["yes", "y", "maybe", "m"]
 
@@ -445,11 +444,6 @@ def init_llms():
         "journey_steps",
         "instruct",
         journey_steps,
-    )
-    init_chain(
-        "journey_substeps",
-        "instruct",
-        journey_substeps,
     )
     init_chain(
         "journey_step_details",
@@ -659,7 +653,7 @@ def semantic_splitter(text, split=INSTRUCT_CHAR_LIMIT):
     init_llms()
 
     if len(text) > 1000:
-        print("Split")
+        # print("Split")
         less_text = split_text(text, 1000)
     else:
         less_text = [text]

@@ -362,6 +362,7 @@ journey_steps = PromptFormatter(
         Act as a teacher who is planning a curriculum.
         Using the content between context start and end write a list
         with subjects limiting one to a single line.
+        If instructions are provided follow them exactly.
 
         Example for 5 subjects:
 
@@ -378,45 +379,17 @@ journey_steps = PromptFormatter(
         {context}
         context end
 
+        instructiosn start
+        {instructions}
+        instructions end
+
         Create a list of {amount} subjects with one item per line.
         Follow the format of the example exactly with title and description
         separated by : and keep each item within one line.
         Do not add "Here's the list" or any other text before or after the list.
         Only respond with the expected format.
+        If instructions are provided, follow them exactly.
         Make sure the list has exactly {amount} items."""
-    ),
-)
-
-journey_substeps = PromptFormatter(
-    system=textwrap.dedent(
-        f"""
-        Act as a teacher who is planning a 1-day curriculum for a specific subject.
-        Create a curriculum for the following content between context start and end.
-        Only write the 5 most important items for the subject with one item per line.
-
-        Example for 5 items:
-
-        Title: Specific description
-        Title: Specific description
-        Title: Specific description
-        Title: Specific description
-        Title: Specific description
-        """
-    ),
-    user=textwrap.dedent( # Use get_journey_format_example instead
-        """
-        context start
-        {context}
-        context end
-
-        Subject: {subject}
-
-        Create a list of 5 items for the subject with one item per line. Limit the amount
-        of items to 5 max. Make sure that each item is related to the subject only.
-        Follow the format of the example exactly with title and description separated
-        by : and keep each subject within one line.
-        Do not add "Here's the list" or any other text before or after the list.
-        Only respond with the expected format."""
     ),
 )
 
@@ -441,6 +414,7 @@ journey_step_details = PromptFormatter(
 
         Subject:
         {subject}
+
 
         Create study materials for the student defined by the subject. Don't include any other content outside of the subject.
         The study materials should be exhaustive, detailed and generated from the context."""

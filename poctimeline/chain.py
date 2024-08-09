@@ -53,6 +53,7 @@ from prompts import (
     journey_steps,
     journey_step_details,
     journey_step_intro,
+    journey_step_actions,
     journey_structured,
 )
 
@@ -75,40 +76,70 @@ DEFAULT_LLM_MODEL: BaseLLM = None
 if use_ollama:
     DEFAULT_LLM_MODEL = ChatOllama
     ollama_url = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
-    chat_llm = os.getenv("OLLAMA_CHAT_LLM", "phi3:mini")
+    CHAT_LLM = os.getenv("OLLAMA_CHAT_LLM", "phi3:mini")
     CHAT_CONTEXT_SIZE = int(os.getenv("OLLAMA_CHAT_CTX_SIZE", 8192))
     CHAT_CHAR_LIMIT = int(os.getenv("OLLAMA_CHAT_CHAR_LIMIT", 1024))
 
-    instruct_llm = os.getenv("OLLAMA_INSTRUCT_LLM", "phi3:instruct")
+    INSTRUCT_LLM = os.getenv("OLLAMA_INSTRUCT_LLM", "phi3:instruct")
     INSTRUCT_CONTEXT_SIZE = int(os.getenv("OLLAMA_INSTRUCT_CTX_SIZE", 8192))
     INSTRUCT_CHAR_LIMIT = int(os.getenv("OLLAMA_INSTRUCT_CHAR_LIMIT", 1024))
 
-    tool_llm = os.getenv("OLLAMA_TOOL_LLM", "phi3:instruct")
+    INSTRUCT_DETAILED_LLM = os.getenv("OLLAMA_INSTRUCT_DETAILED_LLM", "phi3:instruct")
+    INSTRUCT_DETAILED_CONTEXT_SIZE = int(
+        os.getenv("OLLAMA_INSTRUCT_DETAILED_CTX_SIZE", 8192)
+    )
+    INSTRUCT_DETAILED_CHAR_LIMIT = int(
+        os.getenv("OLLAMA_INSTRUCT_DETAILED_CHAR_LIMIT", 1024)
+    )
+
+    STRUCTURED_LLM = os.getenv("OLLAMA_STRUCTURED_LLM", "phi3:instruct")
+    STRUCTURED_CONTEXT_SIZE = int(os.getenv("OLLAMA_STRUCTURED_CTX_SIZE", 8192))
+    STRUCTURED_CHAR_LIMIT = int(os.getenv("OLLAMA_STRUCTURED_CHAR_LIMIT", 1024))
+
+    TOOL_LLM = os.getenv("OLLAMA_TOOL_LLM", "phi3:instruct")
     TOOL_CONTEXT_SIZE = int(os.getenv("OLLAMA_TOOL_CTX_SIZE", 8192))
     TOOL_CHAR_LIMIT = int(os.getenv("OLLAMA_TOOL_CHAR_LIMIT", 1024))
 
-    print(f"Ollama: {chat_llm=} {CHAT_CONTEXT_SIZE=} {CHAT_CHAR_LIMIT}")
-    print(f"Ollama: {instruct_llm=} {INSTRUCT_CONTEXT_SIZE=} {INSTRUCT_CHAR_LIMIT}")
-    print(f"Ollama: {tool_llm=} {TOOL_CONTEXT_SIZE=} {TOOL_CHAR_LIMIT}")
+    print("+++ OLLAMA +++")
 
 if use_groq:
     DEFAULT_LLM_MODEL = ChatGroq
     GROQ_API_KEY = os.getenv("GROQ_API_KEY", None)
-    chat_llm = os.getenv("GROQ_CHAT_LLM", "llama-3.1-8b-instant")
+    CHAT_LLM = os.getenv("GROQ_CHAT_LLM", "llama-3.1-8b-instant")
     CHAT_CONTEXT_SIZE = int(os.getenv("GROQ_CHAT_CTX_SIZE", 8192))
     CHAT_CHAR_LIMIT = int(os.getenv("GROQ_CHAT_CHAR_LIMIT", 1024))
 
-    instruct_llm = os.getenv("GROQ_INSTRUCT_LLM", "llama-3.1-8b-instant")
+    INSTRUCT_LLM = os.getenv("GROQ_INSTRUCT_LLM", "llama-3.1-8b-instant")
     INSTRUCT_CONTEXT_SIZE = int(os.getenv("GROQ_INSTRUCT_CTX_SIZE", 8192))
     INSTRUCT_CHAR_LIMIT = int(os.getenv("GROQ_INSTRUCT_CHAR_LIMIT", 1024))
 
-    tool_llm = os.getenv("GROQ_TOOL_LLM", "llama-3.1-8b-instant")
+    INSTRUCT_DETAILED_LLM = os.getenv(
+        "GROQ_INSTRUCT_DETAILED_LLM", "llama-3.1-8b-instant"
+    )
+    INSTRUCT_DETAILED_CONTEXT_SIZE = int(
+        os.getenv("GROQ_INSTRUCT_DETAILED_CTX_SIZE", 8192)
+    )
+    INSTRUCT_DETAILED_CHAR_LIMIT = int(os.getenv("GROQ_INSTRUCT_CHAR_LIMIT", 1024))
+
+    STRUCTURED_LLM = os.getenv("GROQ_STRUCTURED_LLM", "llama-3.1-8b-instant")
+    STRUCTURED_CONTEXT_SIZE = int(os.getenv("GROQ_STRUCTURED_CTX_SIZE", 8192))
+    STRUCTURED_CHAR_LIMIT = int(os.getenv("GROQ_STRUCTURED_CHAR_LIMIT", 1024))
+
+    TOOL_LLM = os.getenv("GROQ_TOOL_LLM", "llama-3.1-8b-instant")
     TOOL_CONTEXT_SIZE = int(os.getenv("GROQ_TOOL_CTX_SIZE", 8192))
     TOOL_CHAR_LIMIT = int(os.getenv("GROQ_TOOL_CHAR_LIMIT", 1024))
 
-    print(f"Groq: {chat_llm=} {CHAT_CONTEXT_SIZE=} {CHAT_CHAR_LIMIT}")
-    print(f"Groq: {instruct_llm=} {INSTRUCT_CONTEXT_SIZE=} {INSTRUCT_CHAR_LIMIT}")
-    print(f"Groq: {tool_llm=} {TOOL_CONTEXT_SIZE=} {TOOL_CHAR_LIMIT}")
+    print("+++ GROQ +++")
+
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2.gguf2.f16.gguf")
+
+print(f"\tChat: {CHAT_LLM=} {CHAT_CONTEXT_SIZE=} {CHAT_CHAR_LIMIT}")
+print(f"\tInstruct: {INSTRUCT_LLM=} {INSTRUCT_CONTEXT_SIZE=} {INSTRUCT_CHAR_LIMIT}")
+print(
+    f"\tInstruct detailed: {INSTRUCT_DETAILED_LLM=} {INSTRUCT_DETAILED_CONTEXT_SIZE=} {INSTRUCT_DETAILED_CHAR_LIMIT}"
+)
+print(f"\tTool: {TOOL_LLM=} {TOOL_CONTEXT_SIZE=} {TOOL_CHAR_LIMIT}")
+print(f"\tEmbedding: {EMBEDDING_MODEL=}")
 
 llms = {}
 embeddings = {}
@@ -229,7 +260,7 @@ Title: Description (optional)
 Title: Description (optional)
 """
 
-    max_retries = 3
+    max_retries =5
 
     success = False
     steps: str = None
@@ -284,19 +315,15 @@ def init_chain(
         #     chains[f"{id}"] = prompts[f"{id}"] | llms[llm] | StrOutputParser()
         llm_chain = LLMChain(llm=llms[llm], prompt=prompts[f"{id}"])
         if prompt.parser is not None:
-            chains[f"{id}"] = (
-                llm_chain
-                | (lambda resp: resp["text"])
-                | prompt.parser
-            )
-                # | (lambda resp: json.loads(resp["text"]) if isinstance(resp["text"], str) else resp)
+            chains[f"{id}"] = llm_chain | (lambda resp: resp["text"]) | prompt.parser
+            # | (lambda resp: json.loads(resp["text"]) if isinstance(resp["text"], str) else resp)
         else:
             chains[f"{id}"] = llm_chain | (lambda resp: resp["text"])
 
 
 def init_llm(
     id,
-    model=chat_llm,
+    model=CHAT_LLM,
     temperature=0.2,
     verbose=True,
     Type=DEFAULT_LLM_MODEL,
@@ -338,18 +365,35 @@ def init_llms():
 
     init_llm("default")
     init_llm(
-        "instruct", temperature=0.2, model=instruct_llm, ctx_size=INSTRUCT_CONTEXT_SIZE
+        "instruct", temperature=0.2, model=INSTRUCT_LLM, ctx_size=INSTRUCT_CONTEXT_SIZE
     )
     init_llm(
-        "instruct_0", temperature=0, model=instruct_llm, ctx_size=INSTRUCT_CONTEXT_SIZE
+        "instruct_0", temperature=0, model=INSTRUCT_LLM, ctx_size=INSTRUCT_CONTEXT_SIZE
     )
     init_llm(
         "instruct_warm",
         temperature=0.5,
-        model=instruct_llm,
+        model=INSTRUCT_LLM,
         ctx_size=INSTRUCT_CONTEXT_SIZE,
     )
-
+    init_llm(
+        "instruct_detailed",
+        temperature=0.2,
+        model=INSTRUCT_DETAILED_LLM,
+        ctx_size=INSTRUCT_DETAILED_CONTEXT_SIZE,
+    )
+    init_llm(
+        "instruct_detailed_0",
+        temperature=0,
+        model=INSTRUCT_DETAILED_LLM,
+        ctx_size=INSTRUCT_DETAILED_CONTEXT_SIZE,
+    )
+    init_llm(
+        "instruct_detailed_warm",
+        temperature=0.5,
+        model=INSTRUCT_DETAILED_LLM,
+        ctx_size=INSTRUCT_DETAILED_CONTEXT_SIZE,
+    )
     # init_llm("json", Type=OllamaFunctions)
 
     if "json" not in llms:
@@ -357,18 +401,18 @@ def init_llms():
             llms["json"] = DEFAULT_LLM_MODEL(
                 # model=llama3_llm,
                 base_url=ollama_url,
-                model=tool_llm,
+                model=STRUCTURED_LLM,
                 model_kwargs={"response_format": {"type": "json_object"}},
                 temperature=0,
-                num_ctx=TOOL_CONTEXT_SIZE,
-                num_predict=TOOL_CONTEXT_SIZE,
+                num_ctx=STRUCTURED_CONTEXT_SIZE,
+                num_predict=STRUCTURED_CONTEXT_SIZE,
                 verbose=True,
                 callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
             )
         if use_groq:
             llms["json"] = DEFAULT_LLM_MODEL(
                 api_key=GROQ_API_KEY,
-                model=tool_llm,
+                model=STRUCTURED_LLM,
                 model_kwargs={"response_format": {"type": "json_object"}},
                 temperature=0,
                 timeout=30000,
@@ -376,17 +420,17 @@ def init_llms():
                 callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
             )
 
-    init_llm("tool", temperature=0, model=tool_llm, ctx_size=TOOL_CONTEXT_SIZE)
+    init_llm("tool", temperature=0, model=TOOL_LLM, ctx_size=TOOL_CONTEXT_SIZE)
 
     init_llm("chat", temperature=0.5, Type=DEFAULT_LLM_MODEL)
 
     init_llm("warm", temperature=0.4)
 
-    init_chain("summary", "instruct", summary)
+    init_chain("summary", "instruct_detailed", summary)
     init_chain("summary_guided", "instruct", summary_guided)
     init_chain(
         "action",
-        "instruct_0",
+        "instruct_detailed_0",
         action,
     )
     init_chain(
@@ -394,17 +438,17 @@ def init_llms():
         "instruct_0",
         check,
     )
-    init_chain("text_formatter", "instruct", text_formatter)
-    init_chain("text_formatter_compress", "instruct", text_formatter_compress)
+    init_chain("text_formatter", "instruct_detailed", text_formatter)
+    init_chain("text_formatter_compress", "instruct_detailed", text_formatter_compress)
     init_chain(
         "text_formatter_guided_0",
-        "instruct",
+        "instruct_detailed",
         text_formatter_guided,
     )
-    init_chain("md_formatter", "instruct", md_formatter)
+    init_chain("md_formatter", "instruct_detailed", md_formatter)
     init_chain(
         "md_formatter_guided",
-        "instruct_0",
+        "instruct_detailed_0",
         md_formatter_guided,
     )
     init_chain("journey_structured", "json", journey_structured)
@@ -418,7 +462,8 @@ def init_llms():
         "instruct_warm",
         journey_step_details,
     )
-    init_chain("journey_step_intro", "instruct_warm", journey_step_intro)
+    init_chain("journey_step_intro", "instruct_detailed_warm", journey_step_intro)
+    init_chain("journey_step_actions", "instruct_detailed_warm", journey_step_actions)
     init_chain("question", "chat", chat)
 
     # template = """<s> <<SYS>> Act as a a helpful startup coach from antler trying to answer questions thoroughly. Use the following pieces of retrieved context to answer the question. If you don't know the answer, just say that you don't know.<</SYS>> </s>
@@ -443,7 +488,7 @@ def init_llms():
 
     # embeddings = OllamaEmbeddings(model="nomic-embed-text")
     if "base" not in embeddings:
-        model_name = "all-MiniLM-L6-v2.gguf2.f16.gguf"
+        model_name = EMBEDDING_MODEL
         gpt4all_kwargs = {"allow_download": "True"}
         embeddings["base"] = GPT4AllEmbeddings(
             model_name=model_name, gpt4all_kwargs=gpt4all_kwargs
@@ -462,7 +507,7 @@ def init_llms():
         chain = StuffDocumentsChain(
             # llm_chain=chains["text_formatter_compress"],
             llm_chain=LLMChain(
-                llm=llms["instruct"], prompt=prompts["text_formatter_compress"]
+                llm=llms["instruct_detailed"], prompt=prompts["text_formatter_compress"]
             ),
             document_prompt=PromptTemplate(
                 input_variables=["page_content"], template="{page_content}"
@@ -478,7 +523,7 @@ def init_llms():
         chains["reduce_journey_documents"] = StuffDocumentsChain(
             # llm_chain=chains["text_formatter_compress"],
             llm_chain=LLMChain(
-                llm=llms["instruct"], prompt=prompts["text_formatter_compress"]
+                llm=llms["instruct_detailed"], prompt=prompts["text_formatter_compress"]
             ),
             document_prompt=PromptTemplate(
                 input_variables=["page_content"], template="{page_content}"
@@ -486,7 +531,7 @@ def init_llms():
             document_variable_name="context",
             verbose=True,
         )
-    chains["reduce_journey_documents"].verbose = True
+        chains["reduce_journey_documents"].verbose = True
 
     # if "journey_json" not in chains:
     # chains["journey_json"] = create_extraction_chain(
@@ -520,7 +565,6 @@ def exec_structured_chain(chain, input: Dict[str, any]):
 
 
 chroma_client = None
-
 
 def create_document_lists(
     list_of_strings: List[str], list_of_thoughts: List[str] = None, source="local"

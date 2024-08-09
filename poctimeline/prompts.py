@@ -1,6 +1,6 @@
 import random
 import textwrap
-from typing import List, Optional, Tuple, Type
+from typing import Dict, List, Optional, Tuple, Type
 from pydantic import BaseModel, Field
 from langchain_core.documents import Document
 from langchain_core.prompts.few_shot import FewShotPromptTemplate
@@ -390,13 +390,14 @@ journey_steps = PromptFormatter(
     ),
     user=textwrap.dedent( # Use get_journey_format_example instead
         """
+        instuctions start
+        {journey_instructions}
+        {instructions}
+        instructions end
+
         context start
         {context}
         context end
-
-        instructiosn start
-        {instructions}
-        instructions end
 
         Create a list of {amount} subjects with one item per line.
         Follow the format of the example exactly with title and description
@@ -405,8 +406,7 @@ journey_steps = PromptFormatter(
         Only respond with the expected format.
         If instructions are provided, follow them exactly. If instructions specify
         a topic or subject, make sure the list includes only items which fall within
-        within that topic.
-        Make sure the list has exactly {amount} items."""
+        within that topic. Make sure the list has exactly {amount} items."""
     ),
 )
 
@@ -421,10 +421,15 @@ journey_step_details = PromptFormatter(
         You only have one student you're tutoring and you are making study materials for them.
         {pre_think_instruct}
         {keep_pre_think_together}
-        Create the study material for the student with the following information between context start and end."""
+        Create the study material for the student with the following information between context start and end.
+        If instructions are provided follow them exactly."""
     ),
     user=textwrap.dedent( # Use get_journey_format_example instead
         """
+        instuctions start
+        {journey_instructions}
+        instructions end
+
         context start
         {context}
         context end
@@ -434,7 +439,11 @@ journey_step_details = PromptFormatter(
 
 
         Create study materials for the student defined by the subject. Don't include any other content outside of the subject.
-        The study materials should be exhaustive, detailed and generated from the context."""
+        If instructions are provided, follow them exactly. If instructions specify
+        a topic or subject, make sure the list includes only items which fall within
+        within that topic.
+        The study materials should be exhaustive, detailed and generated from the context.
+        If instructions are provided follow them exactly."""
     ),
 )
 
@@ -453,29 +462,71 @@ journey_step_intro = PromptFormatter(
     ),
     user=textwrap.dedent( # Use get_journey_format_example instead
         """
+        instuctions start
+        {journey_instructions}
+        instructions end
+
         Subject:
         {subject}
 
-        Content:
+        content start
         {context}
+        content end
 
         Add an introduction to the class and explain the content of the class briefly.
+        If instructions are provided, follow them exactly. If instructions specify
+        a topic or subject, make sure the list includes only items which fall within
+        within that topic.
         Don't add anything new to the content, just explain it with 3 sentences maximum."""
     ),
 )
+
+journey_step_actions = PromptFormatter(
+    system=textwrap.dedent(
+        f"""
+        You are ThirdCognition Virtual Buddy.
+        Act as a teacher who planning 5 actions for teaching the student a specific subject and actions to verify that the student has learned the subject.
+        You only have one student you're tutoring so don't have to address more than one person.
+        {pre_think_instruct}
+        {keep_pre_think_together}
+        Use the content for the class available between content start and end."""
+    ),
+    user=textwrap.dedent( # Use get_journey_format_example instead
+        """
+        instuctions start
+        {journey_instructions}
+        instructions end
+
+        Subject:
+        {subject}
+
+        content start
+        {context}
+        content end
+
+        Write a list of actions to take to teach the subject to the student and how to verify that the student has learned the subject.
+        If instructions are provided, follow them exactly. If instructions specify
+        a topic or subject, make sure the list includes only items which fall within
+        within that topic."""
+    ),
+)
+
+class ActionStructure(BaseModel):
+    title: str = Field(description="Title for the step", title="Title")
+    description: str = Field(description="Description for the teacher for what to do", title="Description")
+    resources: List[str] = Field(description="List of content pieces to support the teacher in explaining and describing the step.", title="Resources")
+    test: str = Field(description="Description on how to do a test to verify that the student has succeeded in learning the contents for the step.", title="Test")
 
 class JourneyStructure(BaseModel):
     title: str = Field(description="Title of the class", title="Title")
     intro: str = Field(description="Introduction to the class", title="Intro")
     content: str = Field(description="Detailed content of the class", title="Content")
-    actions: List[str] = Field(description="List actions within the class.", title="Actions")
-    priority: int = Field(description="How important the class is", title="Priority")
+    actions: List[ActionStructure] = Field(description="List steps for the teacher to take within the class to teach the subject.", title="Actions")
 
 journey_structured = PromptFormatter(
     system="""
     Act as a structured data formatter and use specified format instructions exactly
-    to format the context data.
-    Return only the JSON object with the formatted data.
+    to format the context data. Return only the JSON object with the formatted data.
     """,
     user="""
     context start
@@ -487,54 +538,13 @@ journey_structured = PromptFormatter(
     format instructions end
     ----------------
     Format the context data using the format instructions.
-    For actions try to find suitable actions from context and populate the list with them.
-    For priority estimate the priority for this class and set a value between 1-5.
-    1 being not important and 5 being very important.
-    Return only the JSON object with the formatted data.
+    For actions try to find around 5 suitable actions for the teacher to take within the class to teach the subject.
+    Return only the properly formatted JSON object with the formatted data.
     """
 )
 journey_structured.parser=PydanticOutputParser(pydantic_object=JourneyStructure)
 
 DEFAULT_PROMPT_FORMATTER = chat
-
-# journey_json_template = {
-#     "properties": {
-#         "name": {
-#             "type": "string",
-#             "description": "Name of the task",
-#             "title": "Name",
-#         },
-#         "description": {
-#             "type": "string",
-#             "description": "Description for the task",
-#             "title": "Description",
-#         },
-#         "actions": {
-#             "description": "List actions within the task.",
-#             "items": {"type": "string"},
-#             "title": "Actions",
-#             "type": "array",
-#         },
-#         "priority": {
-#             "type": "int",
-#             "description": "How important the task is",
-#             "title": "Priority",
-#         },
-#     },
-#     "required": ["name", "description"],
-# }
-
-
-# def validate_json_format(data, template=journey_json_template):
-#     keys = data.keys()
-#     template_keys = template["properties"].keys()
-
-#     for key in template_keys:
-#         if key not in keys:
-#             data[key] = None
-
-#     return data
-
 
 # def generate_result_sample(tasks: List[FewShotItem], amount = 3) -> dict:
 #     sample = random.sample(tasks, amount)

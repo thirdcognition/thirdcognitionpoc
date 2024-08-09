@@ -45,6 +45,7 @@ class JourneyDataTable(Base):
     disabled = sqla.Column(sqla.Boolean, default=False)
     title = sqla.Column(sqla.String)
     summary = sqla.Column(sqla.Text)
+    instructions = sqla.Column(sqla.Text)
     last_updated = sqla.Column(sqla.DateTime)
 
 database_session = None

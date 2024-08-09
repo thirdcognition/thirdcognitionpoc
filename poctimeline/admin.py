@@ -17,6 +17,7 @@ import sqlalchemy as sqla
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.ext.mutable import MutableList
 import streamlit as st
+import streamlit_authenticator as stauth
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 from db_tables import (
@@ -33,6 +34,7 @@ from rapidocr_onnxruntime import RapidOCR
 # from rapidocr_paddle import RapidOCR  # type: ignore
 from chain import (
     INSTRUCT_CHAR_LIMIT,
+    client_host,
     SQLITE_DB,
     create_document_lists,
     exec_structured_chain,
@@ -47,6 +49,12 @@ from chain import (
 )
 from prompts import JourneyStructure
 
+import yaml
+from yaml.loader import SafeLoader
+
+with open('admin_auth.yaml') as file:
+    auth_config = yaml.load(file, Loader=SafeLoader)
+
 # Define the database and table
 # SQLITE_DB = "../databases/files.db"
 # SQLITE_DB = "d:/tmp/antler_db/files.db"
@@ -57,6 +65,13 @@ database_session = init_db()
 
 ocr = None
 
+authenticator = stauth.Authenticate(
+    auth_config['credentials'],
+    auth_config['cookie']['name'],
+    auth_config['cookie']['key'],
+    auth_config['cookie']['expiry_days'],
+    auth_config['pre-authorized']
+)
 
 def extract_from_images_with_rapidocr(
     images: Sequence[Union[Iterable[np.ndarray], bytes]],
@@ -745,17 +760,18 @@ def manage_file(filename):
     rewrite_thoughts = st.session_state.rewrite_thoughts
 
     # for i in range(len(query)):
-    col1, col2 = st.columns([1, 12], vertical_alignment="center")
+    col1, col2 = st.columns([1, 10], vertical_alignment="center")
     col2.subheader(filename, divider=True)
-    if col1.button(":x:", key=f"delete_{filename}"):
-        instance = (
-            database_session.query(FileDataTable)
-            .where(FileDataTable.filename == filename)
-            .first()
-        )
-        database_session.delete(instance)
-        get_db_files(reset=True)
-        st.rerun()
+    with col1.popover(":x:"):
+        if st.button(f"Are you sure you want to remove {filename}?", key=f"delete_button_{filename}", use_container_width=True):
+            instance = (
+                database_session.query(FileDataTable)
+                .where(FileDataTable.filename == filename)
+                .first()
+            )
+            database_session.delete(instance)
+            get_db_files(reset=True)
+            st.rerun()
     header_col1, header_col2 = st.columns([1, 4], vertical_alignment="bottom")
     with header_col1:
         show_details = st.toggle("Extend", key=f"show_{filename}")
@@ -1481,6 +1497,19 @@ def main():
     init_db()
     st.title("Admin interface for TC POC")
 
+    authenticator.login()
+    if st.session_state['authentication_status']:
+        col1, col2 = st.columns([7, 1])
+        col1.write(f'Welcome *{st.session_state["name"]}*')
+        with col2: authenticator.logout()
+    else:
+        if st.session_state['authentication_status'] is False:
+            st.error('Username/password is incorrect')
+        if st.session_state['authentication_status'] is None:
+            st.warning('Please enter your username and password')
+
+        return
+
     page_tab1, page_tab2, page_tab3 = st.tabs(
         ["Upload files", "Manage files", "Manage journeys"]
     )
@@ -1552,10 +1581,12 @@ def main():
 
         for journey_name in db_journey.keys():
             journey = db_journey[journey_name]
-            col1, col2 = st.columns([1, 12], vertical_alignment="center")
-            if col1.button(":x:", key=f"delete_button_{journey_name}"):
-                delete_journey(journey_name)
-            col2.subheader(f"{journey_name}", divider=True)
+            col1, col2, col3 = st.columns([2, 12, 3], vertical_alignment="center")
+            with col1.popover(":x:"):
+                if st.button(f"Are you sure you want to remove {journey_name}?", key=f"delete_button_{journey_name}", use_container_width=True):
+                    delete_journey(journey_name)
+            col2.subheader(f"&nbsp;{journey_name}", divider=True)
+            col3.link_button(":paperclip:&nbsp;&nbsp;Link", f"{client_host}?journey={journey_name}", use_container_width=True)
 
             col1, col2 = st.columns([1, 4], vertical_alignment="top")
             if (
@@ -1676,4 +1707,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()

@@ -162,3 +162,4 @@ cython_debug/
 #.idea/
 /db
 poetry.lock
+timeline_auth.yaml

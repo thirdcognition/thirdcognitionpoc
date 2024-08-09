@@ -1,0 +1,15 @@
+credentials:
+  usernames:
+    username:
+      email: user@email.com
+      failed_login_attempts: 0 # Will be managed automatically
+      logged_in: False # Will be managed automatically
+      name: Full Name
+      password: # Will be hashed automatically
+cookie:
+  expiry_days: 30
+  key: # Must be string
+  name: some_cookie_string
+pre-authorized:
+  emails:
+  - user@email.com

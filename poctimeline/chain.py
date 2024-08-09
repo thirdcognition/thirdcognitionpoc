@@ -73,6 +73,9 @@ use_ollama = os.getenv("USE_OLLAMA", "True") == "True" or False
 use_groq = os.getenv("USE_GROQ", "True") == "True" or False
 DEFAULT_LLM_MODEL: BaseLLM = None
 
+client_host = os.getenv("CLIENT_HOST", "http://localhost:3100")
+admin_host = os.getenv("ADMIN_HOST", "http://localhost:4000")
+
 if use_ollama:
     DEFAULT_LLM_MODEL = ChatOllama
     ollama_url = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")

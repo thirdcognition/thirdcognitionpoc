@@ -1140,7 +1140,7 @@ def get_files_for_journey(default_category, journey_name, step, gen_from: Dict =
             select = st.checkbox(
                 filename,
                 value=filename in gen_from.keys(),
-                key=f"select_for_journey_gen_{journey_name}_{step}",
+                key=f"select_for_journey_gen_{journey_name}_{step}_{filename}",
             )
 
             if select:

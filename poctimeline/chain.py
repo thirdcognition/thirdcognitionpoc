@@ -12,7 +12,7 @@ from langchain.chains.combine_documents.reduce import ReduceDocumentsChain
 from langchain.chains.openai_functions import create_extraction_chain
 from langchain.chains.llm import LLMChain
 from langchain_community.chat_models import ChatOllama
-from langchain_community.embeddings import GPT4AllEmbeddings
+from langchain_community.embeddings.huggingface  import HuggingFaceBgeEmbeddings
 from langchain.callbacks.manager import CallbackManager
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from langchain_core.runnables.base import RunnableSequence
@@ -134,7 +134,7 @@ if use_groq:
 
     print("+++ GROQ +++")
 
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2.gguf2.f16.gguf")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en")
 
 print(f"\tChat: {CHAT_LLM=} {CHAT_CONTEXT_SIZE=} {CHAT_CHAR_LIMIT}")
 print(f"\tInstruct: {INSTRUCT_LLM=} {INSTRUCT_CONTEXT_SIZE=} {INSTRUCT_CHAR_LIMIT}")
@@ -492,10 +492,12 @@ def init_llms():
     # embeddings = OllamaEmbeddings(model="nomic-embed-text")
     if "base" not in embeddings:
         model_name = EMBEDDING_MODEL
-        gpt4all_kwargs = {"allow_download": "True"}
-        embeddings["base"] = GPT4AllEmbeddings(
-            model_name=model_name, gpt4all_kwargs=gpt4all_kwargs
+        model_kwargs = {"device": "cpu"}
+        encode_kwargs = {"normalize_embeddings": True}
+        embeddings["base"]  = HuggingFaceBgeEmbeddings(
+            model_name=model_name, model_kwargs=model_kwargs, encode_kwargs=encode_kwargs
         )
+
 
     if "hyde" not in embeddings:
         embeddings["hyde"] = HypotheticalDocumentEmbedder.from_llm(

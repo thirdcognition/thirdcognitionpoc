@@ -88,7 +88,7 @@ def extract_from_images_with_rapidocr(
     i = 0
 
     ocr = ocr or RapidOCR(
-        use_gpu=True, det_use_cuda=True, cls_use_cuda=True, rec_use_cuda=True
+        # use_gpu=True, det_use_cuda=True, cls_use_cuda=True, rec_use_cuda=True
     )
 
     for img in images:
@@ -1109,7 +1109,7 @@ def gen_journey_json(source):
             "context": source
         }
     )
-    print(result)
+    # print(result)
 
     return result
 

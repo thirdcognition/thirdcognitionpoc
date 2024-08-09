@@ -63,8 +63,10 @@ print("Loading env: ", os.path.join(os.path.dirname(__file__), "..", ".env"))
 # for key, value in os.environ.items():
 #     print(f'\t{key}= {value}')
 
-set_debug(os.getenv("DEBUG", False))
-set_verbose(os.getenv("VERBOSE", True))
+debug_mode = os.getenv("LLM_DEBUG", "True") == "True" or False
+
+set_debug(debug_mode)
+set_verbose(debug_mode)
 
 CHROMA_PATH = os.getenv("CHROMA_PATH", "db/chroma_db")
 SQLITE_DB = os.getenv("SQLITE_DB", "db/files.db")
@@ -328,7 +330,7 @@ def init_llm(
     id,
     model=CHAT_LLM,
     temperature=0.2,
-    verbose=True,
+    verbose=debug_mode,
     Type=DEFAULT_LLM_MODEL,
     ctx_size=CHAT_CONTEXT_SIZE,
 ):
@@ -348,7 +350,7 @@ def init_llm(
             )
         else:
             llms[f"{id}"] = Type(
-                streaming=True,
+                streaming=debug_mode,
                 api_key=GROQ_API_KEY,
                 model=model,
                 verbose=verbose,
@@ -409,7 +411,7 @@ def init_llms():
                 temperature=0,
                 num_ctx=STRUCTURED_CONTEXT_SIZE,
                 num_predict=STRUCTURED_CONTEXT_SIZE,
-                verbose=True,
+                verbose=debug_mode,
                 callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
             )
         if use_groq:
@@ -419,7 +421,7 @@ def init_llms():
                 model_kwargs={"response_format": {"type": "json_object"}},
                 temperature=0,
                 timeout=30000,
-                verbose=True,
+                verbose=debug_mode,
                 callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
             )
 
@@ -518,7 +520,7 @@ def init_llms():
                 input_variables=["page_content"], template="{page_content}"
             ),
             document_variable_name="context",
-            verbose=True,
+            verbose=debug_mode,
         )
         chains["summary_documents"] = ReduceDocumentsChain(
             combine_documents_chain=chain
@@ -534,9 +536,9 @@ def init_llms():
                 input_variables=["page_content"], template="{page_content}"
             ),
             document_variable_name="context",
-            verbose=True,
+            verbose=debug_mode,
         )
-        chains["reduce_journey_documents"].verbose = True
+        chains["reduce_journey_documents"].verbose = debug_mode
 
     # if "journey_json" not in chains:
     # chains["journey_json"] = create_extraction_chain(

@@ -10,10 +10,10 @@ else
 fi
 
 # Start the first process
-streamlit run poctimeline/timeline.py --server.port 3500 --server.headless true --server.address=0.0.0.0 &
+streamlit run poctimeline/timeline.py --server.port 3500 --server.headless true --server.address=0.0.0.0 --client.showErrorDetails=False --client.toolbarMode=minimal --server.fileWatcherType=none --browser.gatherUsageStats=False &
 
 # Start the second process
-streamlit run poctimeline/admin.py --server.port 4000 --server.headless true --server.address=0.0.0.0 &
+streamlit run poctimeline/admin.py --server.port 4000 --server.headless true --server.address=0.0.0.0 --client.showErrorDetails=False --client.toolbarMode=minimal --server.fileWatcherType=none --browser.gatherUsageStats=False &
 
 # Wait for any process to exit
 wait -n

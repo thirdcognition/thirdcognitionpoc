@@ -1338,19 +1338,19 @@ def edit_journey_subject_step(journey_name, step, subject_index, step_index):
         col1, col2 = st.columns([1, 3])
         col1.write(f"##### Step {step_index+1}:")
         step_json.title = col2.text_input(
-            "Title", value=step_json.title, key=f"journey_step_title_{journey_name}_{step_index}"
+            "Title", value=step_json.title, key=f"journey_step_title_{journey_name}_{subject_index}_{step_index}"
         )
 
         step_json.intro = col2.text_area(
             "Intro",
             value=step_json.intro,
-            key=f"journey_step_intro_{journey_name}_{step_index}",
+            key=f"journey_step_intro_{journey_name}_{subject_index}_{step_index}",
         )
 
         step_json.content = col2.text_area(
             "Content",
             value=step_json.content,
-            key=f"journey_step_content_{journey_name}_{step_index}",
+            key=f"journey_step_content_{journey_name}_{subject_index}_{step_index}",
         )
 
         # if not isinstance(step_json.priority, numbers.Number):
@@ -1360,47 +1360,47 @@ def edit_journey_subject_step(journey_name, step, subject_index, step_index):
         #     "Priority",
         #     options=list(range(1, 6)),
         #     value=max(1, min(5, step_json.priority)),
-        #     key=f"journey_step_priority_{journey_name}_{step_index}",
+        #     key=f"journey_step_priority_{journey_name}_{subject_index}_{step_index}",
         # )
 
         col1, col2 = st.columns([1, 3])
         col1.write(f"##### Teaching actions:")
         for j, action in enumerate(step_json.actions):
-            action.title = col2.text_input("Title", value=action.title, key=f"journey_step_action_title_{journey_name}_{step_index}_{j}")
-            action.description = col2.text_area("Description", value=action.description, key=f"journey_step_action_description_{journey_name}_{step_index}_{j}")
+            action.title = col2.text_input("Title", value=action.title, key=f"journey_step_action_title_{journey_name}_{subject_index}_{step_index}_{j}")
+            action.description = col2.text_area("Description", value=action.description, key=f"journey_step_action_description_{journey_name}_{subject_index}_{step_index}_{j}")
             for k, resource in enumerate(action.resources):
-                action.resources[k] = col2.text_input(f"Resource {k}", value=resource, key=f"journey_step_action_resource_{journey_name}_{step_index}_{j}_{k}")
-            action.test = col2.text_area("Test", value=action.test, key=f"journey_step_action_test_{journey_name}_{step_index}_{j}")
+                action.resources[k] = col2.text_input(f"Resource {k}", value=resource, key=f"journey_step_action_resource_{journey_name}_{subject_index}_{step_index}_{j}_{k}")
+            action.test = col2.text_area("Test", value=action.test, key=f"journey_step_action_test_{journey_name}_{subject_index}_{step_index}_{j}")
 
             # step_json.actions[j] = col2.text_area(
             #     f"Action {j+1}",
             #     value=action,
-            #     key=f"journey_step_actions_{journey_name}_{step_index}_{j}",
+            #     key=f"journey_step_actions_{journey_name}_{subject_index}_{step_index}_{j}",
             # )
     except Exception as e:
         print(f"Failed to use JSON: {e}")
         col1, col2 = st.columns([1, 3])
         col1.write(f"##### Step {step_index+1}:")
         step["title"] = col2.text_input(
-            "Title", value=step["title"], key=f"journey_step_title_{journey_name}_{step_index}"
+            "Title", value=step["title"], key=f"journey_step_title_{journey_name}_{subject_index}_{step_index}"
         )
 
         step["intro"] = col2.text_area(
             "Intro",
             value=step["intro"],
-            key=f"journey_step_intro_{journey_name}_{step_index}",
+            key=f"journey_step_intro_{journey_name}_{subject_index}_{step_index}",
         )
 
         step["content"] = col2.text_area(
             "Content",
             value=step["content"],
-            key=f"journey_step_content_{journey_name}_{step_index}",
+            key=f"journey_step_content_{journey_name}_{subject_index}_{step_index}",
         )
 
         step["Actions"] = col2.text_area(
             "actions",
             value=step["actions"],
-            key=f"journey_step_Actions_{journey_name}_{step_index}",
+            key=f"journey_step_Actions_{journey_name}_{subject_index}_{step_index}",
         )
 
     return step

@@ -1395,20 +1395,21 @@ def edit_journey_subject_step(journey_name, step, subject_index, step_index):
         #     key=f"journey_step_priority_{journey_name}_{subject_index}_{step_index}",
         # )
 
-        for j, action in enumerate(step_json.actions):
-            st.write(f"##### Teaching action {j+1}:")
+        if st.toggle("Show actions", key=f"journey_step_actions_{journey_name}_{subject_index}_{step_index}"):
+            for j, action in enumerate(step_json.actions):
+                st.write(f"##### Teaching action {j+1}:")
 
-            action.title = st.text_input("Title", value=action.title, key=f"journey_step_action_title_{journey_name}_{subject_index}_{step_index}_{j}")
-            action.description = st.text_area("Description", value=action.description, key=f"journey_step_action_description_{journey_name}_{subject_index}_{step_index}_{j}")
-            for k, resource in enumerate(action.resources):
-                action.resources[k] = st.text_input(f"Resource {k+1}", value=resource, key=f"journey_step_action_resource_{journey_name}_{subject_index}_{step_index}_{j}_{k}")
-            action.test = st.text_area("Test", value=action.test, key=f"journey_step_action_test_{journey_name}_{subject_index}_{step_index}_{j}")
+                action.title = st.text_input("Title", value=action.title, key=f"journey_step_action_title_{journey_name}_{subject_index}_{step_index}_{j}")
+                action.description = st.text_area("Description", value=action.description, key=f"journey_step_action_description_{journey_name}_{subject_index}_{step_index}_{j}")
+                for k, resource in enumerate(action.resources):
+                    action.resources[k] = st.text_input(f"Resource {k+1}", value=resource, key=f"journey_step_action_resource_{journey_name}_{subject_index}_{step_index}_{j}_{k}")
+                action.test = st.text_area("Test", value=action.test, key=f"journey_step_action_test_{journey_name}_{subject_index}_{step_index}_{j}")
 
-            # step_json.actions[j] = st.text_area(
-            #     f"Action {j+1}",
-            #     value=action,
-            #     key=f"journey_step_actions_{journey_name}_{subject_index}_{step_index}_{j}",
-            # )
+                # step_json.actions[j] = st.text_area(
+                #     f"Action {j+1}",
+                #     value=action,
+                #     key=f"journey_step_actions_{journey_name}_{subject_index}_{step_index}_{j}",
+                # )
     except Exception as e:
         print(f"Failed to use JSON: {e}")
         st.write(f"##### Step {step_index+1}:")
@@ -1451,6 +1452,7 @@ def edit_journey_details(journey_name, journey:Dict):
         journey["chroma_collection"] = st.text_input(
             f"Chroma databases", value=",".join(journey["chroma_collection"]), key=f"journey_chroma_collections_{journey_name}"
         ).split(",")
+        print(journey["chroma_collection"])
 
     return journey
 
@@ -1500,7 +1502,7 @@ def save_journey(journey_name, journey:Dict):
         title=journey.get("title", None),
         summary=journey.get("summary", None),
         last_updated=datetime.now(),
-        chroma_collection = ["rag_" + cat for cat in journey.get("category", [])]
+        chroma_collection = journey.get("chroma_collection", ["rag_" + cat for cat in journey.get("category", [])])
     )
     database_session.add(journey_db)
     database_session.commit()
@@ -1509,6 +1511,7 @@ def save_journey(journey_name, journey:Dict):
     st.session_state.editing_journey_details = None
     st.session_state.editing_journey_subject = None
     st.session_state.editing_journey_step = None
+    time.sleep(0.1)
     st.rerun()
 
 
@@ -1633,23 +1636,25 @@ def main():
 
             if "editing_journey" not in st.session_state:
                 st.session_state.editing_journey = None
+                st.session_state.editing_journey_details = None
+                st.session_state.editing_journey_subject = None
+                st.session_state.editing_journey_step = None
 
             col1, col2 = st.columns([1, 4], vertical_alignment="top")
             if (
-                col1.button("Edit details", key=f"edit_button_{journey_name}", disabled=st.session_state.editing_journey == journey_name)
-                or "editing_journey" in st.session_state
-                and st.session_state.editing_journey == journey_name
-                or "editing_journey_details" in st.session_state
+                col1.button("Edit details", key=f"edit_button_{journey_name}", disabled=st.session_state.editing_journey == journey_name
+                and st.session_state.editing_journey_details is True)
+                or st.session_state.editing_journey == journey_name
                 and st.session_state.editing_journey_details
             ):
                 st.session_state.editing_journey = journey_name
                 st.session_state.editing_journey_details = True
                 # with col2:
                 journey_edit = edit_journey_details(journey_name, journey)
-                col1, col2, _ = st.columns([1, 1, 5])
-                if col1.button("Save", key=f"save_button_{journey_name}", use_container_width=True):
+                subcol1, subcol2, _ = st.columns([1, 1, 5])
+                if subcol1.button("Save", key=f"save_button_{journey_name}", use_container_width=True):
                     save_journey(journey_name, journey_edit)
-                if col2.button("Cancel", key=f"cancel_button_{journey_name}", use_container_width=True):
+                if subcol2.button("Cancel", key=f"cancel_button_{journey_name}", use_container_width=True):
                     st.session_state.editing_journey = None
                     st.session_state.editing_journey_details = None
                     st.session_state.editing_journey_subject = None
@@ -1667,7 +1672,7 @@ def main():
                 col2.write("Files used:")
                 col2.write("* " + "\n* ".join(journey["files"]))
 
-            if (st.session_state.editing_journey != journey_name and col1.toggle("Extend", key=f"show_toggle_{journey_name}")):
+            if col1.toggle("Extend", key=f"show_toggle_subjects_{journey_name}") or (st.session_state.editing_journey_subject is not None or st.session_state.editing_journey_step is not None):
                 journey_edit = journey
                 for i, subject in enumerate(journey["subjects"]):
                     with st.container(border=True):
@@ -1694,10 +1699,10 @@ def main():
                             journey_edit["subjects"][i]["summary"] = st.text_area(
                                 f"Summary", value=subject["summary"], key=f"subject_summary_{journey_name}_{i}", height=200
                             )
-                            col1, col2, _ = st.columns([1, 1, 5])
-                            if col1.button("Save", key=f"save_button_{journey_name}_{i}", use_container_width=True):
+                            subcol1, subcol2, _ = st.columns([1, 1, 5])
+                            if subcol1.button("Save", key=f"save_button_{journey_name}_{i}", use_container_width=True):
                                 save_journey(journey_name, journey_edit)
-                            if col2.button("Cancel", key=f"cancel_button_{journey_name}_{i}", use_container_width=True):
+                            if subcol2.button("Cancel", key=f"cancel_button_{journey_name}_{i}", use_container_width=True):
                                 st.session_state.editing_journey = None
                                 st.session_state.editing_journey_details = None
                                 st.session_state.editing_journey_subject = None
@@ -1711,7 +1716,7 @@ def main():
                                 col2.write("Files used:")
                                 col2.write("* " + "\n* ".join(subject["files"]))
 
-                        if (st.session_state.editing_journey == None and col1.toggle("Extend", key=f"show_toggle_{journey_name}_{i}")):
+                        if (col1.toggle("Extend", key=f"show_toggle_steps_{journey_name}_{i}") or (st.session_state.editing_journey_subject is not None or st.session_state.editing_journey_step is not None)):
                             for j, step in enumerate(subject["steps"]):
                                 with st.expander(f'##### Step {j+1}: {step["title"]}'):
                                     if (
@@ -1749,16 +1754,17 @@ def main():
                                             col1.write("##### Content:")
                                             col2.write(json.content)
 
-                                            st.write("##### Actions:")
-                                            for k, action in enumerate(json.actions):
-                                                col1, col2 = st.columns([1, 5])
-                                                col1.write(f"###### Action {k+1}:")
-                                                col2.write(f"**Title:** {action.title}")
-                                                col2.write(f"**Description:** {action.description}")
-                                                col2.write(f"**Resources:**")
-                                                for l, resource in enumerate(action.resources):
-                                                    col2.write(f"  - {resource}")
-                                                col2.write(f"**Test:** {action.test}")
+                                            # st.write("##### Actions:")
+                                            if st.toggle("Show actions", key=f"journey_step_info_actions_{journey_name}_{i}_{j}"):
+                                                for k, action in enumerate(json.actions):
+                                                    col1, col2 = st.columns([1, 5])
+                                                    col1.write(f"###### Action {k+1}:")
+                                                    col2.write(f"**Title:** {action.title}")
+                                                    col2.write(f"**Description:** {action.description}")
+                                                    col2.write(f"**Resources:**")
+                                                    for l, resource in enumerate(action.resources):
+                                                        col2.write(f"  - {resource}")
+                                                    col2.write(f"**Test:** {action.test}")
 
                                             # col1, col2 = st.columns([1, 5])
                                             # col1.write("##### Priority:")

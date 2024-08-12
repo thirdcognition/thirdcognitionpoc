@@ -208,6 +208,7 @@ def qa_bot(id):
 def send_message(message, journey_name, chat_state):
     print(f"\n({datetime.datetime.now()}) { message = }\n")
     chain_id = st.session_state.journey_chain_ids[journey_name]
+    # print(f"\n({datetime.datetime.now()}) {chain_id = }")
     chain = st.session_state.chains[chain_id]
     memory = st.session_state.chat_history[chat_state]
 
@@ -244,7 +245,7 @@ def init(journey_name:str):
         collections = journey["chroma_collection"]
         collection_keys = list(chroma_collections.keys())
 
-        journey_chain_ids[journey_name] = collections
+        journey_chain_ids[journey_name] = collections[0]
         if len(collections) > 0:
             for collection in collections:
                 if collection not in collection_keys:
@@ -324,6 +325,28 @@ def chat_elements(chat_state, journey_name):
             else:
                 with st.chat_message("AI"):
                     st.write(message.content)
+
+    if chat_state == "default" and st.session_state.chat_state == chat_state and len(st.session_state.chat_history[chat_state]) == 0:
+        journey = st.session_state.journey_list[journey_name]
+        st.session_state.chat_history[chat_state].append(
+            AIMessage(
+                f"""Welcome to ThirdCognition Virtual Buddy POC
+
+This proof of concept has been provided for you to see how it is possible to generate learning content
+with just the help of our tool. This is a work in progress and should not be considered a final product.
+Also note that this is for internal use only and any results gained should not be shared
+outside of your respective organization.
+
+#### {journey["title"]}
+
+{journey["summary"]}
+
+You can now ask any questions you might have 👇. If you want to experience the preliminary learning journey,
+you can do so by selecting any of the subjects provided for you from the menu on the left.
+                """,
+            )
+        )
+        st.rerun()
 
     if (
         len(st.session_state.chat_history[chat_state]) == 0
@@ -434,21 +457,23 @@ This is an *extremely* cool app!
     # st.header("ThirdCognition Proof of concept demostration")
     chat_state = st.session_state.chat_state
 
-    # with st.container():
-    #     with st.sidebar:
-    #         if st.button(
-    #             "Home", use_container_width=True, disabled=(0 == chat_state)
-    #         ):
-    #             chat_state = "default"
-    #             st.session_state.chat_state = chat_state
-    #             st.session_state.chat_journey = None
-    #             st.rerun()
-
     journey_list = st.session_state.journey_list
 
+
+    if chat_state != "default":
+        if st.button(
+            ":house: Return home", use_container_width=True, disabled=(0 == chat_state)
+        ):
+            chat_state = "default"
+            st.session_state.chat_state = chat_state
+            st.session_state.chat_journey = None
+            st.rerun()
+
     journey = st.session_state.journey_list[journey_name]
-    st.subheader(journey["title"], divider=True)
-    st.write(journey["summary"])
+    st.subheader("ThirdCognition Virtual Buddy", divider=True)
+    # st.subheader(journey["title"], divider=True)
+    # st.write(journey["summary"])
+
 
     with st.sidebar:
         st.markdown("""<style>
@@ -472,6 +497,9 @@ This is an *extremely* cool app!
             cursor: auto !important;
         }
         </style>""", unsafe_allow_html=True)
+    # with st.container():
+    #     with st.sidebar:
+
 
         for i, subject in enumerate(journey["subjects"]):
             st.subheader(subject["title"])
@@ -497,6 +525,7 @@ This is an *extremely* cool app!
                     st.session_state.chat_journey = journey_name
                     st.rerun()
 
+
     for journey_name in journey_list:
         if (
             "chat_journey" in st.session_state
@@ -505,6 +534,8 @@ This is an *extremely* cool app!
         ):
             chat_elements(st.session_state.chat_state, journey_name)
 
+    if chat_state == "default" and st.session_state.chat_state == chat_state:
+        chat_elements("default", journey_name)
 
 if __name__ == "__main__":
     main()

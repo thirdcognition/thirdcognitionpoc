@@ -506,28 +506,28 @@ This is an *extremely* cool app!
 
 
         for i, subject in enumerate(journey["subjects"]):
-            st.subheader(subject["title"])
-            for j, step in enumerate(subject["steps"]):
-                step_id = f'{journey_name}_{i}_{j}'
-                # if st.session_state.chat_state != i + 1:
-                    # col1, col2 = st.columns([5, 1])
+            with st.expander(f"{subject["title"]}", expanded=(f"{journey_name}_{i}" in chat_state)):
+                for j, step in enumerate(subject["steps"]):
+                    step_id = f'{journey_name}_{i}_{j}'
+                    # if st.session_state.chat_state != i + 1:
+                        # col1, col2 = st.columns([5, 1])
 
-                # st.write(f"{client_host}?journey={journey_name}&state={i}_{j}", label=step["title"], disabled=chat_state == step_id, use_container_width=True)
-                url = f"{client_host}?journey={journey_name}&state={i}_{j}"
+                    # st.write(f"{client_host}?journey={journey_name}&state={i}_{j}", label=step["title"], disabled=chat_state == step_id, use_container_width=True)
+                    # url = f"{client_host}?journey={journey_name}&state={i}_{j}"
 
 
-                    # st.write(f'#### {step["name"]}')
-                # if journey_name == st.session_state.active_journey and f"{i}_{j}" == st.session_state.active_step and chat_state != step_id:
-                if st.button(
-                    step["title"],
-                    use_container_width=True,
-                    disabled=(step_id == chat_state),
-                    key=f'step_{step_id}',
-                ):  # , on_click=set_chat_state, args=(i, task)
-                    chat_state = step_id
-                    st.session_state.chat_state = chat_state
-                    st.session_state.chat_journey = journey_name
-                    st.rerun()
+                        # st.write(f'#### {step["name"]}')
+                    # if journey_name == st.session_state.active_journey and f"{i}_{j}" == st.session_state.active_step and chat_state != step_id:
+                    if st.button(
+                        step["title"],
+                        use_container_width=True,
+                        disabled=(step_id == chat_state),
+                        key=f'step_{step_id}',
+                    ):  # , on_click=set_chat_state, args=(i, task)
+                        chat_state = step_id
+                        st.session_state.chat_state = chat_state
+                        st.session_state.chat_journey = journey_name
+                        st.rerun()
 
 
     for journey_name in journey_list:

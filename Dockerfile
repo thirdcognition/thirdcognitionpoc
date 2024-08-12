@@ -1,18 +1,19 @@
-FROM python:3.12.5-slim-bookworm
+# FROM python:3.12.5-slim-bookworm
 
-RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
-    --mount=target=/var/cache/apt,type=cache,sharing=locked \
-    rm -f /etc/apt/apt.conf.d/docker-clean && \
-    apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    software-properties-common \
-    ffmpeg libsm6 libxext6 \
-    && rm -rf /var/lib/apt/lists/*
+# RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
+#     --mount=target=/var/cache/apt,type=cache,sharing=locked \
+#     rm -f /etc/apt/apt.conf.d/docker-clean && \
+#     apt-get update && apt-get install -y \
+#     build-essential \
+#     curl \
+#     software-properties-common \
+#     ffmpeg libsm6 libxext6 \
+#     && rm -rf /var/lib/apt/lists/*
+FROM markushaverinen/tc_poc_base:latest
 
 COPY . .
 COPY poctimeline poctimeline
-RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
+# RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
 RUN mkdir -p db
 
 EXPOSE 3500

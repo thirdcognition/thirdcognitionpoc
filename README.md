@@ -2,8 +2,17 @@
 ThirdCognition proof of concept
 
 
-# Export requirements.txt from Poetry
+# Updating base image
 
 ```
 $ poetry export --without-hashes --format=requirements.txt > requirements.txt
+$ docker build -t markushaverinen/tc_poc_base . -f Dockerfile_base
+$ docker push markushaverinen/tc_poc_base
+```
+
+# Building and running the app
+
+```
+$ docker build -t markushaverinen/tc_poc . -f Dockerfile
+$ docker run -p 3500:3500 -p 4000:4000 markushaverinen/tc_poc
 ```

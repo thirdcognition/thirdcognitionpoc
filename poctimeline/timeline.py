@@ -470,7 +470,11 @@ This is an *extremely* cool app!
             st.rerun()
 
     journey = st.session_state.journey_list[journey_name]
-    st.subheader("ThirdCognition Virtual Buddy", divider=True)
+    if chat_state == "default":
+        st.subheader("ThirdCognition Virtual Buddy", divider=True)
+    else:
+        subject_index = int(chat_state.split("_")[1])
+        st.subheader(journey["subjects"][subject_index]["title"], divider=True)
     # st.subheader(journey["title"], divider=True)
     # st.write(journey["summary"])
 

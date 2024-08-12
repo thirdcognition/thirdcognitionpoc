@@ -1,0 +1,13 @@
+[runner]
+fastReruns = true
+
+# [client]
+# toolbarMode="minimal"
+
+[server]
+#enableCORS=false
+#enableXsrfProtection=false
+enableStaticServing=true
+
+[browser]
+gatherUsageStats = false

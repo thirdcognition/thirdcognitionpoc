@@ -35,6 +35,7 @@ from db_tables import (
 )
 
 from chain import (
+    client_host,
     get_chroma_collection,
     get_llm_prompt,
     get_vectorstore,
@@ -277,7 +278,7 @@ def chat_elements(chat_state, journey_name):
     if chat_state not in st.session_state.chat_history_seen:
         st.session_state.chat_history_seen[chat_state] = []
 
-    print(f"chat state {st.session_state.chat_state} {chat_state}")
+    # print(f"chat state {st.session_state.chat_state} {chat_state}")
     user_query = None
     if "user_query" in st.session_state and st.session_state.user_query != None:
         user_query = st.session_state.user_query
@@ -357,14 +358,14 @@ def chat_elements(chat_state, journey_name):
             st.write(user_query)
 
         with st.chat_message("AI"):
-            print("Response:\n")
+            # print("Response:\n")
             # ai_response = send_message(user_query)
             # st.markdown(ai_response)
             # ai_response = st.write_stream(send_message(user_query, journey_name, chat_state))  # "I dont'know"
             ai_response = st.write("Thinking...")
             ai_response = send_message(user_query, journey_name, chat_state)
 
-        print(f"\n\n")
+        # print(f"\n\n")
 
         human_message = HumanMessage(user_query)
         st.session_state.chat_history[chat_state].append(human_message)
@@ -397,13 +398,26 @@ def page_not_found():
 
 
 def main():
-    st.set_page_config(page_title="TC POC")
+    st.set_page_config(
+        page_title="TC POC",
+        page_icon="static/icon.png",
+        layout="wide",
+        menu_items={
+            # 'Get Help': 'https://www.extremelycoolapp.com/help',
+            # 'Report a bug': "https://www.extremelycoolapp.com/bug",
+            'About': """# ThirdCognition PoC
+[ThirdCognition](https://thirdcognition.com)
+This is an *extremely* cool app!
+            """
+        }
+    )
 
     if ("active_journey" not in st.session_state) and (st.query_params.get("journey", None) is None or st.query_params["journey"] == ""):
         page_not_found()
         return
 
     journey_name = st.query_params.get("journey", None) or st.session_state.active_journey
+    chat_step = st.query_params.get("state", None) or ("active_step" in st.session_state and st.session_state.active_step) or ""
     journey_found = init(journey_name)
 
     if not journey_found:
@@ -411,7 +425,10 @@ def main():
         return
 
     if "active_journey" not in st.session_state:
-        st.session_state.active_journey = st.query_params["journey"]
+        st.session_state.active_journey = journey_name
+
+    if "active_step" not in st.session_state or chat_step != st.session_state.active_step:
+        st.session_state.active_step = chat_step
 
 
     # st.header("ThirdCognition Proof of concept demostration")
@@ -432,7 +449,30 @@ def main():
     journey = st.session_state.journey_list[journey_name]
     st.subheader(journey["title"], divider=True)
     st.write(journey["summary"])
+
     with st.sidebar:
+        st.markdown("""<style>
+        button[data-testid=baseButton-secondary] {
+            display: block;
+            text-align: left;
+            color: inherit;
+            text-decoration: none;
+            background-color: unset;
+            border: none;
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+        button[data-testid=baseButton-secondary]:active {
+            text-decoration: underline;
+            background-color: unset;
+            color: inherit;
+        }
+        button[data-testid=baseButton-secondary]:disabled {
+            border: none;
+            cursor: auto !important;
+        }
+        </style>""", unsafe_allow_html=True)
+
         for i, subject in enumerate(journey["subjects"]):
             st.subheader(subject["title"])
             for j, step in enumerate(subject["steps"]):
@@ -440,7 +480,12 @@ def main():
                 # if st.session_state.chat_state != i + 1:
                     # col1, col2 = st.columns([5, 1])
 
+                # st.write(f"{client_host}?journey={journey_name}&state={i}_{j}", label=step["title"], disabled=chat_state == step_id, use_container_width=True)
+                url = f"{client_host}?journey={journey_name}&state={i}_{j}"
+
+
                     # st.write(f'#### {step["name"]}')
+                # if journey_name == st.session_state.active_journey and f"{i}_{j}" == st.session_state.active_step and chat_state != step_id:
                 if st.button(
                     step["title"],
                     use_container_width=True,

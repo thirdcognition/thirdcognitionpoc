@@ -13,6 +13,7 @@ FROM markushaverinen/tc_poc_base:latest
 
 COPY . .
 COPY poctimeline poctimeline
+COPY .streamlit .streamlit
 # RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
 RUN mkdir -p db
 

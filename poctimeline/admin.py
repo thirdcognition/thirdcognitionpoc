@@ -52,6 +52,18 @@ from prompts import JourneyStructure
 import yaml
 from yaml.loader import SafeLoader
 
+st.set_page_config(
+    page_title="TC POC: Admin",
+    page_icon="static/icon.png",
+    layout="centered",
+    menu_items={
+        'About': """# ThirdCognition PoC
+[ThirdCognition](https://thirdcognition.com)
+This is an *extremely* cool admin tool!
+        """
+    }
+)
+
 with open('admin_auth.yaml') as file:
     auth_config = yaml.load(file, Loader=SafeLoader)
 
@@ -1519,6 +1531,7 @@ def edit_journey(journey_name, journey:Dict):
 
 # Streamlit app
 def main():
+
     init_db()
     st.title("Admin interface for TC POC")
 

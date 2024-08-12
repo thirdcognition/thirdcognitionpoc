@@ -220,7 +220,7 @@ def init(journey_name:str):
     init_db()
 
     if "journey_list" not in st.session_state:
-        st.session_state.journey_list = get_db_journey()
+        st.session_state.journey_list = get_db_journey(journey_name)
 
     if journey_name not in st.session_state.journey_list.keys():
         return False
@@ -230,6 +230,7 @@ def init(journey_name:str):
         st.session_state.chat_history = chat_history
         st.session_state.chat_state = chat_state
 
+
     if "chroma_collections" not in st.session_state:
         journey_chain_ids = {}
         chroma_collections = {}
@@ -238,21 +239,23 @@ def init(journey_name:str):
         chains = {}
         # for journey_name in journey_list:
         journey = st.session_state.journey_list[journey_name]
-        collection = journey["chroma_collection"]
-        collection_keys = [] #list(chroma_collections.keys())
-        if collection == "rag-all":
-            collection = "rag_all"
+        # print(f"{journey["chroma_collection"]}")
+        collections = journey["chroma_collection"]
+        collection_keys = list(chroma_collections.keys())
 
-        journey_chain_ids[journey_name] = collection
-        if collection not in collection_keys:
-            chroma_collections[collection] = get_chroma_collection(collection)
-            chains[collection] = qa_bot(collection)
+        journey_chain_ids[journey_name] = collections
+        if len(collections) > 0:
+            for collection in collections:
+                if collection not in collection_keys:
+                    chroma_collections[collection] = get_chroma_collection(collection)
+                    chains[collection] = qa_bot(collection)
 
+        # print(f" { list(chroma_collections.keys()) = }")
         st.session_state.chroma_collections = chroma_collections
         st.session_state.journey_chain_ids = journey_chain_ids
 
         chroma_collections = st.session_state.chroma_collections
-        print(f" { chroma_collections = }")
+        # print(f" {collections=} { chroma_collections = }")
 
         st.session_state.chains = chains
 

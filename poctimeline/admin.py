@@ -344,7 +344,9 @@ def process_file_contents(
                 split_texts.append(text)
 
         texts = split_texts
-
+        collections = []
+        for cat in category:
+            collections.append("rag_" + cat)
         with st.spinner("Saving to database..."):
             if file_exists:
                 # If the file exists, get the row and update its text field
@@ -360,14 +362,18 @@ def process_file_contents(
                 existing_file.category_tag = category
                 existing_file.last_updated = datetime.now()
                 existing_file.file_data = uploaded_file.getvalue()
+                existing_file.chroma_collection = collections
 
                 st.success(f"{filename} updated within database successfully.")
             else:
+
+
                 # If the file does not exist, create a new row
                 file = FileDataTable(
                     filename=filename,
                     texts=texts,
                     category_tag=category,
+                    chroma_collection=collections,
                     last_updated=datetime.now(),
                     file_data=uploaded_file.getvalue(),
                 )
@@ -379,7 +385,7 @@ def process_file_contents(
 
 
 def process_file_data(filename, category):
-    with st.status(f"RAG generation: {filename}"):
+    with st.status(f"Document generation: {filename}"):
         file_entry = get_db_files()[filename]
         texts = file_entry["texts"]
         filetype = os.path.basename(filename).split(".")[-1]
@@ -515,12 +521,14 @@ def process_file_data(filename, category):
 
             collections = []
 
-            collections.append("rag_all")
-            vectorstore = get_vectorstore("rag_all")
-            vectorstore.add_texts(ids=rag_ids, texts=rag_split, metadatas=rag_metadatas)
+            # collections.append("rag_all")
+            # vectorstore = get_vectorstore("rag_all")
+            # vectorstore.add_texts(ids=rag_ids, texts=rag_split, metadatas=rag_metadatas)
 
             # print(f"existing_ids = {existing_file.chroma_ids}")
             # print(f"{rag_split =}")
+            print(f"{category=}")
+            print(f"{rag_ids=}")
 
             for cat in category:
                 collections.append("rag_" + cat)
@@ -534,6 +542,7 @@ def process_file_data(filename, category):
             existing_file.summary = summary_text
             existing_file.category_tag = category
             existing_file.chroma_ids = rag_ids
+            existing_file.chroma_collection = collections
             existing_file.last_updated = datetime.now()
 
             st.success(f"{filename} updated within database successfully.")
@@ -610,6 +619,7 @@ def upload_files_ui():
         "Choose files",
         type=["pdf", "xps", "epub", "mobi", "fb2", "cbz", "svg", "txt", "md"],
         accept_multiple_files=True,
+        disabled=default_category is None or len(default_category) == 0,
     )
 
     if "existing_files" not in st.session_state:
@@ -832,8 +842,6 @@ def manage_file(filename):
                     col.strip() for col in updates["chroma_collection"].split(",")
                 ]
 
-
-
             if changes:
                 database_session.commit()
                 get_db_files(reset=True)
@@ -848,14 +856,7 @@ def manage_file(filename):
             thoughts = None #file_entry["format_thoughts"]
             raw = file_entry["texts"]
 
-            rag_id = file_entry["chroma_collection"][0]
 
-            chroma_collection = get_chroma_collection(rag_id)
-
-            rag_items = chroma_collection.get(
-                file_entry["chroma_ids"],
-                include=["embeddings", "documents", "metadatas"],
-            )
 
             if filename in rewrite_text:
                 text = rewrite_text[filename]
@@ -891,6 +892,7 @@ def manage_file(filename):
                         update = True
 
                 with col4:
+
                     if st.button(
                         "Clear",
                         key=f"llm_md_clear_{filename}",
@@ -944,17 +946,31 @@ def manage_file(filename):
                     st.write(text, unsafe_allow_html=True)
 
             with tab4:
-                # st.write(rag_items)
-                for i, id in enumerate(rag_items["ids"]):
-                    [sub_col1, sub_col2] = st.columns([1, 3])
-                    with sub_col1:
-                        st.write(id)
-                        st.write(rag_items["metadatas"][i])
-                    with sub_col2:
-                        st.write("*Text:*")
-                        st.write(rag_items["documents"][i])
-                        st.write("_Embeddings:_")
-                        st.write(rag_items["embeddings"][i])
+                # print(f"{file_entry["chroma_collection"]=}")
+                rag_id = st.selectbox("RAG DB", file_entry["chroma_collection"], placeholder="Choose one", index=None)
+                # print("RAG ID:", rag_id)
+
+                if rag_id:
+                    chroma_collection = get_chroma_collection(rag_id)
+                    st.write("##### RAG Items:")
+
+                    rag_items = chroma_collection.get(
+                        file_entry["chroma_ids"],
+                        include=["embeddings", "documents", "metadatas"],
+                    )
+                    # st.write(rag_items)
+                    for i, id in enumerate(rag_items["ids"]):
+                        [sub_col1, sub_col2] = st.columns([1, 3])
+                        with sub_col1:
+                            st.write(id)
+                            st.write(rag_items["metadatas"][i])
+                        with sub_col2:
+                            st.write("*Text:*")
+                            st.write(rag_items["documents"][i])
+                            st.write("_Embeddings:_")
+                            st.write(rag_items["embeddings"][i])
+                else:
+                    st.write("Select RAG DB first.")
 
 
 def gen_journey_doc(list_of_strings = []) -> tuple[str, str]:
@@ -1205,8 +1221,8 @@ def build_journey_subject(journey_name, journey_instructions, files, instruction
         st.success("Generating JSON for journey done.")
 
 
-    for i, sub_step in enumerate(subject["steps"]):
-        subject["steps"][i] = edit_journey_subject_step(journey_name, subject["steps"][i], subject_index, i)
+    # for i, sub_step in enumerate(subject["steps"]):
+    #     subject["steps"][i] = edit_journey_subject_step(journey_name, subject["steps"][i], subject_index, i)
 
         # st.session_state.journey_generator_running = False
     return subject
@@ -1279,8 +1295,9 @@ def get_journey_gen(journey_name):
 
     if but_col2 is not None and len(journey_details["subjects"] if "subjects" in journey_details else []) > 0 and but_col2.button("Generate", key=f"generate_journey_{journey_name}", disabled=not check_subject_files(journey_details["subjects"])):
         st.session_state.journey_generator_running = True
+
         for i, subject in enumerate(journey_details["subjects"]):
-            print(f"Generating subject {i+1} for journey {journey_name}")
+            # print(f"Generating subject {i+1} for journey {journey_name}")
             subject = build_journey_subject(journey_name, journey_instructions, subject["db_files"], subject["instructions"], i, subject["step_amount"])
 
             if subject is not None:
@@ -1291,11 +1308,11 @@ def get_journey_gen(journey_name):
         st.session_state.journey_generator_running = False
 
 
-    save_button = False
-    if len(journey_details.get("subjects", [])) > 0 and all('steps' in subject and len(subject['steps'] if "steps" in subject else []) > 0 for subject in journey_details["subjects"]) and not st.session_state.journey_generator_running is None:
-        save_button = st.button("Save", key=f"save_subjects_{journey_name}")
+    # save_button = False
+    # if len(journey_details.get("subjects", [])) > 0 and all('steps' in subject and len(subject['steps'] if "steps" in subject else []) > 0 for subject in journey_details["subjects"]) and not st.session_state.journey_generator_running is None:
+    #     save_button = st.button("Save", key=f"save_subjects_{journey_name}")
 
-    if save_button:
+    # if save_button:
         with st.spinner("Generating journey titles and summaries"):
             files = []
             for i, subject in enumerate(journey_details["subjects"]):
@@ -1323,7 +1340,8 @@ def get_journey_gen(journey_name):
         # st.session_state.journey_get_details[journey_name] = journey_details
         st.session_state.journey_get_details = {}
         st.session_state.journey_create = False
-        st.session_state.journey_generator_running = None
+        st.session_state.journey_generator_running = False
+        get_db_journey(reset=True)
         st.rerun()
 
     return journey_details
@@ -1335,69 +1353,70 @@ def edit_journey_subject_step(journey_name, step, subject_index, step_index):
     try:
         step_json:JourneyStructure = step["json"]
         # print(f"{step_json = }")
-        col1, col2 = st.columns([1, 3])
-        col1.write(f"##### Step {step_index+1}:")
-        step_json.title = col2.text_input(
+        # st, col2 = st.columns([1, 3])
+        st.write(f"##### Step {step_index+1}:")
+        step_json.title = st.text_input(
             "Title", value=step_json.title, key=f"journey_step_title_{journey_name}_{subject_index}_{step_index}"
         )
 
-        step_json.intro = col2.text_area(
+        step_json.intro = st.text_area(
             "Intro",
             value=step_json.intro,
             key=f"journey_step_intro_{journey_name}_{subject_index}_{step_index}",
+            height=200
         )
 
-        step_json.content = col2.text_area(
+        step_json.content = st.text_area(
             "Content",
             value=step_json.content,
             key=f"journey_step_content_{journey_name}_{subject_index}_{step_index}",
+            height=400
         )
 
         # if not isinstance(step_json.priority, numbers.Number):
         #     step_json.priority = 1
 
-        # step_json.priority = col2.select_slider(
+        # step_json.priority = st.select_slider(
         #     "Priority",
         #     options=list(range(1, 6)),
         #     value=max(1, min(5, step_json.priority)),
         #     key=f"journey_step_priority_{journey_name}_{subject_index}_{step_index}",
         # )
 
-        col1, col2 = st.columns([1, 3])
-        col1.write(f"##### Teaching actions:")
         for j, action in enumerate(step_json.actions):
-            action.title = col2.text_input("Title", value=action.title, key=f"journey_step_action_title_{journey_name}_{subject_index}_{step_index}_{j}")
-            action.description = col2.text_area("Description", value=action.description, key=f"journey_step_action_description_{journey_name}_{subject_index}_{step_index}_{j}")
-            for k, resource in enumerate(action.resources):
-                action.resources[k] = col2.text_input(f"Resource {k}", value=resource, key=f"journey_step_action_resource_{journey_name}_{subject_index}_{step_index}_{j}_{k}")
-            action.test = col2.text_area("Test", value=action.test, key=f"journey_step_action_test_{journey_name}_{subject_index}_{step_index}_{j}")
+            st.write(f"##### Teaching action {j+1}:")
 
-            # step_json.actions[j] = col2.text_area(
+            action.title = st.text_input("Title", value=action.title, key=f"journey_step_action_title_{journey_name}_{subject_index}_{step_index}_{j}")
+            action.description = st.text_area("Description", value=action.description, key=f"journey_step_action_description_{journey_name}_{subject_index}_{step_index}_{j}")
+            for k, resource in enumerate(action.resources):
+                action.resources[k] = st.text_input(f"Resource {k+1}", value=resource, key=f"journey_step_action_resource_{journey_name}_{subject_index}_{step_index}_{j}_{k}")
+            action.test = st.text_area("Test", value=action.test, key=f"journey_step_action_test_{journey_name}_{subject_index}_{step_index}_{j}")
+
+            # step_json.actions[j] = st.text_area(
             #     f"Action {j+1}",
             #     value=action,
             #     key=f"journey_step_actions_{journey_name}_{subject_index}_{step_index}_{j}",
             # )
     except Exception as e:
         print(f"Failed to use JSON: {e}")
-        col1, col2 = st.columns([1, 3])
-        col1.write(f"##### Step {step_index+1}:")
-        step["title"] = col2.text_input(
+        st.write(f"##### Step {step_index+1}:")
+        step["title"] = st.text_input(
             "Title", value=step["title"], key=f"journey_step_title_{journey_name}_{subject_index}_{step_index}"
         )
 
-        step["intro"] = col2.text_area(
+        step["intro"] = st.text_area(
             "Intro",
             value=step["intro"],
             key=f"journey_step_intro_{journey_name}_{subject_index}_{step_index}",
         )
 
-        step["content"] = col2.text_area(
+        step["content"] = st.text_area(
             "Content",
             value=step["content"],
             key=f"journey_step_content_{journey_name}_{subject_index}_{step_index}",
         )
 
-        step["Actions"] = col2.text_area(
+        step["Actions"] = st.text_area(
             "actions",
             value=step["actions"],
             key=f"journey_step_Actions_{journey_name}_{subject_index}_{step_index}",
@@ -1414,9 +1433,12 @@ def edit_journey_details(journey_name, journey:Dict):
         )
     if "summary" in journey.keys():
         journey["summary"] = st.text_area(
-            f"Journey summary", value=journey["summary"], key=f"journey_summary_{journey_name}"
+            f"Journey summary", value=journey["summary"], key=f"journey_summary_{journey_name}", height=200
         )
-
+    if "chroma_collection" in journey.keys():
+        journey["chroma_collection"] = st.text_input(
+            f"Chroma databases", value=",".join(journey["chroma_collection"]), key=f"journey_chroma_collections_{journey_name}"
+        ).split(",")
 
     return journey
 
@@ -1432,6 +1454,7 @@ def delete_journey(journey_name):
         database_session.commit()
         get_db_journey(reset=True)
         st.success(f"{journey_name} has been deleted successfully.")
+        time.sleep(0.1)
         st.rerun()
     else:
         st.warning(f"{journey_name} does not exist in the database.")
@@ -1465,9 +1488,11 @@ def save_journey(journey_name, journey:Dict):
         title=journey.get("title", None),
         summary=journey.get("summary", None),
         last_updated=datetime.now(),
+        chroma_collection = ["rag_" + cat for cat in journey.get("category", [])]
     )
     database_session.add(journey_db)
     database_session.commit()
+    get_db_journey(reset=True)
     st.session_state.editing_journey = None
     st.session_state.editing_journey_details = None
     st.session_state.editing_journey_subject = None
@@ -1568,11 +1593,16 @@ def main():
                 journey_create = get_journey_gen(journey_name)
                 st.session_state.journey_create_data = journey_create
                 if "__complete" in journey_create.keys():
+                    st.session_state.journey_create_data = {}
+                    st.session_state.journey_get_details = {}
+                    st.session_state.journey_create = False
+                    st.session_state.journey_generator_running = False
+                    time.sleep(0.01)
                     st.rerun()
 
-            if journey_create != None and "__complete" in journey_create.keys():
-                journey_name = st.session_state.creating_journey
-                edit_journey(journey_name, journey_create)
+            # if journey_create != None and "__complete" in journey_create.keys():
+            #     journey_name = st.session_state.creating_journey
+            #     edit_journey(journey_name, journey_create)
 
         if db_journey is not None and len(db_journey.keys()) > 0:
             st.header("Journey database")
@@ -1588,9 +1618,12 @@ def main():
             col2.subheader(f"&nbsp;{journey_name}", divider=True)
             col3.link_button(":paperclip:&nbsp;&nbsp;Link", f"{client_host}?journey={journey_name}", use_container_width=True)
 
+            if "editing_journey" not in st.session_state:
+                st.session_state.editing_journey = None
+
             col1, col2 = st.columns([1, 4], vertical_alignment="top")
             if (
-                col1.button("Edit details", key=f"edit_button_{journey_name}")
+                col1.button("Edit details", key=f"edit_button_{journey_name}", disabled=st.session_state.editing_journey == journey_name)
                 or "editing_journey" in st.session_state
                 and st.session_state.editing_journey == journey_name
                 or "editing_journey_details" in st.session_state
@@ -1598,19 +1631,30 @@ def main():
             ):
                 st.session_state.editing_journey = journey_name
                 st.session_state.editing_journey_details = True
-                with col2:
-                    journey_edit = edit_journey_details(journey_name, journey)
-                    if col1.button("Save", key=f"save_button_{journey_name}"):
-                        save_journey(journey_name, journey_edit)
+                # with col2:
+                journey_edit = edit_journey_details(journey_name, journey)
+                col1, col2, _ = st.columns([1, 1, 5])
+                if col1.button("Save", key=f"save_button_{journey_name}", use_container_width=True):
+                    save_journey(journey_name, journey_edit)
+                if col2.button("Cancel", key=f"cancel_button_{journey_name}", use_container_width=True):
+                    st.session_state.editing_journey = None
+                    st.session_state.editing_journey_details = None
+                    st.session_state.editing_journey_subject = None
+                    st.session_state.editing_journey_step = None
+                    st.rerun()
             else:
                 col2.write(f'#### {journey["title"].strip()}')
                 col2.write(journey["summary"])
+
+            if "chroma_collection" in journey.keys() and len(journey["files"]) > 0:
+                col2.write("Connected Chroma databases:")
+                col2.write("* " + "\n* ".join(journey["chroma_collection"]))
 
             if "files" in journey.keys() and len(journey["files"]) > 0:
                 col2.write("Files used:")
                 col2.write("* " + "\n* ".join(journey["files"]))
 
-            if (col1.toggle("Extend", key=f"show_toggle_{journey_name}")):
+            if (st.session_state.editing_journey != journey_name and col1.toggle("Extend", key=f"show_toggle_{journey_name}")):
                 journey_edit = journey
                 for i, subject in enumerate(journey["subjects"]):
                     with st.container(border=True):
@@ -1630,15 +1674,22 @@ def main():
                             st.session_state.editing_journey = journey_name
                             st.session_state.editing_journey_subject = i
                             st.session_state.editing_journey_step = None
-                            col1, col2 = st.columns([1, 3])
-                            journey_edit["subjects"][i]["title"] = col2.text_input(
+                            # col1, col2 = st.columns([1, 3])
+                            journey_edit["subjects"][i]["title"] = st.text_input(
                                 f"Title", value=subject["title"], key=f"subject_title_{journey_name}_{i}"
                             )
-                            journey_edit["subjects"][i]["summary"] = col2.text_area(
-                                f"Summary", value=subject["summary"], key=f"subject_summary_{journey_name}_{i}"
+                            journey_edit["subjects"][i]["summary"] = st.text_area(
+                                f"Summary", value=subject["summary"], key=f"subject_summary_{journey_name}_{i}", height=200
                             )
-                            if st.button("Save", key=f"save_button_{journey_name}_{i}"):
+                            col1, col2, _ = st.columns([1, 1, 5])
+                            if col1.button("Save", key=f"save_button_{journey_name}_{i}", use_container_width=True):
                                 save_journey(journey_name, journey_edit)
+                            if col2.button("Cancel", key=f"cancel_button_{journey_name}_{i}", use_container_width=True):
+                                st.session_state.editing_journey = None
+                                st.session_state.editing_journey_details = None
+                                st.session_state.editing_journey_subject = None
+                                st.session_state.editing_journey_step = None
+                                st.rerun()
 
                         else:
                             col2.write(subject["title"] + ":")
@@ -1647,7 +1698,7 @@ def main():
                                 col2.write("Files used:")
                                 col2.write("* " + "\n* ".join(subject["files"]))
 
-                        if (col1.toggle("Extend", key=f"show_toggle_{journey_name}_{i}")):
+                        if (st.session_state.editing_journey == None and col1.toggle("Extend", key=f"show_toggle_{journey_name}_{i}")):
                             for j, step in enumerate(subject["steps"]):
                                 with st.expander(f'##### Step {j+1}: {step["title"]}'):
                                     if (
@@ -1664,8 +1715,15 @@ def main():
                                         st.session_state.editing_journey_subject = i
                                         st.session_state.editing_journey_step = j
                                         journey_edit["subjects"][i]["steps"][j] = edit_journey_subject_step(journey_name, journey["subjects"][i]["steps"][j], i, j)
-                                        if st.button("Save", key=f"save_button_{journey_name}_{i}_{j}"):
+                                        col1, col2, _ = st.columns([1, 1, 5])
+                                        if col1.button("Save", key=f"save_button_{journey_name}_{i}_{j}", use_container_width=True):
                                             save_journey(journey_name, journey_edit)
+                                        if col2.button("Cancel", key=f"cancel_button_{journey_name}_{i}_{j}", use_container_width=True):
+                                            st.session_state.editing_journey = None
+                                            st.session_state.editing_journey_details = None
+                                            st.session_state.editing_journey_subject = None
+                                            st.session_state.editing_journey_step = None
+                                            st.rerun()
 
                                     else:
                                         if step.get("json", None):

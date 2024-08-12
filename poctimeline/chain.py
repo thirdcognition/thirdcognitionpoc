@@ -282,14 +282,14 @@ Title: Description (optional)
             )
             correct_response = False
             resp_retr = 0
-            print(f"{steps = }")
+            # print(f"{steps = }")
             while not correct_response and resp_retr < max_retries:
                 resp_retr += 1
 
                 check_response = get_chain("check").invoke(
                     {
                         "context": steps,
-                        "options": "if matches the format respond: yes, if matches the format but not right amount of items respond: maybe, if does not match respond: no",
+                        "options": "if matches the format respond and amount exactly: yes, if the amount or the format are close but not exact respond: maybe, if does not match respond: no",
                         "expected_count": f"Expected approximately {amount} items.",
                         "count": len(steps.split("\n")),
                         "format": format,

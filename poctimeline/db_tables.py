@@ -24,7 +24,7 @@ class FileDataTable(Base):
     category_tag = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
     last_updated = sqla.Column(sqla.DateTime)
     chroma_collection = sqla.Column(
-        MutableList.as_mutable(sqla.PickleType), default=["rag_all"]
+        MutableList.as_mutable(sqla.PickleType), default=[]
     )
     chroma_ids = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
     disabled = sqla.Column(sqla.Boolean, default=False)
@@ -41,7 +41,9 @@ class JourneyDataTable(Base):
     journeyname = sqla.Column(sqla.String, primary_key=True)
     files = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
     subjects = sqla.Column(sqla.PickleType)
-    chroma_collection = sqla.Column(sqla.String, default="rag_all")
+    chroma_collection = sqla.Column(
+        MutableList.as_mutable(sqla.PickleType), default=[]
+    )
     disabled = sqla.Column(sqla.Boolean, default=False)
     title = sqla.Column(sqla.String)
     summary = sqla.Column(sqla.Text)
@@ -84,14 +86,15 @@ def get_db_files(reset=False, filename=None):
     return db_files
 
 
-def get_db_journey(reset=False):
+def get_db_journey(journey_name:str = None, reset=False):
     if "db_journey" not in st.session_state or reset:
-        journey = database_session.query(JourneyDataTable).all()
-
+        if journey_name is None:
+            journey = database_session.query(JourneyDataTable).all()
+        else:
+            journey = database_session.query(JourneyDataTable).filter(JourneyDataTable.journeyname == journey_name).all()
         db_journey = {}
 
         for step in journey:
-            print(f"{ step = }")
             db_journey[step.journeyname] = step.__dict__
 
         st.session_state.db_journey = db_journey

@@ -7,6 +7,7 @@ ThirdCognition proof of concept
 ```
 $ poetry export --without-hashes --format=requirements.txt > requirements.txt
 $ docker build -t markushaverinen/tc_poc_base . -f Dockerfile_base
+$ docker --platform linux/amd64 build -t markushaverinen/tc_poc_base . -f Dockerfile_base
 $ docker push markushaverinen/tc_poc_base
 ```
 

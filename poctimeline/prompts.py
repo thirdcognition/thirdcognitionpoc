@@ -538,7 +538,6 @@ journey_structured = PromptFormatter(
     format instructions end
     ----------------
     Format the context data using the format instructions.
-    For actions try to find around 5 suitable actions for the teacher to take within the class to teach the subject.
     Return only the properly formatted JSON object with the formatted data.
     """
 )

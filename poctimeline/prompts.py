@@ -9,7 +9,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage, HumanMessage, ChatMessage
 from langchain_core.prompts.chat import MessagesPlaceholder, HumanMessagePromptTemplate
 from langchain_core.output_parsers.base import BaseOutputParser
-from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.output_parsers import PydanticOutputParser, JsonOutputParser
 # from fewshot_data import FewShotItem, example_tasks
 
 pre_think_instruct = """Before starting plan how to proceed step by step and place your thinking between
@@ -246,6 +246,28 @@ action = PromptFormatter(
     ),
 )
 
+grader = PromptFormatter(
+    system=textwrap.dedent(
+        f"""You are a grader assessing relevance of a retrieved document to a user question.
+
+    If the document contains keywords related to the user question, grade it as relevant.
+    It does not need to be a stringent test. The goal is to filter out erroneous retrievals.
+    Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question.
+    Provide the binary score as a JSON with a single key 'score' and no premable or explanation."""
+    ),
+    user=textwrap.dedent(
+        """
+        Here is the retrieved document:
+        {document}
+
+        Here is the user question:
+        {question}
+
+        Grade the document based on the question."""
+    ),
+)
+grader.parser = JsonOutputParser()
+
 check = PromptFormatter(
     system=textwrap.dedent(
         f"""Act as a verification machine. Check that the items matches the format exactly and answer with one of the appropriate option only. Do not explain your answer or add anything else after or before the answer."""
@@ -322,14 +344,13 @@ hyde = PromptFormatter(
         f"""
         Given a chat history and the latest user question
         which might reference the chat history,
-        formulate a standalone question which can be understood
-        without the chat history. Do NOT answer the question,
-        just reformulate it if needed and otherwise return it as is.
+        formulate a standalone answer which could be a result
+        for a search engine query for the question.
+        Use maximum of three sentences.
         """
     ),
     user=textwrap.dedent(
-        """
-        Question: {question}"""
+        """{question}"""
     ),
 )
 

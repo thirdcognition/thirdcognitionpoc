@@ -38,6 +38,7 @@ from chain import (
     client_host,
     get_chroma_collection,
     get_llm,
+    get_prompt,
     get_vectorstore,
     handle_thinking,
     rerank_documents,
@@ -156,7 +157,7 @@ def reformat_rag(params: list[Document]):
     print(f'\n\nRAG reformat: \n{query = } \n\nresult = {new_content_str}\n\n')
     return new_content
 
-def retrieval_qa_chain(llm_setup, vectorstore):
+def retrieval_qa_chain(llm, prompt, vectorstore):
 
     # retriever = vectorstore.as_retriever(search_kwargs={"k": 20})
 
@@ -169,11 +170,11 @@ def retrieval_qa_chain(llm_setup, vectorstore):
     # retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"k": 5, "include_metadata": True})
     # retriever = vectorstore.as_retriever(search_type="similarity_score_threshold", search_kwargs={"k": 5, "score_threshold": 0.3})
 
-    print(f"{ llm_setup = }")
+    # print(f"{ llm = }")
 
     qa_no_context = (
-        llm_setup["prompt"]
-        | llm_setup["llm"]
+        prompt
+        | llm
         | StrOutputParser()
     )
 
@@ -185,8 +186,8 @@ def retrieval_qa_chain(llm_setup, vectorstore):
                 "history": RunnableLambda(get_memory()),
             }
         )
-        | llm_setup["prompt"]
-        | llm_setup["llm"]
+        | prompt
+        | llm
         | StrOutputParser()
     )
 
@@ -199,9 +200,10 @@ def now():
 def qa_bot(id):
     print(f" set qa_bot for { id = }")
     vectorstore = get_vectorstore(id, "hyde")
-    llm_setup = get_llm("chat")
+    llm = get_llm("chat")
+    prompt = get_prompt("question")
 
-    qa = retrieval_qa_chain(llm_setup, vectorstore)
+    qa = retrieval_qa_chain(llm, prompt, vectorstore)
     return qa
 
 

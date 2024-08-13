@@ -11,8 +11,14 @@ from langchain.chains.combine_documents.stuff import StuffDocumentsChain
 from langchain.chains.combine_documents.reduce import ReduceDocumentsChain
 from langchain.chains.openai_functions import create_extraction_chain
 from langchain.chains.llm import LLMChain
-from langchain_community.chat_models import ChatOllama
-from langchain_community.embeddings.huggingface  import HuggingFaceBgeEmbeddings
+from langchain_community.chat_models.ollama import ChatOllama
+from langchain_community.embeddings.huggingface import (
+    HuggingFaceBgeEmbeddings,
+    HuggingFaceInferenceAPIEmbeddings,
+)
+from langchain_community.embeddings.ollama import OllamaEmbeddings
+
+# from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain.callbacks.manager import CallbackManager
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from langchain_core.runnables.base import RunnableSequence
@@ -27,7 +33,8 @@ from langchain_text_splitters import (
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain.schema.document import Document
 
-from langchain_community.vectorstores.chroma import Chroma
+# from langchain_community.vectorstores.chroma import Chroma
+from langchain_chroma import Chroma
 
 from langchain_core.output_parsers import PydanticOutputParser
 
@@ -74,6 +81,21 @@ SQLITE_DB = os.getenv("SQLITE_DB", "db/files.db")
 use_ollama = os.getenv("USE_OLLAMA", "True") == "True" or False
 use_groq = os.getenv("USE_GROQ", "True") == "True" or False
 DEFAULT_LLM_MODEL: BaseLLM = None
+CHAT_LLM: str = None
+CHAT_CHAR_LIMIT: int = None
+CHAT_CONTEXT_SIZE: int = None
+INSTRUCT_LLM: str = None
+INSTRUCT_CHAR_LIMIT: int = None
+INSTRUCT_CONTEXT_SIZE: int = None
+STRUCTURED_LLM: str = None
+STRUCTURED_CHAR_LIMIT: int = None
+STRUCTURED_CONTEXT_SIZE: int = None
+TOOL_LLM: str = None
+TOOL_CHAR_LIMIT: int = None
+TOOL_CONTEXT_SIZE: int = None
+EMBEDDING_MODEL: str = None
+EMBEDDING_CHAR_LIMIT: int = 1000
+EMBEDDING_OVERLAP: int = 100
 
 client_host = os.getenv("CLIENT_HOST", "http://localhost:3100")
 admin_host = os.getenv("ADMIN_HOST", "http://localhost:4000")
@@ -136,15 +158,40 @@ if use_groq:
 
     print("+++ GROQ +++")
 
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en")
-
 print(f"\tChat: {CHAT_LLM=} {CHAT_CONTEXT_SIZE=} {CHAT_CHAR_LIMIT}")
 print(f"\tInstruct: {INSTRUCT_LLM=} {INSTRUCT_CONTEXT_SIZE=} {INSTRUCT_CHAR_LIMIT}")
 print(
     f"\tInstruct detailed: {INSTRUCT_DETAILED_LLM=} {INSTRUCT_DETAILED_CONTEXT_SIZE=} {INSTRUCT_DETAILED_CHAR_LIMIT}"
 )
 print(f"\tTool: {TOOL_LLM=} {TOOL_CONTEXT_SIZE=} {TOOL_CHAR_LIMIT}")
-print(f"\tEmbedding: {EMBEDDING_MODEL=}")
+
+use_ollama_embeddings = os.getenv("USE_OLLAMA_EMBEDDING", "False") == "True" or False
+use_hf_embeddings = os.getenv("USE_HF_EMBEDDING", "False") == "True" or False
+use_local_embeddings = os.getenv("USE_LOCAL_EMBEDDING", "True") == "True" or False
+
+if use_local_embeddings:
+    EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en")
+    EMBEDDING_CHAR_LIMIT = int(os.getenv("EMBEDDING_CHAR_LIMIT", 1000))
+    EMBEDDING_OVERLAP = int(os.getenv("EMBEDDING_CHAR_LIMIT", 100))
+
+    print("+++ LOCAL EMBEDDING +++")
+
+if use_ollama_embeddings:
+    EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "bge-small-en")
+    EMBEDDING_CHAR_LIMIT = int(os.getenv("OLLAMA_EMBEDDING_CHAR_LIMIT", 1000))
+    EMBEDDING_OVERLAP = int(os.getenv("OLLAMA_EMBEDDING_CHAR_LIMIT", 100))
+
+    print("+++ OLLAMA EMBEDDING +++")
+
+if use_hf_embeddings:
+    HF_API_KEY = os.getenv("HF_API_KEY", "")
+    EMBEDDING_MODEL = os.getenv("HF_EMBEDDING_MODEL", "BAAI/bge-small-en")
+    EMBEDDING_CHAR_LIMIT = int(os.getenv("HF_EMBEDDING_CHAR_LIMIT", 1000))
+    EMBEDDING_OVERLAP = int(os.getenv("HF_EMBEDDING_CHAR_LIMIT", 100))
+
+    print("+++ HUGGINGFACE EMBEDDING +++")
+
+print(f"\tEmbedding: {EMBEDDING_MODEL=}, {EMBEDDING_CHAR_LIMIT=}, {EMBEDDING_OVERLAP=}")
 
 llms = {}
 embeddings = {}
@@ -159,7 +206,7 @@ def get_chain(chain) -> RunnableSequence:
     return chains[chain]
 
 
-def get_llm_prompt(llm_id="default", prompt_id="helper"):
+def get_llm(llm_id="default"):
     if len(chains.keys()) == 0:
         init_llms()
 
@@ -168,7 +215,13 @@ def get_llm_prompt(llm_id="default", prompt_id="helper"):
     else:
         llm = llms["default"]
 
-    return {"llm": llm, "prompt": prompts[prompt_id]}
+    return llm
+
+def get_prompt(prompt_id="helper") -> PromptTemplate:
+    if len(chains.keys()) == 0:
+        init_llms()
+
+    return prompts[prompt_id]
 
 
 def handle_thinking(text_provider, min_len=100, retry=True) -> tuple[str, str]:
@@ -265,7 +318,7 @@ Title: Description (optional)
 Title: Description (optional)
 """
 
-    max_retries =5
+    max_retries = 5
 
     success = False
     steps: str = None
@@ -318,6 +371,7 @@ def init_chain(
         #     chains[f"{id}"] = prompts[f"{id}"] | llms[llm] | prompt.parser
         # else:
         #     chains[f"{id}"] = prompts[f"{id}"] | llms[llm] | StrOutputParser()
+
         llm_chain = LLMChain(llm=llms[llm], prompt=prompts[f"{id}"])
         if prompt.parser is not None:
             chains[f"{id}"] = llm_chain | (lambda resp: resp["text"]) | prompt.parser
@@ -493,13 +547,23 @@ def init_llms():
 
     # embeddings = OllamaEmbeddings(model="nomic-embed-text")
     if "base" not in embeddings:
-        model_name = EMBEDDING_MODEL
-        model_kwargs = {"device": "cpu"}
-        encode_kwargs = {"normalize_embeddings": True}
-        embeddings["base"]  = HuggingFaceBgeEmbeddings(
-            model_name=model_name, model_kwargs=model_kwargs, encode_kwargs=encode_kwargs
-        )
-
+        # embeddings["base"] = FastEmbedEmbeddings(model_name=EMBEDDING_MODEL)
+        if use_local_embeddings:
+            model_kwargs = {"device": "cpu"}
+            encode_kwargs = {"normalize_embeddings": True}
+            embeddings["base"] = HuggingFaceBgeEmbeddings(
+                model_name=EMBEDDING_MODEL,
+                model_kwargs=model_kwargs,
+                encode_kwargs=encode_kwargs,
+            )
+        elif use_ollama_embeddings:
+            embeddings["base"] = OllamaEmbeddings(
+                model=EMBEDDING_MODEL, base_url=ollama_url
+            )
+        elif use_hf_embeddings:
+            embeddings["base"] = HuggingFaceInferenceAPIEmbeddings(
+                api_key=HF_API_KEY, model_name=EMBEDDING_MODEL
+            )
 
     if "hyde" not in embeddings:
         embeddings["hyde"] = HypotheticalDocumentEmbedder.from_llm(
@@ -573,6 +637,7 @@ def exec_structured_chain(chain, input: Dict[str, any]):
 
 chroma_client = None
 
+
 def create_document_lists(
     list_of_strings: List[str], list_of_thoughts: List[str] = None, source="local"
 ):
@@ -624,6 +689,9 @@ def get_vectorstore(id, embedding_id="base") -> Chroma:
 
 @cache
 def get_text_splitter(chunk_size, chunk_overlap):
+    if chunk_size < chunk_overlap:
+        chunk_overlap = chunk_size / 2
+
     return RecursiveCharacterTextSplitter(
         chunk_size=chunk_size, chunk_overlap=chunk_overlap
     )
@@ -694,12 +762,12 @@ def join_documents(texts, split=INSTRUCT_CHAR_LIMIT):
     return joins
 
 
-def semantic_splitter(text, split=INSTRUCT_CHAR_LIMIT):
+def semantic_splitter(text, split=INSTRUCT_CHAR_LIMIT, progress_cb=None):
     init_llms()
 
     if len(text) > 1000:
         # print("Split")
-        less_text = split_text(text, 1000)
+        less_text = split_text(text, EMBEDDING_CHAR_LIMIT, 0)
     else:
         less_text = [text]
 
@@ -708,8 +776,10 @@ def semantic_splitter(text, split=INSTRUCT_CHAR_LIMIT):
     )
 
     texts = []
-    for txt in less_text:
+    for i, txt in enumerate(less_text):
         texts = texts + semantic_splitter.split_text(txt)
+        if progress_cb != None and callable(progress_cb):
+            progress_cb(len(less_text), i)
 
     return join_documents(texts, split)
 

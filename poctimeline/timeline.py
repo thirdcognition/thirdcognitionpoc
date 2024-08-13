@@ -37,7 +37,7 @@ from db_tables import (
 from chain import (
     client_host,
     get_chroma_collection,
-    get_llm_prompt,
+    get_llm,
     get_vectorstore,
     handle_thinking,
     rerank_documents,
@@ -199,7 +199,7 @@ def now():
 def qa_bot(id):
     print(f" set qa_bot for { id = }")
     vectorstore = get_vectorstore(id, "hyde")
-    llm_setup = get_llm_prompt("chat")
+    llm_setup, _ = get_llm("chat")
 
     qa = retrieval_qa_chain(llm_setup, vectorstore)
     return qa

@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 import fitz
 from markdown import markdown
 import numpy as np
+import pandas as pd
 import sqlalchemy as sqla
 
 # import Column, Integer, String, Text, DateTime, Boolean, create_engine, exists
@@ -33,6 +34,8 @@ from rapidocr_onnxruntime import RapidOCR
 
 # from rapidocr_paddle import RapidOCR  # type: ignore
 from chain import (
+    EMBEDDING_CHAR_LIMIT,
+    EMBEDDING_OVERLAP,
     INSTRUCT_CHAR_LIMIT,
     client_host,
     SQLITE_DB,
@@ -195,7 +198,7 @@ def load_pymupdf(file: UploadedFile, filetype):
     text = ""
 
     page_percentage_total = 0.1
-    total_left = 1 - page_percentage_total
+    total_left = 0.6 - page_percentage_total
 
     i = 0
     total = len(doc)
@@ -226,7 +229,8 @@ def load_pymupdf(file: UploadedFile, filetype):
 
         i += 1
 
-    chunks = semantic_splitter(text)
+    parse_bar.progress(0.6, text="Splitting text...")
+    chunks = semantic_splitter(text, progress_cb=lambda x,y: parse_bar.progress(min(1, 0.6 + 0.4 * y / x), f"Splitting text {y+1}/{x}"))
 
     parse_bar.progress(1, text="Done.")
     parse_bar.empty()
@@ -473,9 +477,9 @@ def process_file_data(filename, category):
         rag_metadatas = []
         with st.spinner("Creating RAG"):
             if texts is not None and filetype != "md":
-                rag_split = split_text("\n".join(texts), 128 * 6, 128)
+                rag_split = split_text("\n".join(texts), EMBEDDING_CHAR_LIMIT, EMBEDDING_OVERLAP)
             elif filetype == "md":
-                rag_split = split_text(markdown_to_text("\n".join(texts)), 128 * 6, 128)
+                rag_split = split_text(markdown_to_text("\n".join(texts)), EMBEDDING_CHAR_LIMIT, EMBEDDING_OVERLAP)
 
             rag_ids = [filename + "_" + str(i) for i in range(len(rag_split))]
             rag_metadatas = [
@@ -489,8 +493,8 @@ def process_file_data(filename, category):
             ]
 
             if formatted_text is not None and formatted_text:
-                if len(formatted_text) > (128 * 6):
-                    formatted_split = split_text(formatted_text, 128 * 6, 128)
+                if len(formatted_text) > EMBEDDING_CHAR_LIMIT:
+                    formatted_split = split_text(formatted_text, EMBEDDING_CHAR_LIMIT, EMBEDDING_OVERLAP)
                 else:
                     formatted_split = [formatted_text]
 
@@ -539,15 +543,33 @@ def process_file_data(filename, category):
 
             # print(f"existing_ids = {existing_file.chroma_ids}")
             # print(f"{rag_split =}")
-            print(f"{category=}")
-            print(f"{rag_ids=}")
+            # print(f"{category=}")
+            # print(f"{rag_ids=}")
 
             for cat in category:
                 collections.append("rag_" + cat)
                 vectorstore = get_vectorstore("rag_" + cat)
-                vectorstore.add_texts(
-                    ids=rag_ids, texts=rag_split, metadatas=rag_metadatas
-                )
+                store_complete = False
+                retries = 0
+                while not store_complete and retries < 3:
+                    if (retries > 0):
+                        vectorstore.delete(rag_ids)
+                    retries += 1
+                    vectorstore.add_texts(
+                        ids=rag_ids, texts=rag_split, metadatas=rag_metadatas
+                    )
+                    rag_items = vectorstore.get(
+                            rag_ids,
+                            include=["embeddings", "documents", "metadatas"],
+                        )
+                    store_complete = True
+
+                    for rag_id in rag_ids:
+                        if rag_id not in rag_items["ids"]:
+                            store_complete = False
+                            print(f"{rag_id} not in {rag_items["ids"]} - retrying...")
+                            break
+
 
             existing_file.texts = texts  # Update the text field with the new content
             existing_file.formatted_text = formatted_text
@@ -970,17 +992,36 @@ def manage_file(filename):
                         file_entry["chroma_ids"],
                         include=["embeddings", "documents", "metadatas"],
                     )
+
+                    # print(f"{len(file_entry["chroma_ids"])=} {len(rag_items["ids"])=} {len(rag_items["metadatas"])=} {len(rag_items["documents"])=} {len(rag_items["embeddings"])=}")
+
+                    # df = pd.DataFrame({
+                    #     'id': file_entry["chroma_ids"],
+                    #     'metadatas': rag_items['metadatas'],
+                    #     'documents': rag_items['documents'],
+                    #     'embeddings': rag_items['embeddings']
+                    # })
+
+                    # # Print the DataFrame
+                    # print(df)
+
+                    # st.table(df)
+
                     # st.write(rag_items)
                     for i, id in enumerate(rag_items["ids"]):
                         [sub_col1, sub_col2] = st.columns([1, 3])
-                        with sub_col1:
-                            st.write(id)
-                            st.write(rag_items["metadatas"][i])
-                        with sub_col2:
-                            st.write("*Text:*")
-                            st.write(rag_items["documents"][i])
-                            st.write("_Embeddings:_")
-                            st.write(rag_items["embeddings"][i])
+                        try:
+                            index = rag_items["ids"].index(id)
+                            with sub_col1:
+                                st.write(id)
+                                st.write(rag_items["metadatas"][index])
+                            with sub_col2:
+                                st.write("*Text:*")
+                                st.write(rag_items["documents"][index])
+                                st.write("_Embeddings:_")
+                                st.write(rag_items["embeddings"][index])
+                        except Exception as e:
+                            sub_col2.write(f"Error: {e}")
                 else:
                     st.write("Select RAG DB first.")
 

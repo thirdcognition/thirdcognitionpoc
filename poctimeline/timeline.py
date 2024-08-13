@@ -55,6 +55,8 @@ chat_history = { "default": [] } #[[] for _ in range(11)]
 query_history = { "default": [] }
 chat_state = "default"
 
+DELIMITER="±~"
+
 def get_memory(combine=False, return_string=False, tail=-6):
     def run_memory(value=None):
         global chat_history
@@ -355,9 +357,11 @@ you can do so by selecting any of the subjects provided for you from the menu on
         and "chat_journey" in st.session_state
     ):
         # print(f"{ chat_state = }")
-        subject_index = int(chat_state.split("_")[1])
-        step_index = int(chat_state.split("_")[2])
+        subject_index = int(chat_state.split(DELIMITER)[1])
+        step_index = int(chat_state.split(DELIMITER)[2])
         journey = st.session_state.journey_list[st.session_state.chat_journey]
+        # print(f"{subject_index=} {step_index=}")
+        # print(f"{journey["subjects"][subject_index]["steps"]=}")
         st.subheader(journey["subjects"][subject_index]["steps"][step_index]["title"])
         # st.write(journey["subjects"][subject_index]["steps"][step_index]["description"])
         # st.write("##### Actions:")
@@ -475,7 +479,7 @@ This is an *extremely* cool app!
     if chat_state == "default":
         st.subheader("ThirdCognition Virtual Buddy", divider=True)
     else:
-        subject_index = int(chat_state.split("_")[1])
+        subject_index = int(chat_state.split(DELIMITER)[1])
         st.subheader(journey["subjects"][subject_index]["title"], divider=True)
     # st.subheader(journey["title"], divider=True)
     # st.write(journey["summary"])
@@ -510,7 +514,7 @@ This is an *extremely* cool app!
         for i, subject in enumerate(journey["subjects"]):
             with st.expander(f"{subject["title"]}", expanded=(f"{journey_name}_{i}" in chat_state)):
                 for j, step in enumerate(subject["steps"]):
-                    step_id = f'{journey_name}_{i}_{j}'
+                    step_id = f'{journey_name}{DELIMITER}{i}{DELIMITER}{j}'
                     # if st.session_state.chat_state != i + 1:
                         # col1, col2 = st.columns([5, 1])
 

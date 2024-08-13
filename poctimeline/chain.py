@@ -5,6 +5,7 @@ import re
 from fuzzywuzzy import fuzz
 from typing import Dict, List
 import chromadb
+from chromadb.utils.embedding_functions import create_langchain_embedding
 from langchain_core.language_models.llms import BaseLLM
 from langchain.chains.hyde.base import HypotheticalDocumentEmbedder
 from langchain.chains.combine_documents.stuff import StuffDocumentsChain
@@ -13,7 +14,8 @@ from langchain.chains.openai_functions import create_extraction_chain
 from langchain.chains.llm import LLMChain
 from langchain_community.chat_models.ollama import ChatOllama
 from langchain_community.embeddings.huggingface import (
-    HuggingFaceBgeEmbeddings,
+    # HuggingFaceBgeEmbeddings,
+    HuggingFaceEmbeddings,
     HuggingFaceInferenceAPIEmbeddings,
 )
 from langchain_community.embeddings.ollama import OllamaEmbeddings
@@ -54,6 +56,7 @@ from prompts import (
     helper,
     chat,
     question,
+    grader,
     hyde,
     summary,
     summary_guided,
@@ -172,14 +175,14 @@ use_local_embeddings = os.getenv("USE_LOCAL_EMBEDDING", "True") == "True" or Fal
 if use_local_embeddings:
     EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en")
     EMBEDDING_CHAR_LIMIT = int(os.getenv("EMBEDDING_CHAR_LIMIT", 1000))
-    EMBEDDING_OVERLAP = int(os.getenv("EMBEDDING_CHAR_LIMIT", 100))
+    EMBEDDING_OVERLAP = int(os.getenv("EMBEDDING_OVERLAP", 100))
 
     print("+++ LOCAL EMBEDDING +++")
 
 if use_ollama_embeddings:
     EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "bge-small-en")
     EMBEDDING_CHAR_LIMIT = int(os.getenv("OLLAMA_EMBEDDING_CHAR_LIMIT", 1000))
-    EMBEDDING_OVERLAP = int(os.getenv("OLLAMA_EMBEDDING_CHAR_LIMIT", 100))
+    EMBEDDING_OVERLAP = int(os.getenv("OLLAMA_EMBEDDING_OVERLAP", 100))
 
     print("+++ OLLAMA EMBEDDING +++")
 
@@ -187,7 +190,7 @@ if use_hf_embeddings:
     HF_API_KEY = os.getenv("HF_API_KEY", "")
     EMBEDDING_MODEL = os.getenv("HF_EMBEDDING_MODEL", "BAAI/bge-small-en")
     EMBEDDING_CHAR_LIMIT = int(os.getenv("HF_EMBEDDING_CHAR_LIMIT", 1000))
-    EMBEDDING_OVERLAP = int(os.getenv("HF_EMBEDDING_CHAR_LIMIT", 100))
+    EMBEDDING_OVERLAP = int(os.getenv("HF_EMBEDDING_OVERLAP", 100))
 
     print("+++ HUGGINGFACE EMBEDDING +++")
 
@@ -493,6 +496,11 @@ def init_llms():
         action,
     )
     init_chain(
+        "grader",
+        "json",
+        grader,
+    )
+    init_chain(
         "check",
         "instruct_0",
         check,
@@ -523,7 +531,7 @@ def init_llms():
     )
     init_chain("journey_step_intro", "instruct_detailed_warm", journey_step_intro)
     init_chain("journey_step_actions", "instruct_detailed_warm", journey_step_actions)
-    init_chain("question", "chat", chat)
+    init_chain("question", "chat", question)
 
     # template = """<s> <<SYS>> Act as a a helpful startup coach from antler trying to answer questions thoroughly. Use the following pieces of retrieved context to answer the question. If you don't know the answer, just say that you don't know.<</SYS>> </s>
 
@@ -551,7 +559,7 @@ def init_llms():
         if use_local_embeddings:
             model_kwargs = {"device": "cpu"}
             encode_kwargs = {"normalize_embeddings": True}
-            embeddings["base"] = HuggingFaceBgeEmbeddings(
+            embeddings["base"] = HuggingFaceEmbeddings(
                 model_name=EMBEDDING_MODEL,
                 model_kwargs=model_kwargs,
                 encode_kwargs=encode_kwargs,
@@ -639,52 +647,79 @@ chroma_client = None
 
 
 def create_document_lists(
-    list_of_strings: List[str], list_of_thoughts: List[str] = None, source="local"
+    list_of_strings: List[str], list_of_thoughts: List[str] = None, source="local", list_of_metadata: List[Dict[str, any]] = None
 ):
     doc_list = []
 
     for index, item in enumerate(list_of_strings):
         thinking = list_of_thoughts[index] if list_of_thoughts else None
+        metadata = list_of_metadata[index] if list_of_metadata else None
+        if metadata is None:
+            metadata = {"source": source, "thought": thinking, "index": index} if thinking else {"source": source, "index": index}
+
         if len(item) > 3000:
             split_texts = split_text(item, split=3000, overlap=100)
             for split_item in split_texts:
+
                 doc = Document(
                     page_content=split_item,
-                    metadata={"source": source, "thoughts": thinking, "index": index},
+                    metadata=metadata,
                 )
                 doc_list.append(doc)
         else:
             doc = Document(
                 page_content=item,
-                metadata={"source": source, "thoughts": thinking, "index": index},
+                metadata=metadata,
             )
             doc_list.append(doc)
 
     return doc_list
 
+collections = {}
 
-def get_chroma_collection(name, update=False, path=CHROMA_PATH) -> chromadb.Collection:
+def get_chroma_collection(name, update=False, path=CHROMA_PATH, embedding_id = None) -> chromadb.Collection:
+    global collections
+
+    if name in collections and not update:
+        return collections[name]
+
     global chroma_client
     chroma_client = chroma_client or chromadb.PersistentClient(path=path)
 
     if update:
         chroma_client.delete_collection(name=name)
 
-    print(f"Get collection {name}")
-
-    return chroma_client.get_or_create_collection(name)
-
-
-def get_vectorstore(id, embedding_id="base") -> Chroma:
     init_llms()
+
+    embedding_function = None
+    if embedding_id is not None:
+        embedding_function = create_langchain_embedding(embeddings[embedding_id])
+    else:
+        embedding_function = create_langchain_embedding(embeddings["base"])
+
+    collection = chroma_client.get_or_create_collection(name, embedding_function=embedding_function)
+    collections[name] = collection
+    return collection
+
+vectorstores = {}
+
+def get_vectorstore(id, embedding_id="base", update_vectorstores = False) -> Chroma:
+    init_llms()
+    global vectorstores
+
+    if id in vectorstores and not update_vectorstores:
+        return vectorstores[id]
 
     global embeddings
 
-    return Chroma(
+    vectorstore = Chroma(
         client=chroma_client,
         collection_name=id,
         embedding_function=embeddings[embedding_id],
     )
+
+    vectorstores[id] = vectorstore
+    return vectorstore
 
 
 @cache

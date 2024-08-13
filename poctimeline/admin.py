@@ -43,7 +43,6 @@ from chain import (
     exec_structured_chain,
     get_chain,
     get_chroma_collection,
-    get_vectorstore,
     handle_thinking,
     semantic_splitter,
     split_markdown,
@@ -457,7 +456,7 @@ def process_file_data(filename, category):
                     # print(f"{ summary_text = } \n\n { shorter_thoughts = }")
 
                     shorter_text = ''
-                    while shorter_text == '' or len(shorter_text) < 10:
+                    while shorter_text is None or shorter_text == '' or len(shorter_text) < 10:
                         shorter_text, shorter_thoughts = llm_edit("summary", [summary_text])
 
                     if shorter_text is not None:
@@ -475,6 +474,7 @@ def process_file_data(filename, category):
         rag_split = []
         rag_ids = []
         rag_metadatas = []
+        rag_documents = []
         with st.spinner("Creating RAG"):
             if texts is not None and filetype != "md":
                 rag_split = split_text("\n".join(texts), EMBEDDING_CHAR_LIMIT, EMBEDDING_OVERLAP)
@@ -513,6 +513,7 @@ def process_file_data(filename, category):
                     }
                     for i in range(len(formatted_split))
                 ]
+                # rag_documents = create_document_lists(rag_split, list_of_metadata=rag_metadatas, source=filename)
         st.success("RAG generation complete")
         # Save the filename and text into the database
 
@@ -548,15 +549,15 @@ def process_file_data(filename, category):
 
             for cat in category:
                 collections.append("rag_" + cat)
-                vectorstore = get_vectorstore("rag_" + cat)
+                vectorstore = get_chroma_collection("rag_" + cat) #get_vectorstore("rag_" + cat)
                 store_complete = False
                 retries = 0
                 while not store_complete and retries < 3:
                     if (retries > 0):
                         vectorstore.delete(rag_ids)
                     retries += 1
-                    vectorstore.add_texts(
-                        ids=rag_ids, texts=rag_split, metadatas=rag_metadatas
+                    vectorstore.add(
+                        ids=rag_ids, documents=rag_split, metadatas=rag_metadatas
                     )
                     rag_items = vectorstore.get(
                             rag_ids,
@@ -1008,7 +1009,7 @@ def manage_file(filename):
                     # st.table(df)
 
                     # st.write(rag_items)
-                    for i, id in enumerate(rag_items["ids"]):
+                    for i, id in enumerate(file_entry["chroma_ids"]):
                         [sub_col1, sub_col2] = st.columns([1, 3])
                         try:
                             index = rag_items["ids"].index(id)
@@ -1021,7 +1022,7 @@ def manage_file(filename):
                                 st.write("_Embeddings:_")
                                 st.write(rag_items["embeddings"][index])
                         except Exception as e:
-                            sub_col2.write(f"Error: {e}")
+                            st.write(f"Error: {e}")
                 else:
                     st.write("Select RAG DB first.")
 

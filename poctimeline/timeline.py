@@ -109,11 +109,11 @@ def get_memory(combine=False, return_string=False, tail=-6):
 
 cur_query = ''
 
-def parse_retriever_input(get_mem, return_str=False):
+def parse_retriever_input(get_mem):
     def get_retriever_input(params: Dict):
-        print(f"\n\n{ params = }")
+        # print(f"\n\nget_retriever_input: { params = }")
         prev_questions = get_mem()
-        print(f"\n\n{prev_questions = }")
+        # print(f"\n\n{prev_questions = }")
         global cur_query
         cur_query = params["question"]
         # if len(prev_questions) > 0:
@@ -121,7 +121,7 @@ def parse_retriever_input(get_mem, return_str=False):
         user_question= ''
 
         user_question= f'\nQuestion: \n{params["question"]}'
-        return prev_questions + [user_question]
+        return prev_questions + user_question
 
     return get_retriever_input
 
@@ -129,6 +129,7 @@ def parse_question_input(params: Dict):
     return params["question"]
 
 def reformat_rag(params: list[Document]):
+    print("Reformatting RAG results...")
     global cur_query
 
     query = cur_query
@@ -156,7 +157,7 @@ def reformat_rag(params: list[Document]):
     # st.session_state.query_history = query_history
 
     new_content_str = str(new_content).replace("Document", "\n\nDocument").replace('[', '').replace(']', '').replace('metadata', '\n\nmetadata').replace('page_content', '\npage_content')
-    print(f'\n\nRAG reformat: \n{query = } \n\nresult = {new_content_str}\n\n')
+    print(f'\n\nRAG reformat: \n{query = } \n\nresult = {new_content_str}')
     return new_content
 
 def retrieval_qa_chain(llm, prompt, vectorstore):
@@ -174,8 +175,13 @@ def retrieval_qa_chain(llm, prompt, vectorstore):
 
     # print(f"{ llm = }")
 
+    def qa_no_context_log(params):
+        # print(f"QA no context: {params=}")
+        return params
+
     qa_no_context = (
-        prompt
+        qa_no_context_log
+        | prompt
         | llm
         | StrOutputParser()
     )
@@ -183,8 +189,8 @@ def retrieval_qa_chain(llm, prompt, vectorstore):
     qa_chain = (
         RunnableParallel(
             {
-                "context": RunnablePassthrough(hypothetical_document=qa_no_context) | parse_retriever_input(get_memory(tail=-8), True) | retriever | reformat_rag,
-                "question": parse_question_input | RunnablePassthrough(),
+                "context": parse_retriever_input(get_memory(tail=-8, return_string=True)) | retriever | reformat_rag,
+                "question": RunnablePassthrough(),
                 "history": RunnableLambda(get_memory()),
             }
         )
@@ -200,8 +206,8 @@ def now():
 
 @cache
 def qa_bot(id):
-    print(f" set qa_bot for { id = }")
-    vectorstore = get_vectorstore(id, "hyde")
+    # print(f" set qa_bot for { id = }")
+    vectorstore = get_vectorstore(id, embedding_id="hyde")
     llm = get_llm("chat")
     prompt = get_prompt("question")
 
@@ -210,14 +216,14 @@ def qa_bot(id):
 
 
 def send_message(message, journey_name, chat_state):
-    print(f"\n({datetime.datetime.now()}) { message = }\n")
+    # print(f"\n { message = }\n")
     chain_id = st.session_state.journey_chain_ids[journey_name]
-    # print(f"\n({datetime.datetime.now()}) {chain_id = }")
+    # print(f"\n {chain_id = }")
     chain = st.session_state.chains[chain_id]
     memory = st.session_state.chat_history[chat_state]
 
-    print(f"\n({datetime.datetime.now()}) {memory = }\n")
-    print(f"\n({datetime.datetime.now()}) {chain_id = }")
+    # print(f"\n {memory = }\n")
+    # print(f"\n {chain_id = }")
     # print(f" {message = }")
     resp, _ = handle_thinking((lambda: chain.invoke({"question": message})))
     return resp

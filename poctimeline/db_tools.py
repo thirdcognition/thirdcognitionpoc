@@ -1,14 +1,19 @@
+import os
 import sqlalchemy as sqla
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.ext.mutable import MutableList
+import chromadb
+
+from langchain_chroma import Chroma
+from chromadb.utils.embedding_functions import create_langchain_embedding
 import streamlit as st
 from chain import (
-    SQLITE_DB
+    get_embeddings,
+    init_llms
 )
+from load_env import CHROMA_PATH, FILE_TABLENAME, JOURNEY_TABLENAME, SQLITE_DB
 
-FILE_TABLENAME = "files"
-JOURNEY_TABLENAME = "journey"
-
+chroma_client = None
 
 # Create a base class for SQLAlchemy's declarative extension
 Base = declarative_base()
@@ -62,8 +67,6 @@ def init_db():
 
     return database_session
 
-
-
 def get_db_files(reset=False, filename=None):
     if "db_files" not in st.session_state or reset or filename != None and filename not in st.session_state.db_files.keys():
         if filename == None:
@@ -102,3 +105,50 @@ def get_db_journey(journey_name:str = None, reset=False):
         db_journey = st.session_state.db_journey
 
     return db_journey
+
+
+collections = {}
+
+def get_chroma_collection(name, update=False, path=CHROMA_PATH, embedding_id = None) -> chromadb.Collection:
+    global collections
+
+    if name in collections and not update:
+        return collections[name]
+
+    global chroma_client
+    chroma_client = chroma_client or chromadb.PersistentClient(path=path)
+
+    if update:
+        chroma_client.delete_collection(name=name)
+
+    init_llms()
+
+    embedding_function = None
+    if embedding_id is not None:
+        embedding_function = create_langchain_embedding(get_embeddings(embedding_id))
+    else:
+        embedding_function = create_langchain_embedding(get_embeddings("base"))
+
+    collection = chroma_client.get_or_create_collection(name, embedding_function=embedding_function)
+    collections[name] = collection
+    return collection
+
+
+vectorstores = {}
+
+def get_vectorstore(id, embedding_id="base", update_vectorstores = False) -> Chroma:
+    print(f"\n\n\nget_vectorstore {id=} {embedding_id=}\n\n\n")
+    init_llms()
+    global vectorstores
+
+    if id in vectorstores and not update_vectorstores:
+        return vectorstores[id]
+
+    vectorstore = Chroma(
+        client=chroma_client,
+        collection_name=id,
+        embedding_function=get_embeddings(embedding_id),
+    )
+
+    vectorstores[id] = vectorstore
+    return vectorstore

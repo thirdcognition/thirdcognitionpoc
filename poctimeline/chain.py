@@ -1,49 +1,55 @@
-from functools import cache
-import json
-import os
-import re
-from fuzzywuzzy import fuzz
 from typing import Dict, List
-import chromadb
-from chromadb.utils.embedding_functions import create_langchain_embedding
-from langchain_core.language_models.llms import BaseLLM
+
+from langchain_chroma import Chroma
+
 from langchain.chains.hyde.base import HypotheticalDocumentEmbedder
-from langchain.chains.combine_documents.stuff import StuffDocumentsChain
-from langchain.chains.combine_documents.reduce import ReduceDocumentsChain
-from langchain.chains.openai_functions import create_extraction_chain
-from langchain.chains.llm import LLMChain
-from langchain_community.chat_models.ollama import ChatOllama
-from langchain_community.embeddings.huggingface import (
+from langchain.chains.combine_documents.stuff import create_stuff_documents_chain
+
+from langchain_huggingface import (
     # HuggingFaceBgeEmbeddings,
     HuggingFaceEmbeddings,
-    HuggingFaceInferenceAPIEmbeddings,
 )
+from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
 from langchain_community.embeddings.ollama import OllamaEmbeddings
 
 # from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain.callbacks.manager import CallbackManager
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
-from langchain_core.runnables.base import RunnableSequence
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts.prompt import PromptTemplate
-from langchain_community.document_compressors import FlashrankRerank
-from langchain_groq import ChatGroq
-from langchain_text_splitters import (
-    RecursiveCharacterTextSplitter,
-    MarkdownHeaderTextSplitter,
+from langchain_core.runnables import (
+    RunnableSequence,
+    RunnableParallel,
+    RunnablePassthrough,
+    RunnableLambda,
+    Runnable,
 )
-from langchain_experimental.text_splitter import SemanticChunker
-from langchain.schema.document import Document
-
-# from langchain_community.vectorstores.chroma import Chroma
-from langchain_chroma import Chroma
-
+from langchain_core.prompts.prompt import PromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
+from langchain.output_parsers.retry import RetryOutputParser
 
-from langchain.globals import set_debug, set_verbose
-from dotenv import load_dotenv
-from pydantic import BaseModel, Field
-
+from load_env import (
+    CHAT_CONTEXT_SIZE,
+    CHAT_LLM,
+    DEBUGMODE,
+    DEFAULT_LLM_MODEL,
+    EMBEDDING_MODEL,
+    GROQ_API_KEY,
+    HF_API_KEY,
+    INSTRUCT_CONTEXT_SIZE,
+    INSTRUCT_DETAILED_CONTEXT_SIZE,
+    INSTRUCT_DETAILED_LLM,
+    INSTRUCT_LLM,
+    OLLAMA_URL,
+    STRUCTURED_CONTEXT_SIZE,
+    STRUCTURED_LLM,
+    TOOL_CONTEXT_SIZE,
+    TOOL_LLM,
+    USE_GROQ,
+    USE_HF_EMBEDDINGS,
+    USE_LOCAL_EMBEDDINGS,
+    USE_OLLAMA,
+    USE_OLLAMA_embeddings,
+)
 from prompts import (
     PromptFormatter,
     text_formatter,
@@ -67,140 +73,10 @@ from prompts import (
     journey_structured,
 )
 
-# Load .env file from the parent directory
-load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
-print("Loading env: ", os.path.join(os.path.dirname(__file__), "..", ".env"))
-# for key, value in os.environ.items():
-#     print(f'\t{key}= {value}')
-
-debug_mode = os.getenv("LLM_DEBUG", "True") == "True" or False
-
-set_debug(debug_mode)
-set_verbose(debug_mode)
-
-CHROMA_PATH = os.getenv("CHROMA_PATH", "db/chroma_db")
-SQLITE_DB = os.getenv("SQLITE_DB", "db/files.db")
-
-use_ollama = os.getenv("USE_OLLAMA", "True") == "True" or False
-use_groq = os.getenv("USE_GROQ", "True") == "True" or False
-DEFAULT_LLM_MODEL: BaseLLM = None
-CHAT_LLM: str = None
-CHAT_CHAR_LIMIT: int = None
-CHAT_CONTEXT_SIZE: int = None
-INSTRUCT_LLM: str = None
-INSTRUCT_CHAR_LIMIT: int = None
-INSTRUCT_CONTEXT_SIZE: int = None
-STRUCTURED_LLM: str = None
-STRUCTURED_CHAR_LIMIT: int = None
-STRUCTURED_CONTEXT_SIZE: int = None
-TOOL_LLM: str = None
-TOOL_CHAR_LIMIT: int = None
-TOOL_CONTEXT_SIZE: int = None
-EMBEDDING_MODEL: str = None
-EMBEDDING_CHAR_LIMIT: int = 1000
-EMBEDDING_OVERLAP: int = 100
-
-client_host = os.getenv("CLIENT_HOST", "http://localhost:3100")
-admin_host = os.getenv("ADMIN_HOST", "http://localhost:4000")
-
-if use_ollama:
-    DEFAULT_LLM_MODEL = ChatOllama
-    ollama_url = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
-    CHAT_LLM = os.getenv("OLLAMA_CHAT_LLM", "phi3:mini")
-    CHAT_CONTEXT_SIZE = int(os.getenv("OLLAMA_CHAT_CTX_SIZE", 8192))
-    CHAT_CHAR_LIMIT = int(os.getenv("OLLAMA_CHAT_CHAR_LIMIT", 1024))
-
-    INSTRUCT_LLM = os.getenv("OLLAMA_INSTRUCT_LLM", "phi3:instruct")
-    INSTRUCT_CONTEXT_SIZE = int(os.getenv("OLLAMA_INSTRUCT_CTX_SIZE", 8192))
-    INSTRUCT_CHAR_LIMIT = int(os.getenv("OLLAMA_INSTRUCT_CHAR_LIMIT", 1024))
-
-    INSTRUCT_DETAILED_LLM = os.getenv("OLLAMA_INSTRUCT_DETAILED_LLM", "phi3:instruct")
-    INSTRUCT_DETAILED_CONTEXT_SIZE = int(
-        os.getenv("OLLAMA_INSTRUCT_DETAILED_CTX_SIZE", 8192)
-    )
-    INSTRUCT_DETAILED_CHAR_LIMIT = int(
-        os.getenv("OLLAMA_INSTRUCT_DETAILED_CHAR_LIMIT", 1024)
-    )
-
-    STRUCTURED_LLM = os.getenv("OLLAMA_STRUCTURED_LLM", "phi3:instruct")
-    STRUCTURED_CONTEXT_SIZE = int(os.getenv("OLLAMA_STRUCTURED_CTX_SIZE", 8192))
-    STRUCTURED_CHAR_LIMIT = int(os.getenv("OLLAMA_STRUCTURED_CHAR_LIMIT", 1024))
-
-    TOOL_LLM = os.getenv("OLLAMA_TOOL_LLM", "phi3:instruct")
-    TOOL_CONTEXT_SIZE = int(os.getenv("OLLAMA_TOOL_CTX_SIZE", 8192))
-    TOOL_CHAR_LIMIT = int(os.getenv("OLLAMA_TOOL_CHAR_LIMIT", 1024))
-
-    print("+++ OLLAMA +++")
-
-if use_groq:
-    DEFAULT_LLM_MODEL = ChatGroq
-    GROQ_API_KEY = os.getenv("GROQ_API_KEY", None)
-    CHAT_LLM = os.getenv("GROQ_CHAT_LLM", "llama-3.1-8b-instant")
-    CHAT_CONTEXT_SIZE = int(os.getenv("GROQ_CHAT_CTX_SIZE", 8192))
-    CHAT_CHAR_LIMIT = int(os.getenv("GROQ_CHAT_CHAR_LIMIT", 1024))
-
-    INSTRUCT_LLM = os.getenv("GROQ_INSTRUCT_LLM", "llama-3.1-8b-instant")
-    INSTRUCT_CONTEXT_SIZE = int(os.getenv("GROQ_INSTRUCT_CTX_SIZE", 8192))
-    INSTRUCT_CHAR_LIMIT = int(os.getenv("GROQ_INSTRUCT_CHAR_LIMIT", 1024))
-
-    INSTRUCT_DETAILED_LLM = os.getenv(
-        "GROQ_INSTRUCT_DETAILED_LLM", "llama-3.1-8b-instant"
-    )
-    INSTRUCT_DETAILED_CONTEXT_SIZE = int(
-        os.getenv("GROQ_INSTRUCT_DETAILED_CTX_SIZE", 8192)
-    )
-    INSTRUCT_DETAILED_CHAR_LIMIT = int(os.getenv("GROQ_INSTRUCT_CHAR_LIMIT", 1024))
-
-    STRUCTURED_LLM = os.getenv("GROQ_STRUCTURED_LLM", "llama-3.1-8b-instant")
-    STRUCTURED_CONTEXT_SIZE = int(os.getenv("GROQ_STRUCTURED_CTX_SIZE", 8192))
-    STRUCTURED_CHAR_LIMIT = int(os.getenv("GROQ_STRUCTURED_CHAR_LIMIT", 1024))
-
-    TOOL_LLM = os.getenv("GROQ_TOOL_LLM", "llama-3.1-8b-instant")
-    TOOL_CONTEXT_SIZE = int(os.getenv("GROQ_TOOL_CTX_SIZE", 8192))
-    TOOL_CHAR_LIMIT = int(os.getenv("GROQ_TOOL_CHAR_LIMIT", 1024))
-
-    print("+++ GROQ +++")
-
-print(f"\tChat: {CHAT_LLM=} {CHAT_CONTEXT_SIZE=} {CHAT_CHAR_LIMIT}")
-print(f"\tInstruct: {INSTRUCT_LLM=} {INSTRUCT_CONTEXT_SIZE=} {INSTRUCT_CHAR_LIMIT}")
-print(
-    f"\tInstruct detailed: {INSTRUCT_DETAILED_LLM=} {INSTRUCT_DETAILED_CONTEXT_SIZE=} {INSTRUCT_DETAILED_CHAR_LIMIT}"
-)
-print(f"\tTool: {TOOL_LLM=} {TOOL_CONTEXT_SIZE=} {TOOL_CHAR_LIMIT}")
-
-use_ollama_embeddings = os.getenv("USE_OLLAMA_EMBEDDING", "False") == "True" or False
-use_hf_embeddings = os.getenv("USE_HF_EMBEDDING", "False") == "True" or False
-use_local_embeddings = os.getenv("USE_LOCAL_EMBEDDING", "True") == "True" or False
-
-if use_local_embeddings:
-    EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en")
-    EMBEDDING_CHAR_LIMIT = int(os.getenv("EMBEDDING_CHAR_LIMIT", 1000))
-    EMBEDDING_OVERLAP = int(os.getenv("EMBEDDING_OVERLAP", 100))
-
-    print("+++ LOCAL EMBEDDING +++")
-
-if use_ollama_embeddings:
-    EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "bge-small-en")
-    EMBEDDING_CHAR_LIMIT = int(os.getenv("OLLAMA_EMBEDDING_CHAR_LIMIT", 1000))
-    EMBEDDING_OVERLAP = int(os.getenv("OLLAMA_EMBEDDING_OVERLAP", 100))
-
-    print("+++ OLLAMA EMBEDDING +++")
-
-if use_hf_embeddings:
-    HF_API_KEY = os.getenv("HF_API_KEY", "")
-    EMBEDDING_MODEL = os.getenv("HF_EMBEDDING_MODEL", "BAAI/bge-small-en")
-    EMBEDDING_CHAR_LIMIT = int(os.getenv("HF_EMBEDDING_CHAR_LIMIT", 1000))
-    EMBEDDING_OVERLAP = int(os.getenv("HF_EMBEDDING_OVERLAP", 100))
-
-    print("+++ HUGGINGFACE EMBEDDING +++")
-
-print(f"\tEmbedding: {EMBEDDING_MODEL=}, {EMBEDDING_CHAR_LIMIT=}, {EMBEDDING_OVERLAP=}")
-
 llms = {}
 embeddings = {}
-prompts = {}
+prompts: Dict[str, PromptTemplate] = {}
 chains: Dict[str, RunnableSequence] = {}
-
 
 def get_chain(chain) -> RunnableSequence:
     if len(chains.keys()) == 0:
@@ -220,6 +96,7 @@ def get_llm(llm_id="default"):
 
     return llm
 
+
 def get_prompt(prompt_id="helper") -> PromptTemplate:
     if len(chains.keys()) == 0:
         init_llms()
@@ -227,142 +104,19 @@ def get_prompt(prompt_id="helper") -> PromptTemplate:
     return prompts[prompt_id]
 
 
-def handle_thinking(text_provider, min_len=100, retry=True) -> tuple[str, str]:
+def get_embeddings(embedding_id="base"):
+    if len(embeddings.keys()) == 0:
+        init_llms()
 
-    # Rest of the function remains the same
-    # Define the tags to match
-    start_tag = "thinking_start"
-    end_tag = "thinking_end"
-
-    # Initialize the lists to store the thinking contents and remaining contents
-    thinking_contents = []
-    text_contents = []
-
-    text_contents_joined = ""
-    thinking_contents_joined = ""
-
-    if isinstance(text_provider, str):
-        text = text_provider
-    else:
-        tries = 0
-        max_tries = 3
-        text = None
-        while text is None and tries < max_tries:
-            tries += 1
-            try:
-                text = text_provider()
-            except Exception as e:
-                text = None
-                print(f"Error: {e}")
-
-    #     print(f"""Provider response:
-    # === RESPONSE START ===
-
-    # Length: {len(text)}
-    # {text}
-
-    # === RESPONSE END ===
-    # """)
-
-    # Split the text into matches using regex
-    matches = re.split(r"([\[{\(][/ ]*[^\[\]]+[\]}\)])", text, 0, re.IGNORECASE)
-
-    # Initialize a flag to indicate whether we're inside a thinking block
-    in_thinking = False
-
-    # print(f"Start matching fors {len(matches)} matches")
-
-    # Iterate over the matches
-    for match in matches:
-        match = match.strip()
-        # print(f"Match: {match}")
-        # If the match is a start tag, set the flag to True
-        if fuzz.ratio(match, start_tag) > 80:
-            in_thinking = True
-        # If the match is an end tag, set the flag to False
-        elif fuzz.ratio(match, end_tag) > 80:
-            in_thinking = False
-        # If we're inside a thinking block, add the match to the thinking contents
-        elif in_thinking:
-            thinking_contents.append(match)
-        # Otherwise, add the match to the text contents
-        else:
-            text_contents.append(match)
-
-    text_contents_joined = "\n".join(text_contents)
-    thinking_contents_joined = "\n".join(thinking_contents)
-
-    if (
-        retry
-        and not isinstance(text_provider, str)
-        and (text_contents_joined == "" or len(text_contents_joined) < min_len)
-    ):
-        max_retries = 5
-        try_nmb = 0
-        while text_contents_joined == "" or (
-            len(text_contents_joined) < min_len and try_nmb < max_retries
-        ):
-            try_nmb += 1
-            text_contents_joined, thinking_contents_joined = handle_thinking(
-                text_provider, min_len=min_len, retry=False
-            )
-
-    return text_contents_joined, thinking_contents_joined
-
-
-def verify_step_result(get_result, amount: int, format: str = None) -> str:
-    if format is None:
-        format = """
-Format for 5 items:
-Title: Description (optional)
-Title: Description (optional)
-Title: Description (optional)
-Title: Description (optional)
-Title: Description (optional)
-"""
-
-    max_retries = 5
-
-    success = False
-    steps: str = None
-    retries = 0
-    while not success and retries < max_retries:
-        retries += 1
-
-        try:
-            steps = get_result()
-            steps = re.sub(r":\s*\n", ": ", steps)
-            steps = re.sub(r"\n\s*:", ":", steps)
-            steps = "\n".join(
-                [step.strip() for step in steps.split("\n") if step.strip()]
-            )
-            correct_response = False
-            resp_retr = 0
-            # print(f"{steps = }")
-            while not correct_response and resp_retr < max_retries:
-                resp_retr += 1
-
-                check_response = get_chain("check").invoke(
-                    {
-                        "context": steps,
-                        "options": "if matches the format respond and amount exactly: yes, if the amount or the format are close but not exact respond: maybe, if does not match respond: no",
-                        "expected_count": f"Expected approximately {amount} items.",
-                        "count": len(steps.split("\n")),
-                        "format": format,
-                    }
-                )
-                print(f"{check_response = }")
-                resp = check_response.lower().split("\n")[0].strip()
-                correct_response = resp in ["yes", "y", "no", "n", "maybe", "m"]
-                success = resp in ["yes", "y", "maybe", "m"]
-        except Exception as e:
-            print(f"Error: {e}")
-
-    return steps
-
+    if embedding_id in embeddings.keys():
+        return embeddings[embedding_id]
 
 def init_chain(
-    id, llm="default", prompt: PromptFormatter = text_formatter, init_llm=True
+    id,
+    llm="default",
+    prompt: PromptFormatter = text_formatter,
+    init_llm=True,
+    structured=False,
 ):  # templates_mistral
     if f"{id}" not in prompts:
         prompts[f"{id}"] = (
@@ -370,32 +124,57 @@ def init_chain(
         )  # ChatPromptTemplate.from_messages(messages)
 
     if f"{id}" not in chains and init_llm:
-        # if prompt.parser is not None:
-        #     chains[f"{id}"] = prompts[f"{id}"] | llms[llm] | prompt.parser
-        # else:
-        #     chains[f"{id}"] = prompts[f"{id}"] | llms[llm] | StrOutputParser()
+        chains[f"{id}"] = prompts[f"{id}"] | llms[llm]
 
-        llm_chain = LLMChain(llm=llms[llm], prompt=prompts[f"{id}"])
         if prompt.parser is not None:
-            chains[f"{id}"] = llm_chain | (lambda resp: resp["text"]) | prompt.parser
-            # | (lambda resp: json.loads(resp["text"]) if isinstance(resp["text"], str) else resp)
+            retry_parser = RetryOutputParser.from_llm(
+                parser=prompt.parser, llm=llms[llm], max_retries=3
+            )
+
+            def add_format_instructions(params: Dict):
+                if "format_instructions" not in params.keys():
+                    params["format_instructions"] = (
+                        prompt.parser.get_format_instructions()
+                    )
+                return params
+
+            # print(f"Prompt {id = }")
+
+            def rerun_parser(x):
+                x["completion"] = x["completion"].content.strip()
+                return retry_parser.parse_with_prompt(**x)
+
+            chains[f"{id}"] = RunnableParallel(
+                completion=chains[f"{id}"],
+                prompt_value=prompts[f"{id}"],
+            ) | RunnableLambda(rerun_parser)
+
+            if (
+                isinstance(prompt.parser, PydanticOutputParser)
+                and "format_instructions" in prompts[f"{id}"].input_variables
+            ):
+                # print("Add format instructions")
+                chains[f"{id}"] = add_format_instructions | chains[f"{id}"]
+            # else:
+            #     chains[f"{id}"] = chains[f"{id}"] | prompt.parser
+
         else:
-            chains[f"{id}"] = llm_chain | (lambda resp: resp["text"])
+            chains[f"{id}"] = chains[f"{id}"] | StrOutputParser()
 
 
 def init_llm(
     id,
     model=CHAT_LLM,
     temperature=0.2,
-    verbose=debug_mode,
+    verbose=DEBUGMODE,
     Type=DEFAULT_LLM_MODEL,
     ctx_size=CHAT_CONTEXT_SIZE,
 ):
     if f"{id}" not in llms:
         print(f"Initialize llm {id}: {model=} with {ctx_size=} and {temperature=}...")
-        if use_ollama:
+        if USE_OLLAMA:
             llms[f"{id}"] = Type(
-                base_url=ollama_url,
+                base_url=OLLAMA_URL,
                 model=model,
                 verbose=verbose,
                 temperature=temperature,
@@ -407,7 +186,7 @@ def init_llm(
             )
         else:
             llms[f"{id}"] = Type(
-                streaming=debug_mode,
+                streaming=DEBUGMODE,
                 api_key=GROQ_API_KEY,
                 model=model,
                 verbose=verbose,
@@ -417,12 +196,11 @@ def init_llm(
                 callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
             )
 
-
 initialized = False
-
 
 def init_llms():
     print("Initialize llms...")
+    global initialized
     initialized = True
 
     init_llm("default")
@@ -456,29 +234,28 @@ def init_llms():
         model=INSTRUCT_DETAILED_LLM,
         ctx_size=INSTRUCT_DETAILED_CONTEXT_SIZE,
     )
-    # init_llm("json", Type=OllamaFunctions)
 
     if "json" not in llms:
-        if use_ollama:
+        if USE_OLLAMA:
             llms["json"] = DEFAULT_LLM_MODEL(
                 # model=llama3_llm,
-                base_url=ollama_url,
+                base_url=OLLAMA_URL,
                 model=STRUCTURED_LLM,
                 model_kwargs={"response_format": {"type": "json_object"}},
                 temperature=0,
                 num_ctx=STRUCTURED_CONTEXT_SIZE,
                 num_predict=STRUCTURED_CONTEXT_SIZE,
-                verbose=debug_mode,
+                verbose=DEBUGMODE,
                 callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
             )
-        if use_groq:
+        if USE_GROQ:
             llms["json"] = DEFAULT_LLM_MODEL(
                 api_key=GROQ_API_KEY,
                 model=STRUCTURED_LLM,
                 model_kwargs={"response_format": {"type": "json_object"}},
                 temperature=0,
                 timeout=30000,
-                verbose=debug_mode,
+                verbose=DEBUGMODE,
                 callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
             )
 
@@ -521,7 +298,7 @@ def init_llms():
     init_chain("journey_structured", "json", journey_structured)
     init_chain(
         "journey_steps",
-        "instruct",
+        "json",
         journey_steps,
     )
     init_chain(
@@ -533,30 +310,16 @@ def init_llms():
     init_chain("journey_step_actions", "instruct_detailed_warm", journey_step_actions)
     init_chain("question", "chat", question)
 
-    # template = """<s> <<SYS>> Act as a a helpful startup coach from antler trying to answer questions thoroughly. Use the following pieces of retrieved context to answer the question. If you don't know the answer, just say that you don't know.<</SYS>> </s>
-
-    # if "question" not in prompts:
-    #     prompts["question"] = ChatPromptTemplate.from_template(templates["question"])
-
     if "helper" not in prompts:
-        # prompts["helper"] = ChatPromptTemplate.from_template(templates["helper"])
-        # prompts["helper"] = ChatPromptTemplate.from_template(templates["helper"])
         init_chain("helper", "chat", helper, init_llm=False)
 
     if "hyde" not in prompts:
         init_chain("hyde", "chat", hyde, init_llm=False)
-        # prompts["hyde"] = PromptTemplate(
-        #     template=templates["hyde"],
-        #     input_variables=["question"],
-        #     # template=templates["hyde"], input_variables=["question"]
-        # )
 
     global embeddings
 
-    # embeddings = OllamaEmbeddings(model="nomic-embed-text")
     if "base" not in embeddings:
-        # embeddings["base"] = FastEmbedEmbeddings(model_name=EMBEDDING_MODEL)
-        if use_local_embeddings:
+        if USE_LOCAL_EMBEDDINGS:
             model_kwargs = {"device": "cpu"}
             encode_kwargs = {"normalize_embeddings": True}
             embeddings["base"] = HuggingFaceEmbeddings(
@@ -564,11 +327,11 @@ def init_llms():
                 model_kwargs=model_kwargs,
                 encode_kwargs=encode_kwargs,
             )
-        elif use_ollama_embeddings:
+        elif USE_OLLAMA_embeddings:
             embeddings["base"] = OllamaEmbeddings(
-                model=EMBEDDING_MODEL, base_url=ollama_url
+                model=EMBEDDING_MODEL, base_url=OLLAMA_URL
             )
-        elif use_hf_embeddings:
+        elif USE_HF_EMBEDDINGS:
             embeddings["base"] = HuggingFaceInferenceAPIEmbeddings(
                 api_key=HF_API_KEY, model_name=EMBEDDING_MODEL
             )
@@ -578,263 +341,24 @@ def init_llms():
             llms["default"], embeddings["base"], custom_prompt=prompts["hyde"]
         )
 
-    # journey_text_prompt = PromptTemplate(
-    #     template=templates["journey_text"], input_variables=["context"]
-    # )
-
     if "summary_documents" not in chains:
-        chain = StuffDocumentsChain(
-            # llm_chain=chains["text_formatter_compress"],
-            llm_chain=LLMChain(
-                llm=llms["instruct_detailed"], prompt=prompts["text_formatter_compress"]
+        chain = create_stuff_documents_chain(
+            RunnableLambda(
+                lambda params: chains["text_formatter_compress"].invoke(params)[0]
             ),
-            document_prompt=PromptTemplate(
-                input_variables=["page_content"], template="{page_content}"
-            ),
-            document_variable_name="context",
-            verbose=debug_mode,
+            prompts["text_formatter_compress"],
+            output_parser=text_formatter_compress.parser,
         )
-        chains["summary_documents"] = ReduceDocumentsChain(
-            combine_documents_chain=chain
+
+        chains["summary_documents"] = (
+            RunnableLambda(lambda params: chain.invoke(params)[0]) | chains["summary"]
         )
 
     if "reduce_journey_documents" not in chains:
-        chains["reduce_journey_documents"] = StuffDocumentsChain(
-            # llm_chain=chains["text_formatter_compress"],
-            llm_chain=LLMChain(
-                llm=llms["instruct_detailed"], prompt=prompts["text_formatter_compress"]
+        chains["reduce_journey_documents"] = create_stuff_documents_chain(
+            RunnableLambda(
+                lambda params: chains["text_formatter_compress"].invoke(params)[0]
             ),
-            document_prompt=PromptTemplate(
-                input_variables=["page_content"], template="{page_content}"
-            ),
-            document_variable_name="context",
-            verbose=debug_mode,
+            prompts["text_formatter_compress"],
+            output_parser=text_formatter_compress.parser,
         )
-        chains["reduce_journey_documents"].verbose = debug_mode
-
-    # if "journey_json" not in chains:
-    # chains["journey_json"] = create_extraction_chain(
-    #     journey_json_template,
-    #     llms["json"],
-    # )
-
-
-def exec_structured_chain(chain, input: Dict[str, any]):
-    new_input = {}
-    for key, value in input.items():
-        new_input[key] = value
-
-    new_input["format_instructions"] = (
-        journey_structured.parser.get_format_instructions()
-    )
-
-    output = None
-    tries = 0
-    max_retries = 5
-    while output is None and tries < max_retries:
-        tries += 1
-        try:
-            output = get_chain(chain).invoke(new_input)
-            print(f"Output: {output}")
-        except Exception as e:
-            print(f"Error: {e}")
-            output = None
-
-    return output
-
-
-chroma_client = None
-
-
-def create_document_lists(
-    list_of_strings: List[str], list_of_thoughts: List[str] = None, source="local", list_of_metadata: List[Dict[str, any]] = None
-):
-    doc_list = []
-
-    for index, item in enumerate(list_of_strings):
-        thinking = list_of_thoughts[index] if list_of_thoughts else None
-        metadata = list_of_metadata[index] if list_of_metadata else None
-        if metadata is None:
-            metadata = {"source": source, "thought": thinking, "index": index} if thinking else {"source": source, "index": index}
-
-        if len(item) > 3000:
-            split_texts = split_text(item, split=3000, overlap=100)
-            for split_item in split_texts:
-
-                doc = Document(
-                    page_content=split_item,
-                    metadata=metadata,
-                )
-                doc_list.append(doc)
-        else:
-            doc = Document(
-                page_content=item,
-                metadata=metadata,
-            )
-            doc_list.append(doc)
-
-    return doc_list
-
-collections = {}
-
-def get_chroma_collection(name, update=False, path=CHROMA_PATH, embedding_id = None) -> chromadb.Collection:
-    global collections
-
-    if name in collections and not update:
-        return collections[name]
-
-    global chroma_client
-    chroma_client = chroma_client or chromadb.PersistentClient(path=path)
-
-    if update:
-        chroma_client.delete_collection(name=name)
-
-    init_llms()
-
-    embedding_function = None
-    if embedding_id is not None:
-        embedding_function = create_langchain_embedding(embeddings[embedding_id])
-    else:
-        embedding_function = create_langchain_embedding(embeddings["base"])
-
-    collection = chroma_client.get_or_create_collection(name, embedding_function=embedding_function)
-    collections[name] = collection
-    return collection
-
-vectorstores = {}
-
-def get_vectorstore(id, embedding_id="base", update_vectorstores = False) -> Chroma:
-    init_llms()
-    global vectorstores
-
-    if id in vectorstores and not update_vectorstores:
-        return vectorstores[id]
-
-    global embeddings
-
-    vectorstore = Chroma(
-        client=chroma_client,
-        collection_name=id,
-        embedding_function=embeddings[embedding_id],
-    )
-
-    vectorstores[id] = vectorstore
-    return vectorstore
-
-
-@cache
-def get_text_splitter(chunk_size, chunk_overlap):
-    if chunk_size < chunk_overlap:
-        chunk_overlap = chunk_size / 2
-
-    return RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size, chunk_overlap=chunk_overlap
-    )
-
-
-compressor = None
-
-
-def rerank_documents(list_of_documents: list[Document], query: str, amount=5):
-    global compressor
-
-    if len(list_of_documents) > 0:
-        if compressor is None:
-            compressor = FlashrankRerank(top_n=amount)
-
-        ranked_documents = compressor.compress_documents(
-            documents=list_of_documents, query=query
-        )
-        return ranked_documents
-
-    return list_of_documents
-
-
-def split_text(text, split=INSTRUCT_CHAR_LIMIT, overlap=100):
-    text_len = len(text)
-    split = text_len // (text_len / split)
-    if (text_len - split) > overlap:
-        splitter = get_text_splitter(chunk_size=split, chunk_overlap=overlap)
-        return splitter.split_text(text)
-    else:
-        return [text]
-
-
-def join_documents(texts, split=INSTRUCT_CHAR_LIMIT):
-    joins = []
-    text_join = ""
-
-    total_len = 0
-    for text in texts:
-        _text = ""
-        if isinstance(text, str):
-            _text = text
-        else:
-            _text = text.page_content
-
-        total_len += len(_text)
-
-    chunks = total_len // split + 1
-    chunk_length = total_len // chunks
-
-    # print(f"{len(texts) = }, {chunks = }, { chunk_length = }")
-
-    for text in texts:
-        _text = ""
-        if isinstance(text, str):
-            _text = text
-        else:
-            _text = text.page_content
-
-        if len(text_join) > 100 and (len(text_join) + len(_text)) > chunk_length:
-            joins.append(text_join)
-            text_join = _text
-        else:
-            text_join += _text + "\n\n"
-
-    joins.append(text_join)
-
-    return joins
-
-
-def semantic_splitter(text, split=INSTRUCT_CHAR_LIMIT, progress_cb=None):
-    init_llms()
-
-    if len(text) > 1000:
-        # print("Split")
-        less_text = split_text(text, EMBEDDING_CHAR_LIMIT, 0)
-    else:
-        less_text = [text]
-
-    semantic_splitter = SemanticChunker(
-        embeddings["base"], breakpoint_threshold_type="percentile"
-    )
-
-    texts = []
-    for i, txt in enumerate(less_text):
-        texts = texts + semantic_splitter.split_text(txt)
-        if progress_cb != None and callable(progress_cb):
-            progress_cb(len(less_text), i)
-
-    return join_documents(texts, split)
-
-
-def split_markdown(text, split=INSTRUCT_CHAR_LIMIT):
-    headers_to_split_on = [
-        ("#", "Header 1"),
-        ("##", "Header 2"),
-        ("###", "Header 3"),
-        ("####", "Header 4"),
-        ("#####", "Header 5"),
-    ]
-
-    markdown_splitter = MarkdownHeaderTextSplitter(
-        headers_to_split_on=headers_to_split_on, strip_headers=False
-    )
-
-    texts = markdown_splitter.split_text(text)
-
-    return join_documents(texts, split)
-
-
-# chroma_collection = get_chroma_collection("rag-all")

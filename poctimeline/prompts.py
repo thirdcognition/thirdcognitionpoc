@@ -1,15 +1,19 @@
 import random
+import re
+from fuzzywuzzy import fuzz
 import textwrap
-from typing import Dict, List, Optional, Tuple, Type
+from typing import Dict, List, Optional, Tuple, Type, Union
 from pydantic import BaseModel, Field
 from langchain_core.documents import Document
 from langchain_core.prompts.few_shot import FewShotPromptTemplate
 from langchain_core.prompts.prompt import PromptTemplate
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.messages import SystemMessage, HumanMessage, ChatMessage
+from langchain_core.messages import SystemMessage, HumanMessage, ChatMessage, BaseMessage
 from langchain_core.prompts.chat import MessagesPlaceholder, HumanMessagePromptTemplate
 from langchain_core.output_parsers.base import BaseOutputParser
 from langchain_core.output_parsers import PydanticOutputParser, JsonOutputParser
+from langchain_core.exceptions import OutputParserException
+from langchain_core.output_parsers import BaseOutputParser
 # from fewshot_data import FewShotItem, example_tasks
 
 pre_think_instruct = """Before starting plan how to proceed step by step and place your thinking between
@@ -113,13 +117,81 @@ class PromptFormatter(BaseModel):
                 HumanMessagePromptTemplate.from_template(self.user)
             ]
         )
-        if self.parser is not None:
+        if self.parser is not None and ("format_instructions" in self.system or "format_instructions" in self.user):
             prompt.partial_variables["format_instructions"] = self.parser.get_format_instructions()
 
         return prompt
 
     def get_prompt_format(self) -> str:
         return self.parser.get_format_instructions()
+
+class TagsParser(BaseOutputParser[bool]):
+    """Custom parser to clean specified tag from results."""
+
+    min_len: int = 10
+    start_tag:str = "thinking_start"
+    end_tag:str = "thinking_end"
+
+    def parse(self, text: Union[str, BaseMessage]) -> tuple[str, str]:
+        # print(f"Parsing tags: {text}")
+        if isinstance(text, BaseMessage):
+            text = text.content
+
+        # Initialize the lists to store the thinking contents and remaining contents
+        tag_contents = []
+        text_contents = []
+
+        text_contents_joined = ""
+        tag_contents_joined = ""
+
+        # Split the text into matches using regex
+        matches = re.split(r"([\[{\(][/ ]*[^\[\]]+[\]}\)])", text, 0, re.IGNORECASE)
+
+        # Initialize a flag to indicate whether we're inside a tag block
+        in_tag = False
+
+        # Iterate over the matches
+        for match in matches:
+            match = match.strip()
+            # print(f"Match: {match}")
+            # If the match is a start tag, set the flag to True
+            if fuzz.ratio(match, self.start_tag) > 80:
+                in_tag = True
+            # If the match is an end tag, set the flag to False
+            elif fuzz.ratio(match, self.end_tag) > 80:
+                in_tag = False
+            # If we're inside a tag block, add the match to the tag contents
+            elif in_tag:
+                tag_contents.append(match)
+            # Otherwise, add the match to the text contents
+            else:
+                text_contents.append(match)
+
+        text_contents_joined = "\n".join(text_contents)
+        tag_contents_joined = "\n".join(tag_contents)
+
+        if (
+            len(text_contents_joined) == 0
+            and len(tag_contents_joined) > 0
+            or in_tag
+        ):
+            excpect_msg = (
+                f"""Tag parser expected tags {self.start_tag} and {self.end_tag} in pairs.
+                But got only tag: {self.start_tag if len(text_contents_joined) == 0 else self.end_tag}.
+                Please make sure to close the tags that have been opened."""
+            )
+            raise OutputParserException(excpect_msg)
+        elif len(text_contents_joined) < self.min_len:
+            excpect_msg = f"""Tag parser expected a response message at least {self.min_len} characters long.
+            "Please make sure that the response is long enough."""
+
+            raise OutputParserException(excpect_msg)
+
+        return text_contents_joined, tag_contents_joined
+
+    @property
+    def _type(self) -> str:
+        return "tag_output_parser"
 
 
 
@@ -142,6 +214,7 @@ text_formatter = PromptFormatter(
         """
     ),
 )
+text_formatter.parser = TagsParser(min_len=100)
 
 text_formatter_compress = PromptFormatter(
     system=textwrap.dedent(
@@ -163,6 +236,7 @@ text_formatter_compress = PromptFormatter(
         Format the text in the context."""
     ),
 )
+text_formatter_compress.parser = TagsParser(min_len=100)
 
 text_formatter_guided = PromptFormatter(
     system=textwrap.dedent(
@@ -184,6 +258,7 @@ text_formatter_guided = PromptFormatter(
         Format the text in the context."""
     ),
 )
+text_formatter_guided.parser = TagsParser(min_len=100)
 
 md_formatter = PromptFormatter(
     system=textwrap.dedent(
@@ -203,6 +278,7 @@ md_formatter = PromptFormatter(
         Format the text in the context."""
     ),
 )
+md_formatter.parser = TagsParser(min_len=100)
 
 md_formatter_guided = PromptFormatter(
     system=textwrap.dedent(
@@ -224,6 +300,7 @@ md_formatter_guided = PromptFormatter(
         Format the text in the context."""
     ),
 )
+md_formatter_guided.parser = TagsParser(min_len=100)
 
 action = PromptFormatter(
     system=textwrap.dedent(
@@ -245,6 +322,7 @@ action = PromptFormatter(
         Complete the task with the details from context."""
     ),
 )
+action.parser = TagsParser(min_len=10)
 
 grader = PromptFormatter(
     system=textwrap.dedent(
@@ -306,6 +384,7 @@ helper = PromptFormatter(
         Question: {question}"""
     ),
 )
+helper.parser = TagsParser(min_len=10)
 
 chat = PromptFormatter(
     system=textwrap.dedent(
@@ -320,6 +399,7 @@ chat = PromptFormatter(
         {question}"""
     ),
 )
+chat.parser = TagsParser(min_len=10)
 
 question = PromptFormatter(
     system=textwrap.dedent(
@@ -340,6 +420,20 @@ question = PromptFormatter(
 )
 
 hyde = PromptFormatter(
+    system=textwrap.dedent(
+        f"""
+        Act as a semantic search agent.
+        Given the user question, and context, write a document that can be used with
+        semantic vector searching. Use maximum of two sentences. Don't explain, just return
+        the document.
+        """
+    ),
+    user=textwrap.dedent(
+        """{question}"""
+    ),
+)
+
+hyde_w_history = PromptFormatter(
     system=textwrap.dedent(
         f"""
         Given a chat history and the latest user question
@@ -371,6 +465,7 @@ summary = PromptFormatter(
         """
     ),
 )
+summary.parser = TagsParser(min_len=10)
 
 summary_guided = PromptFormatter(
     system=textwrap.dedent(
@@ -391,22 +486,24 @@ summary_guided = PromptFormatter(
         """
     ),
 )
+summary_guided.parser = TagsParser(min_len=10)
+
+class JourneyStep(BaseModel):
+    title: str = Field(description="Title for the subject", title="Title")
+    description: str = Field(description="Description for the subject", title="Description")
+
+class JourneyStepList(BaseModel):
+    steps: List[JourneyStep] = Field(description="List of subjects", title="Subjects")
 
 journey_steps = PromptFormatter(
     system=textwrap.dedent(
         f"""
         Act as a teacher who is planning a curriculum.
         Using the content between context start and end write a list
-        with subjects limiting one to a single line.
+        with the specified format structure.
         If instructions are provided follow them exactly.
-
-        Example for 5 subjects:
-
-        Title: Specific description
-        Title: Specific description
-        Title: Specific description
-        Title: Specific description
-        Title: Specific description
+        Only use the information available within the context.
+        Return only the properly formatted JSON object with the formatted data.
         """
     ),
     user=textwrap.dedent( # Use get_journey_format_example instead
@@ -420,16 +517,23 @@ journey_steps = PromptFormatter(
         {context}
         context end
 
-        Create a list of {amount} subjects with one item per line.
-        Follow the format of the example exactly with title and description
-        separated by : and keep each item within one line.
-        Do not add "Here's the list" or any other text before or after the list.
-        Only respond with the expected format.
+        ----------------
+        format structure start
+        {format_instructions}
+        format structure end
+        ----------------
+
+        Create a list of {amount} subjects.
         If instructions are provided, follow them exactly. If instructions specify
         a topic or subject, make sure the list includes only items which fall within
-        within that topic. Make sure the list has exactly {amount} items."""
+        within that topic. Make sure the list has exactly {amount} items.
+        Format the context data using the format structure.
+        Do not add any information to the context or come up with subjects
+        not defined within the context.
+        Return only the properly formatted JSON object with the formatted data."""
     ),
 )
+journey_steps.parser = PydanticOutputParser(pydantic_object=JourneyStepList)
 
 journey_step_details = PromptFormatter(
     system=textwrap.dedent(
@@ -443,6 +547,7 @@ journey_step_details = PromptFormatter(
         {pre_think_instruct}
         {keep_pre_think_together}
         Create the study material for the student with the following information between context start and end.
+        Only use the information available within the context. Do not add or remove information from the context.
         If instructions are provided follow them exactly."""
     ),
     user=textwrap.dedent( # Use get_journey_format_example instead
@@ -460,6 +565,7 @@ journey_step_details = PromptFormatter(
 
 
         Create study materials for the student defined by the subject. Don't include any other content outside of the subject.
+        Only use the information available within the context. Do not add or remove information from the context.
         If instructions are provided, follow them exactly. If instructions specify
         a topic or subject, make sure the list includes only items which fall within
         within that topic.
@@ -467,6 +573,7 @@ journey_step_details = PromptFormatter(
         If instructions are provided follow them exactly."""
     ),
 )
+journey_step_details.parser = TagsParser(min_len=10)
 
 journey_step_intro = PromptFormatter(
     system=textwrap.dedent(
@@ -501,6 +608,7 @@ journey_step_intro = PromptFormatter(
         Don't add anything new to the content, just explain it with 3 sentences maximum."""
     ),
 )
+journey_step_intro.parser = TagsParser(min_len=10)
 
 journey_step_actions = PromptFormatter(
     system=textwrap.dedent(
@@ -531,6 +639,7 @@ journey_step_actions = PromptFormatter(
         within that topic."""
     ),
 )
+journey_step_actions.parser = TagsParser(min_len=10)
 
 class ActionStructure(BaseModel):
     title: str = Field(description="Title for the step", title="Title")

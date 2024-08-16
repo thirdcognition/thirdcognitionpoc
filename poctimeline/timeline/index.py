@@ -1,195 +1,195 @@
 # import required dependencies
 from functools import cache
 import os
-import re
+# import re
 # import chromadb
-import datetime
+# import datetime
 import time
 from typing import Dict
 import streamlit as st
 
-from langchain_core.prompt_values import StringPromptValue
+# from langchain_core.prompt_values import StringPromptValue
 from langchain_core.messages import HumanMessage, AIMessage
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import (
-    RunnableParallel,
-    RunnablePassthrough,
-    RunnableLambda,
-)
+# from langchain_core.output_parsers import StrOutputParser
+from langchain_core.callbacks import StreamingStdOutCallbackHandler
+# from langchain_core.runnables import (
+#     RunnableParallel,
+#     RunnablePassthrough,
+#     RunnableLambda,
+# )
 from langchain_core.documents.base import Document
-from langchain.globals import set_debug
-import sqlalchemy as sqla
-from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy.ext.mutable import MutableList
+# from langchain.globals import set_debug
+# import sqlalchemy as sqla
+# from sqlalchemy.orm import sessionmaker, declarative_base
+# from sqlalchemy.ext.mutable import MutableList
 
 
-from db_tools import (
-    get_chroma_collection,
+from lib.db_tools import (
+    # get_chroma_collection,
     get_db_files,
     get_db_journey,
-    get_vectorstore,
+    # get_vectorstore,
     init_db
 )
 
-from chain import (
-    get_llm,
-    get_prompt,
-)
-from document_tools import rerank_documents
+# from chain import (
+#     get_llm,
+#     get_prompt,
+# )
+from lib.document_tools import get_session_history, rag_chain #, rerank_documents
 
 database_session = init_db()
 
 chat_history = { "default": [] } #[[] for _ in range(11)]
-query_history = { "default": [] }
+# query_history = { "default": [] }
 chat_state = "default"
 
 DELIMITER="±~"
 
-def get_memory(combine=False, return_string=False, tail=-6):
-    def run_memory(value=None):
-        global chat_history
-        global chat_state
+# def get_memory(combine=False, return_string=False, tail=-6):
+#     def run_memory(value=None):
+#         global chat_history
+#         global chat_state
 
-        state = chat_state
-        if "chat_state" in st.session_state:
-            state = st.session_state.chat_state
+#         state = chat_state
+#         if "chat_state" in st.session_state:
+#             state = st.session_state.chat_state
 
-        memory = chat_history[state]
-        if "chat_history" in st.session_state:
-            memory = st.session_state.chat_history[state]
+#         memory = chat_history[state]
+#         if "chat_history" in st.session_state:
+#             memory = st.session_state.chat_history[state]
 
-        # print(f"received value {value} with memory {memory}")
+#         # print(f"received value {value} with memory {memory}")
 
-        ret = None
-        if return_string:
-            ret = ""
-        else:
-            ret = []
+#         ret = None
+#         if return_string:
+#             ret = ""
+#         else:
+#             ret = []
 
-        for mem in memory[tail:]:
-            if return_string:
-                ret = ret + f"\n{mem.type}:{mem.content}"
-            else:
-                ret = ret + [mem]
+#         for mem in memory[tail:]:
+#             if return_string:
+#                 ret = ret + f"\n{mem.type}:{mem.content}"
+#             else:
+#                 ret = ret + [mem]
 
-        if combine and value is not None:
-            question = ""
-            if isinstance(value, StringPromptValue):
-                question = re.sub(r"[^{]*\{'question': '", "", value.text)
-                question = question[0 : question.find("}")]
-            else:
-                question = value["question"]
+#         if combine and value is not None:
+#             question = ""
+#             if isinstance(value, StringPromptValue):
+#                 question = re.sub(r"[^{]*\{'question': '", "", value.text)
+#                 question = question[0 : question.find("}")]
+#             else:
+#                 question = value["question"]
 
-            q_ret = f"Question: {question}"
+#             q_ret = f"Question: {question}"
 
-            if return_string:
-                if len(memory) > 0:
-                    ret = f"\n\nHistory:{ret}\n\n" + q_ret
-                else:
-                    ret = q_ret
-            else:
-                if len(memory) > 0:
-                    ret = ret + [HumanMessage(content=q_ret)]
+#             if return_string:
+#                 if len(memory) > 0:
+#                     ret = f"\n\nHistory:{ret}\n\n" + q_ret
+#                 else:
+#                     ret = q_ret
+#             else:
+#                 if len(memory) > 0:
+#                     ret = ret + [HumanMessage(content=q_ret)]
 
-        return ret
+#         return ret
 
-    return run_memory
+#     return run_memory
 
-cur_query = ''
+# cur_query = ''
 
-def parse_retriever_input(get_mem):
-    def get_retriever_input(params: Dict):
-        # print(f"\n\nget_retriever_input: { params = }")
-        prev_questions = get_mem()
-        # print(f"\n\n{prev_questions = }")
-        global cur_query
-        cur_query = params["question"]
-        # if len(prev_questions) > 0:
-        #     prev_questions = f"{prev_questions}"
-        user_question= ''
+# def parse_retriever_input(get_mem):
+#     def get_retriever_input(params: Dict):
+#         # print(f"\n\nget_retriever_input: { params = }")
+#         prev_questions = get_mem()
+#         # print(f"\n\n{prev_questions = }")
+#         global cur_query
+#         cur_query = params["question"]
+#         # if len(prev_questions) > 0:
+#         #     prev_questions = f"{prev_questions}"
+#         user_question= ''
 
-        user_question= f'\nQuestion: \n{params["question"]}'
-        return prev_questions + user_question
+#         user_question= f'\nQuestion: \n{params["question"]}'
+#         return prev_questions + user_question
 
-    return get_retriever_input
+#     return get_retriever_input
 
-def parse_question_input(params: Dict):
-    return params["question"]
+# def parse_question_input(params: Dict):
+#     return params["question"]
 
-def reformat_rag(params: list[Document]):
-    print("Reformatting RAG results...")
-    global cur_query
+# def reformat_rag(params: list[Document]):
+#     print("Reformatting RAG results...")
+#     global cur_query
 
-    query = cur_query
-    new_content = []
-    new_content_strs = []
-    def sort_by_references(document: Document):
-        return len(document.metadata)
+#     query = cur_query
+#     new_content = []
+#     new_content_strs = []
+#     def sort_by_references(document: Document):
+#         return len(document.metadata)
 
-    params.sort(reverse=True, key=sort_by_references)
-    for document in params:
-        if document.page_content not in new_content_strs:
-            new_content.append(document)
-            new_content_strs.append(document.page_content)
+#     params.sort(reverse=True, key=sort_by_references)
+#     for document in params:
+#         if document.page_content not in new_content_strs:
+#             new_content.append(document)
+#             new_content_strs.append(document.page_content)
 
-    new_content = rerank_documents(new_content, query, 10)
+#     new_content = rerank_documents(new_content, query, 10)
 
-    global query_history
-    global chat_state
-    if chat_state not in query_history.keys():
-        query_history[chat_state] = []
+#     global query_history
+#     global chat_state
+#     if chat_state not in query_history.keys():
+#         query_history[chat_state] = []
 
-    query_history[chat_state].append(new_content)
+#     query_history[chat_state].append(new_content)
 
-    new_content_str = str(new_content).replace("Document", "\n\nDocument").replace('[', '').replace(']', '').replace('metadata', '\n\nmetadata').replace('page_content', '\npage_content')
-    print(f'\n\nRAG reformat: \n{query = } \n\nresult = {new_content_str}')
-    return new_content
+#     new_content_str = str(new_content).replace("Document", "\n\nDocument").replace('[', '').replace(']', '').replace('metadata', '\n\nmetadata').replace('page_content', '\npage_content')
+#     print(f'\n\nRAG reformat: \n{query = } \n\nresult = {new_content_str}')
+#     return new_content
 
-def retrieval_qa_chain(llm, prompt, vectorstore):
+# def retrieval_qa_chain(id):
 
-    # retriever = vectorstore.as_retriever(search_kwargs={"k": 20})
+#     llm = get_llm("chat")
+#     prompt = get_prompt("question")
+#     vectorstore = get_vectorstore(id, embedding_id="hyde")
+#     # retriever = vectorstore.as_retriever(search_kwargs={"k": 20})
 
-    # print(f'test vectorstore: { retriever.invoke("What is antler") }')
+#     # print(f'test vectorstore: { retriever.invoke("What is antler") }')
 
-    retriever = vectorstore.as_retriever(
-        search_type="similarity_score_threshold",
-        search_kwargs={"k": 40, "score_threshold": 0.3},
-    )
-    # retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"k": 5, "include_metadata": True})
-    # retriever = vectorstore.as_retriever(search_type="similarity_score_threshold", search_kwargs={"k": 5, "score_threshold": 0.3})
+#     retriever = vectorstore.as_retriever(
+#         search_type="similarity_score_threshold",
+#         search_kwargs={"k": 40, "score_threshold": 0.3},
+#     )
+#     # retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"k": 5, "include_metadata": True})
+#     # retriever = vectorstore.as_retriever(search_type="similarity_score_threshold", search_kwargs={"k": 5, "score_threshold": 0.3})
 
-    # print(f"{ llm = }")
+#     # print(f"{ llm = }")
 
-    def qa_no_context_log(params):
-        # print(f"QA no context: {params=}")
-        return params
+#     def qa_no_context_log(params):
+#         # print(f"QA no context: {params=}")
+#         return params
 
-    qa_chain = (
-        RunnableParallel(
-            {
-                "context": parse_retriever_input(get_memory(tail=-8, return_string=True)) | retriever | reformat_rag,
-                "question": RunnablePassthrough(),
-                "history": RunnableLambda(get_memory()),
-            }
-        )
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
+#     qa_chain = (
+#         RunnableParallel(
+#             {
+#                 "context": parse_retriever_input(get_memory(tail=-8, return_string=True)) | retriever | rerank_documents,
+#                 "question": RunnablePassthrough(),
+#                 "history": RunnableLambda(get_memory()),
+#             }
+#         )
+#         | prompt
+#         | llm
+#         | StrOutputParser()
+#     )
 
-    return qa_chain
+#     return qa_chain
 
-def now():
-    return round(time.time() * 1000)
+# def now():
+#     return round(time.time() * 1000)
 
-@cache
-def qa_bot(id):
-    vectorstore = get_vectorstore(id, embedding_id="hyde")
-    llm = get_llm("chat")
-    prompt = get_prompt("question")
-
-    qa = retrieval_qa_chain(llm, prompt, vectorstore)
-    return qa
+# @cache
+# def qa_bot(id):
+#     qa = retrieval_qa_chain(id)
+#     return qa
 
 
 def send_message(message, journey_name, chat_state):
@@ -198,14 +198,14 @@ def send_message(message, journey_name, chat_state):
         chain_id = st.session_state.journey_chain_ids[journey_name]
         # print(f"\n {chain_id = }")
         chain = st.session_state.chains[chain_id]
-        memory = st.session_state.chat_history[chat_state]
+        # memory = st.session_state.chat_history[chat_state]
     else:
         chain = st.session_state.chains["rag_ThirdCognition"]
 
     # print(f"\n {memory = }\n")
     # print(f"\n {chain_id = }")
     # print(f" {message = }")
-    resp = chain.invoke({"question": message})
+    resp = chain.invoke({"question": message}, config={"session_id": chat_state, "callbacks": [StreamingStdOutCallbackHandler()]})
     return resp
 
 def init(journey_name:str):
@@ -214,40 +214,28 @@ def init(journey_name:str):
     if "journey_list" not in st.session_state:
         st.session_state.journey_list = get_db_journey(journey_name)
 
-    if "chat_history" not in st.session_state:
-        st.session_state.query_history = query_history
-        st.session_state.chat_history = chat_history
+    # if "chat_history" not in st.session_state:
+        # st.session_state.query_history = query_history
+        # st.session_state.chat_history = chat_history
         st.session_state.chat_state = chat_state
 
     if "chroma_collections" not in st.session_state:
         journey_chain_ids = {}
-        chroma_collections = {}
         chains = {}
-        # for journey_name in journey_list:
-        if journey_name:
-            journey = st.session_state.journey_list[journey_name]
-            # print(f"{journey["chroma_collection"]}")
-            collections = journey["chroma_collection"]
-            collection_keys = list(chroma_collections.keys())
+        if journey_name and journey_name in st.session_state.journey_list.keys():
+            collections = st.session_state.journey_list[journey_name]["chroma_collection"]
+            collection_keys = list(chains.keys())
 
             journey_chain_ids[journey_name] = collections[0]
             if len(collections) > 0:
                 for collection in collections:
                     if collection not in collection_keys:
-                        chroma_collections[collection] = get_chroma_collection(collection)
-                        chains[collection] = qa_bot(collection)
+                        chains[collection] = rag_chain(collection, with_history=True)
         else:
             collection = "rag_ThirdCognition"
-            chroma_collections[collection] = get_chroma_collection(collection)
-            chains[collection] = qa_bot(collection)
+            chains[collection] = rag_chain(collection, with_history=True)
 
-        # print(f" { list(chroma_collections.keys()) = }")
-        st.session_state.chroma_collections = chroma_collections
         st.session_state.journey_chain_ids = journey_chain_ids
-
-        # chroma_collections = st.session_state.chroma_collections
-        # print(f" {collections=} { chroma_collections = }")
-
         st.session_state.chains = chains
 
     if journey_name not in st.session_state.journey_list.keys():
@@ -276,10 +264,10 @@ def chat_elements(chat_state, journey_name):
     if "user_query" in st.session_state and st.session_state.user_query != None:
         user_query = st.session_state.user_query
 
-    if chat_state not in st.session_state.chat_history or st.session_state.chat_history[chat_state] is None:
-        st.session_state.chat_history[chat_state] = []
-
-    for i, message in enumerate(st.session_state.chat_history[chat_state]):
+    # if chat_state not in st.session_state.chat_history or st.session_state.chat_history[chat_state] is None:
+    #     st.session_state.chat_history[chat_state] = []
+    history = get_session_history(chat_state)
+    for i, message in enumerate(history.messages):
         if isinstance(message, HumanMessage):
             with st.chat_message("Human"):
                 st.write(message.content)
@@ -312,6 +300,7 @@ def chat_elements(chat_state, journey_name):
 
                                 col2.container(height=150).write(reference.page_content) #db_file["summary"])
         else:
+            # print(f"{message = }")
             if message.content not in st.session_state.chat_history_seen[chat_state]:
                 with st.chat_message("AI"):
                     st.write_stream(get_stream_data(message.content, chat_state))
@@ -319,40 +308,36 @@ def chat_elements(chat_state, journey_name):
                 with st.chat_message("AI"):
                     st.write(message.content)
 
-    if chat_state == "default" and st.session_state.chat_state == chat_state and len(st.session_state.chat_history[chat_state]) == 0:
+    if chat_state == "default" and st.session_state.chat_state == chat_state and len(history.messages) == 0:
         if journey_name:
             journey = st.session_state.journey_list[journey_name]
-            st.session_state.chat_history[chat_state].append(
-                AIMessage(
+            history.add_ai_message(
                     f"""Welcome to ThirdCognition Virtual Buddy POC
 
-    This proof of concept has been provided for you to see how it is possible to generate learning content
-    with just the help of our tool. This is a work in progress and should not be considered a final product.
-    Also note that this is for internal use only and any results gained should not be shared
-    outside of your respective organization.
+This proof of concept has been provided for you to see how it is possible to generate learning content
+with just the help of our tool. This is a work in progress and should not be considered a final product.
+Also note that this is for internal use only and any results gained should not be shared
+outside of your respective organization.
 
-    #### {journey["title"]}
+#### {journey["title"]}
 
-    {journey["summary"]}
+{journey["summary"]}
 
-    You can now ask any questions you might have 👇. If you want to experience the preliminary learning journey,
-    you can do so by selecting any of the subjects provided for you from the menu on the left.
+You can now ask any questions you might have 👇. If you want to experience the preliminary learning journey,
+you can do so by selecting any of the subjects provided for you from the menu on the left.
                     """,
                 )
-            )
         else:
-            st.session_state.chat_history[chat_state].append(
-                AIMessage(
+            history.add_ai_message(
                     f"""Welcome to ThirdCognition Virtual Buddy
                     You can ask me anything you'd want to know about ThirdCognition
                     and I will do my best to answer you. :smile:
                     """,
                 )
-            )
         st.rerun()
 
     if (
-        len(st.session_state.chat_history[chat_state]) == 0
+        len(history.messages) == 0
         and "chat_journey" in st.session_state
     ):
         # print(f"{ chat_state = }")
@@ -360,7 +345,7 @@ def chat_elements(chat_state, journey_name):
         step_index = int(chat_state.split(DELIMITER)[2])
         journey = st.session_state.journey_list[st.session_state.chat_journey]
         st.subheader(journey["subjects"][subject_index]["steps"][step_index]["title"])
-        st.session_state.chat_history[chat_state].append(
+        history.add_ai_message(
             AIMessage(
                 journey["subjects"][subject_index]["steps"][step_index]["intro"]
             )
@@ -370,30 +355,31 @@ def chat_elements(chat_state, journey_name):
     print(f" {user_query = }")
 
     if user_query is not None and user_query != "":
-        with st.chat_message("Human"):
-            st.write(user_query)
+        send_message(user_query, journey_name, chat_state)
+    #     with st.chat_message("Human"):
+    #         st.write(user_query)
 
-        with st.chat_message("AI"):
-            ai_response = st.write("Thinking...")
-            ai_response = send_message(user_query, journey_name, chat_state)
+    #     with st.chat_message("AI"):
+    #         ai_response = st.write("Thinking...")
+    #         ai_response = send_message(user_query, journey_name, chat_state)
 
-        # print(f"\n\n")
+    #     # print(f"\n\n")
 
-        human_message = HumanMessage(user_query)
-        st.session_state.chat_history[chat_state].append(human_message)
-        query_history = st.session_state.query_history
-        if chat_state in query_history.keys() and len(query_history[chat_state]) > 0:
-            references = query_history[chat_state][-1]
-        else:
-            references = []
+    #     human_message = HumanMessage(user_query)
+    #     st.session_state.chat_history[chat_state].append(human_message)
+    #     # query_history = st.session_state.query_history
+    #     # if chat_state in query_history.keys() and len(query_history[chat_state]) > 0:
+    #     #     references = query_history[chat_state][-1]
+    #     # else:
+    #     #     references = []
 
-        ai_response = AIMessage(ai_response, response_metadata={"references":references})
-        st.session_state.chat_history[chat_state].append(ai_response)
-        st.session_state.user_query = None
-        st.rerun()
+    #     ai_response = AIMessage(ai_response, response_metadata={"references":references})
+    #     st.session_state.chat_history[chat_state].append(ai_response)
+    #     st.session_state.user_query = None
+    #     st.rerun()
 
     else:
-        if len(st.session_state.chat_history[chat_state]) == 1:
+        if len(history.messages) == 1:
             with st.chat_message("AI"):
                 st.write("I'm waiting for your questions...")
 

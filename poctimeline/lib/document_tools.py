@@ -8,15 +8,21 @@ from langchain_text_splitters import (
 from langchain_core.runnables import (
     RunnableSequence,
     RunnableParallel,
-    RunnablePassthrough
+    RunnablePassthrough,
+    RunnableBranch,
+    RunnableWithMessageHistory
 )
 from langchain_core.output_parsers import StrOutputParser
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain.schema.document import Document
 from langchain_community.document_compressors import FlashrankRerank
+from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_core.chat_history import BaseChatMessageHistory
+from langchain.chains.history_aware_retriever import create_history_aware_retriever
 
-from load_env import EMBEDDING_CHAR_LIMIT, INSTRUCT_CHAR_LIMIT
-from chain import  get_embeddings, get_llm, get_prompt, init_llms
+from lib.db_tools import get_vectorstore
+from lib.load_env import EMBEDDING_CHAR_LIMIT, INSTRUCT_CHAR_LIMIT
+from lib.chain import  get_embeddings, get_llm, get_prompt, init_llms
 
 @cache
 def get_text_splitter(chunk_size, chunk_overlap):
@@ -26,6 +32,32 @@ def get_text_splitter(chunk_size, chunk_overlap):
     return RecursiveCharacterTextSplitter(
         chunk_size=chunk_size, chunk_overlap=chunk_overlap
     )
+
+chat_history_store = {}
+
+def get_session_history(session_id: str) -> BaseChatMessageHistory:
+    global chat_history_store
+    if session_id not in chat_history_store:
+        chat_history_store[session_id] = ChatMessageHistory()
+    return chat_history_store[session_id]
+
+history_chains = {}
+
+def get_chain_with_history(chain_id: str, chain:RunnableSequence):
+    global history_chains
+    if chain_id in history_chains:
+        return history_chains[chain_id]
+
+    history_chain = RunnableWithMessageHistory(
+        runnable=chain,
+        get_session_history=get_session_history,
+        input_messages_key="question",
+        output_messages_key="answer",
+        history_messages_key="chat_history"
+    )
+
+    history_chains[chain_id] = history_chain
+    return history_chain
 
 compressor = None
 
@@ -62,7 +94,15 @@ def rerank_rag(params: Dict):
 
     return new_content
 
-def rag_chain(vectorstore:Chroma, prompt_id = "question", llm_id = "chat") -> RunnableSequence:
+rag_chains = {}
+
+def rag_chain(store_id:str, embedding_id="hyde", prompt_id = "question", llm_id = "chat", reset=False, with_history=False) -> RunnableSequence:
+    global rag_chains
+    chain_id = f"{store_id}-{embedding_id}-{prompt_id}-{llm_id}"
+    if chain_id in rag_chains and not reset:
+        return rag_chains[chain_id]
+
+    vectorstore = get_vectorstore(store_id, embedding_id)
     retriever = vectorstore.as_retriever(
         search_type="similarity_score_threshold",
         search_kwargs={"k": 40, "score_threshold": 0.3},
@@ -89,20 +129,47 @@ def rag_chain(vectorstore:Chroma, prompt_id = "question", llm_id = "chat") -> Ru
     #     print(f"\n\n\nlog\n\n {params=}\n\n\n")
     #     return params
 
+    documents:List = None
+    def store_documents(params):
+        documents = params["documents"]
+        return params
+
+    def set_metadata(params):
+        if documents is None or len(documents) == 0:
+            return params
+
+        if isinstance(params, str):
+            params = {
+                "answer": params
+            }
+        if "metadata" not in params:
+            params["metadata"] = {
+                "references": documents
+            }
+        else:
+            params["metadata"]["references"] = documents
+        return params
+
     qa_chain = (
         RunnableParallel(
             {
                 "context": RunnableParallel({
                     "documents": add_context | retriever, # | log_results,
                     "question": RunnablePassthrough(),
-                }) | format_params | rerank_rag,
+                }) | format_params | rerank_rag | store_documents,
                 "question": RunnablePassthrough(),
             }
         )
         | prompt
         | llm
         | StrOutputParser()
+        | set_metadata
     )
+
+    if with_history:
+        qa_chain = get_chain_with_history(chain_id, qa_chain)
+
+    rag_chains[chain_id] = qa_chain
 
     return qa_chain
 

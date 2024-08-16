@@ -7,11 +7,11 @@ import chromadb
 from langchain_chroma import Chroma
 from chromadb.utils.embedding_functions import create_langchain_embedding
 import streamlit as st
-from chain import (
+from lib.chain import (
     get_embeddings,
     init_llms
 )
-from load_env import CHROMA_PATH, FILE_TABLENAME, JOURNEY_TABLENAME, SQLITE_DB
+from lib.load_env import CHROMA_PATH, FILE_TABLENAME, JOURNEY_TABLENAME, SQLITE_DB
 
 chroma_client = None
 
@@ -137,13 +137,13 @@ def get_chroma_collection(name, update=False, path=CHROMA_PATH, embedding_id = N
 vectorstores = {}
 
 def get_vectorstore(id, embedding_id="base", update_vectorstores = False) -> Chroma:
-    print(f"\n\n\nget_vectorstore {id=} {embedding_id=}\n\n\n")
     init_llms()
     global vectorstores
 
     if id in vectorstores and not update_vectorstores:
         return vectorstores[id]
 
+    print(f"\n\n\nInit vectorstore {id=} {embedding_id=}\n\n\n")
     vectorstore = Chroma(
         client=chroma_client,
         collection_name=id,

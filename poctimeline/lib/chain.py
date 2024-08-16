@@ -27,7 +27,7 @@ from langchain_core.prompts.prompt import PromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain.output_parsers.retry import RetryOutputParser
 
-from load_env import (
+from lib.load_env import (
     CHAT_CONTEXT_SIZE,
     CHAT_LLM,
     DEBUGMODE,
@@ -50,7 +50,7 @@ from load_env import (
     USE_OLLAMA,
     USE_OLLAMA_embeddings,
 )
-from prompts import (
+from lib.prompts import (
     PromptFormatter,
     text_formatter,
     text_formatter_compress,

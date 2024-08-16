@@ -80,7 +80,7 @@ def chat_elements(chat_state, journey_name = None):
     #     st.session_state.chat_history[chat_state] = []
     history = get_session_history(chat_state)
     for i, message in enumerate(history.messages):
-        print(f"\n\n Message: \n\n {message}\n\n\n")
+        # print(f"\n\n Message: \n\n {message}\n\n\n")
         if isinstance(message, HumanMessage):
             with st.chat_message("Human"):
                 st.write(message.content)

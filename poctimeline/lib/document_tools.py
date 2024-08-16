@@ -65,9 +65,9 @@ compressor = None
 def rerank_documents(list_of_documents: list[Document], query: str, amount=5):
     global compressor
 
-    print("\n\n\nReranking documents")
-    print(f"Amount of documents: {len(list_of_documents)}")
-    print(f"Query: {query}\n\n\n")
+    # print("\n\n\nReranking documents")
+    # print(f"Amount of documents: {len(list_of_documents)}")
+    # print(f"Query: {query}\n\n\n")
 
     if len(list_of_documents) > 5:
         if compressor is None:
@@ -117,14 +117,14 @@ def rag_chain(store_id:str, embedding_id="hyde", prompt_id = "question", llm_id 
     prompt = get_prompt(prompt_id)
 
     def format_params(params):
-        print(f"\n\nformat params {params=}\n\n")
+        # print(f"\n\nformat params {params=}\n\n")
         question = params["question"]
         for key in question.keys():
             # if key == "chat_history":
             #     params["documents"].append(Document(page_content="Chat history:"+"\n".join(mes.content for mes in question[key])))
             # else:
             params[key] = question[key]
-        print(f"\n\nformatted params {params=}\n\n")
+        # print(f"\n\nformatted params {params=}\n\n")
         return params
 
     # def add_context(params):
@@ -140,7 +140,7 @@ def rag_chain(store_id:str, embedding_id="hyde", prompt_id = "question", llm_id 
 
     documents:List = None
     def store_documents(params):
-        print(f"\n\nstore docs {params=}\n\n")
+        # print(f"\n\nstore docs {params=}\n\n")
         nonlocal documents
         if isinstance(params, Dict) and "documents" in params.keys():
             documents = params["documents"]
@@ -149,7 +149,7 @@ def rag_chain(store_id:str, embedding_id="hyde", prompt_id = "question", llm_id 
         return params
 
     def set_metadata(params):
-        print(f"\n\nmetadata orig {params=}\n\n")
+        # print(f"\n\nmetadata orig {params=}\n\n")
 
         if isinstance(params, AIMessage):
             params = {
@@ -178,7 +178,7 @@ def rag_chain(store_id:str, embedding_id="hyde", prompt_id = "question", llm_id 
                 "question": RunnableLambda(lambda x: x["question"]),
                 "chat_history": RunnableLambda(lambda x: x["chat_history"] if "chat_history" in x.keys() else []),
             }
-        ) | log_results
+        ) #| log_results
         | prompt
         | llm
         | set_metadata

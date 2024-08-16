@@ -102,13 +102,25 @@ def gen_subject(rag_chain:RunnableSequence, content, journey_instructions="", in
     total_items = len(step_items.steps)
     for i, step in enumerate(step_items.steps):
         bar.progress(0.35 + (0.6 * i/total_items), text=f"Generating curriculum for step {i+1} of {total_items}")
-        class_content, _ = get_chain("journey_step_details").invoke(
-            {
-                "context": rag_chain.invoke({"question": f"{step.title}\n{step.description}", "context": content}),
-                "journey_instructions": journey_instructions,
-                "subject": f"Title: {step.title}\nSubject: {step.description}",
-            }
-        )
+        class_content = None
+        get_content = lambda: get_chain("journey_step_details").invoke(
+                {
+                    "context": rag_chain.invoke({"question": f"{step.title}\n{step.description}", "context": content}),
+                    "journey_instructions": journey_instructions,
+                    "subject": f"Title: {step.title}\nSubject: {step.description}",
+                }
+            )
+        try:
+            class_content, _ = get_content()
+        except Exception as e:
+            print(f"Error generating class content: {e}")
+            print("Retrying once")
+            try:
+                class_content, _ = get_content()
+            except Exception as e:
+                print(f"Error generating class content: {e}")
+                class_content = "Error generating class content"
+
         class_intro, _ = get_chain("journey_step_intro").invoke(
             {
                 "context": class_content,

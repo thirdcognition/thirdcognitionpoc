@@ -74,7 +74,7 @@ def get_db_files(reset=False, filename=None):
         else:
             files = database_session.query(FileDataTable).filter(FileDataTable.filename == filename)
 
-        if "db_files" not in st.session_state:
+        if "db_files" not in st.session_state or reset:
             db_files = {}
         else:
             db_files = st.session_state.db_files

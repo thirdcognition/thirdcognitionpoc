@@ -539,6 +539,7 @@ journey_step_details = PromptFormatter(
         """
         instuctions start
         {journey_instructions}
+        {instructions}
         instructions end
 
         context start
@@ -577,6 +578,7 @@ journey_step_intro = PromptFormatter(
         """
         instuctions start
         {journey_instructions}
+        {instructions}
         instructions end
 
         Subject:
@@ -609,7 +611,11 @@ journey_step_actions = PromptFormatter(
         """
         instuctions start
         {journey_instructions}
+        {instructions}
         instructions end
+
+        Amount:
+        {amount}
 
         Subject:
         {subject}
@@ -619,9 +625,8 @@ journey_step_actions = PromptFormatter(
         content end
 
         Write a list of actions to take to teach the subject to the student and how to verify that the student has learned the subject.
-        If instructions are provided, follow them exactly. If instructions specify
-        a topic or subject, make sure the list includes only items which fall within
-        within that topic."""
+        If instructions are provided, follow them exactly. If instructions specify a topic or subject, make sure the list includes only
+        items which fall within within that topic. Create at maximum the specified amount of items."""
     ),
 )
 journey_step_actions.parser = TagsParser(min_len=10)

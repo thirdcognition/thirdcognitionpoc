@@ -128,7 +128,7 @@ def init_chain(
 
         if prompt.parser is not None:
             retry_parser = RetryOutputParser.from_llm(
-                parser=prompt.parser, llm=llms[llm], max_retries=3
+                parser=prompt.parser, llm=llms[llm], max_retries=5
             )
 
             def add_format_instructions(params: Dict):
@@ -182,18 +182,18 @@ def init_llm(
                 num_predict=ctx_size,
                 repeat_penalty=2,
                 timeout=10000,
-                callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
+                callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]) if verbose else None,
             )
         else:
             llms[f"{id}"] = Type(
-                streaming=DEBUGMODE,
+                streaming=verbose,
                 api_key=GROQ_API_KEY,
                 model=model,
                 verbose=verbose,
                 temperature=temperature,
                 timeout=10000,
                 max_retries=5,
-                callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
+                callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]) if verbose else None,
             )
 
 initialized = False
@@ -246,7 +246,7 @@ def init_llms():
                 num_ctx=STRUCTURED_CONTEXT_SIZE,
                 num_predict=STRUCTURED_CONTEXT_SIZE,
                 verbose=DEBUGMODE,
-                callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
+                callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]) if DEBUGMODE else None,
             )
         if USE_GROQ:
             llms["json"] = DEFAULT_LLM_MODEL(
@@ -256,7 +256,7 @@ def init_llms():
                 temperature=0,
                 timeout=30000,
                 verbose=DEBUGMODE,
-                callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
+                callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]) if DEBUGMODE else None,
             )
 
     init_llm("tool", temperature=0, model=TOOL_LLM, ctx_size=TOOL_CONTEXT_SIZE)

@@ -5,7 +5,7 @@ from langchain_core.callbacks import StreamingStdOutCallbackHandler
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.documents.base import Document
 
-from lib.db_tools import get_db_files, get_db_journey, init_db
+from lib.db_tools import JourneyModel, get_db_files, get_db_journey, init_db
 from lib.document_tools import get_session_history, rag_chain
 
 DELIMITER="±~"
@@ -45,7 +45,7 @@ def init_journey_chat(journey_name:str = None, rag_collection:str = None):
         journey_chain_ids = {}
         chains = {}
         if journey_name and journey_name in st.session_state.journey_list.keys():
-            collections = st.session_state.journey_list[journey_name]["chroma_collection"]
+            collections = st.session_state.journey_list[journey_name].chroma_collection
             collection_keys = list(chains.keys())
 
             journey_chain_ids[journey_name] = collections[0]
@@ -132,9 +132,9 @@ with just the help of our tool. This is a work in progress and should not be con
 Also note that this is for internal use only and any results gained should not be shared
 outside of your respective organization.
 
-#### {journey["title"]}
+#### {journey.title}
 
-{journey["summary"]}
+{journey.summary}
 
 You can now ask any questions you might have 👇. If you want to experience the preliminary learning journey,
 you can do so by selecting any of the subjects provided for you from the menu on the left.
@@ -156,11 +156,11 @@ you can do so by selecting any of the subjects provided for you from the menu on
         # print(f"{ chat_state = }")
         subject_index = int(chat_state.split(DELIMITER)[1])
         step_index = int(chat_state.split(DELIMITER)[2])
-        journey = st.session_state.journey_list[st.session_state.chat_journey]
-        st.subheader(journey["subjects"][subject_index]["steps"][step_index]["title"])
+        journey:JourneyModel = st.session_state.journey_list[st.session_state.chat_journey]
+        st.subheader(journey.subjects[subject_index].steps[step_index].title)
         history.add_ai_message(
             AIMessage(
-                journey["subjects"][subject_index]["steps"][step_index]["intro"]
+                journey.subjects[subject_index].steps[step_index].intro
             )
         )
         st.rerun()

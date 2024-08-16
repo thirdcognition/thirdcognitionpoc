@@ -2,6 +2,7 @@
 import streamlit as st
 
 from lib.chat import DELIMITER, chat_elements, init_journey_chat
+from lib.journey_shared import JourneyModel
 
 
 # chat_history = { "default": [] } #[[] for _ in range(11)]
@@ -60,12 +61,12 @@ This is an *extremely* cool app!
 
     if journey_name != None:
         journey_list = st.session_state.journey_list
-        journey = st.session_state.journey_list[journey_name]
+        journey:JourneyModel = st.session_state.journey_list[journey_name]
         if chat_state == "default":
             st.subheader("ThirdCognition Virtual Buddy", divider=True)
         else:
             subject_index = int(chat_state.split(DELIMITER)[1])
-            st.subheader(journey["subjects"][subject_index]["title"], divider=True)
+            st.subheader(journey.subjects[subject_index].title, divider=True)
         # st.subheader(journey["title"], divider=True)
         # st.write(journey["summary"])
 
@@ -93,12 +94,12 @@ This is an *extremely* cool app!
             }
             </style>""", unsafe_allow_html=True)
 
-            for i, subject in enumerate(journey["subjects"]):
-                with st.expander(f"{subject["title"]}", expanded=(f"{journey_name}_{i}" in chat_state)):
-                    for j, step in enumerate(subject["steps"]):
+            for i, subject in enumerate(journey.subjects):
+                with st.expander(f"{subject.title}", expanded=(f"{journey_name}_{i}" in chat_state)):
+                    for j, step in enumerate(subject.steps):
                         step_id = f'{journey_name}{DELIMITER}{i}{DELIMITER}{j}'
                         if st.button(
-                            step["title"],
+                            step.title,
                             use_container_width=True,
                             disabled=(step_id == chat_state),
                             key=f'step_{step_id}',

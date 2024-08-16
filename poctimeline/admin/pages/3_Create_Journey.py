@@ -103,7 +103,7 @@ def gen_subject(rag_chain:RunnableSequence, content, journey_instructions="", in
     for i, step in enumerate(step_items.steps):
         bar.progress(0.35 + (0.6 * i/total_items), text=f"Generating curriculum for step {i+1} of {total_items}")
         class_content = None
-        get_content = lambda: get_chain("journey_step_details").invoke(
+        retry_lambda = lambda: get_chain("journey_step_details").invoke(
                 {
                     "context": rag_chain.invoke({"question": f"{step.title}\n{step.description}", "context": content}),
                     "journey_instructions": journey_instructions,
@@ -111,12 +111,12 @@ def gen_subject(rag_chain:RunnableSequence, content, journey_instructions="", in
                 }
             )
         try:
-            class_content, _ = get_content()
+            class_content, _ = retry_lambda()
         except Exception as e:
             print(f"Error generating class content: {e}")
             print("Retrying once")
             try:
-                class_content, _ = get_content()
+                class_content, _ = retry_lambda()
             except Exception as e:
                 print(f"Error generating class content: {e}")
                 class_content = "Error generating class content"
@@ -238,12 +238,13 @@ def gen_journey_subject(journey_name, journey_instructions, files, instructions,
         subject["files"] = list(files.keys())
 
     with st.status(f"Generating JSON for journey"):
+        placeholder = st.empty()
         bar = st.progress(0, "Generating JSON for journey")
 
         total_items = len(subject["steps"])
         for i, step in enumerate(subject["steps"]):
             bar.progress(i/total_items, f"Generating JSON for step {i+1}/{total_items} ")
-            structured = get_chain("journey_structured").invoke({
+            retry_lambda = lambda: get_chain("journey_structured").invoke({
                 "context": f"""
                     Title:
                     {step["title"]}
@@ -256,7 +257,19 @@ def gen_journey_subject(journey_name, journey_instructions, files, instructions,
                 """
             })
 
+            structured = None
+            try:
+                structured = retry_lambda()
+            except Exception as e:
+                placeholder.error(f"Error generating JSON for step {i+1}, retrying once: {e}")
+                try:
+                    structured = retry_lambda()
+                    placeholder.success(f"Successfully generated JSON for step {i+1} on retry.")
+                except Exception as e:
+                    placeholder.error(f"Error generating JSON for step {i+1}, skipping: {e}")
+
             subject["steps"][i]["json"] = structured
+        placeholder.empty()
         bar.empty()
         st.success("Generating JSON for journey done.")
     return subject

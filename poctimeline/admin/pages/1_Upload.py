@@ -21,7 +21,7 @@ from lib.load_env import EMBEDDING_CHAR_LIMIT, EMBEDDING_OVERLAP, INSTRUCT_CHAR_
 from lib.streamlit_tools import check_auth, get_all_categories, llm_edit
 
 st.set_page_config(
-    page_title="TC POC: Admin",
+    page_title="TC POC: Upload files",
     page_icon="static/icon.png",
     layout="centered",
     menu_items={
@@ -326,7 +326,7 @@ def process_file_data(filename, category):
 
 def main():
     init_db()
-    st.title("Admin interface for TC POC")
+    st.title("Upload Files")
 
     if not check_auth():
         return

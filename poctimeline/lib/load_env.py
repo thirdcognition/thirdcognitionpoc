@@ -7,8 +7,8 @@ from langchain_core.language_models.llms import BaseLLM
 from langchain_community.chat_models.ollama import ChatOllama
 from langchain_groq import ChatGroq
 
-load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
-print("Loading env: ", os.path.join(os.path.dirname(__file__), "..", ".env"))
+load_dotenv(os.path.join(os.path.dirname(__file__), "../../../", ".env"))
+print("Loading env: ", os.path.join(os.path.dirname(__file__), "../../../", ".env"))
 # for key, value in os.environ.items():
 #     print(f'\t{key}= {value}')
 

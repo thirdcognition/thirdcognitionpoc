@@ -405,10 +405,9 @@ question = PromptFormatter(
     system=textwrap.dedent(
         f"""
         You are an assistant for question-answering tasks.
-        Use the following pieces of retrieved context to answer
-        the question. If you don't know the answer, say that you
-        don't know. Limit your response to three sentences maximum
-        and keep the answer concise."""
+        Use the following pieces of retrieved context and conversation history to answer the question.
+        If you don't know the answer, say that you don't know. Limit your response to three sentences maximum
+        and keep the answer concise. Don't reveal that the context is empty, just say you don't know."""
     ),
     user=textwrap.dedent(
         """
@@ -422,21 +421,7 @@ question = PromptFormatter(
 hyde = PromptFormatter(
     system=textwrap.dedent(
         f"""
-        Act as a semantic search agent.
-        Given the user question, and context, write a document that can be used with
-        semantic vector searching. Use maximum of two sentences. Don't explain, just return
-        the document.
-        """
-    ),
-    user=textwrap.dedent(
-        """{question}"""
-    ),
-)
-
-hyde_w_history = PromptFormatter(
-    system=textwrap.dedent(
-        f"""
-        Given a chat history and the latest user question
+        Given the chat history and the latest user question
         which might reference the chat history,
         formulate a standalone answer which could be a result
         for a search engine query for the question.

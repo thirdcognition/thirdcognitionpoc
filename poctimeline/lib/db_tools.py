@@ -136,8 +136,11 @@ def get_chroma_collection(name, update=False, path=CHROMA_PATH, embedding_id = N
 
 vectorstores = {}
 
-def get_vectorstore(id, embedding_id="base", update_vectorstores = False) -> Chroma:
+def get_vectorstore(id, embedding_id="base", update_vectorstores = False, path=CHROMA_PATH) -> Chroma:
     init_llms()
+    global chroma_client
+    chroma_client = chroma_client or chromadb.PersistentClient(path=path)
+
     global vectorstores
 
     if id in vectorstores and not update_vectorstores:

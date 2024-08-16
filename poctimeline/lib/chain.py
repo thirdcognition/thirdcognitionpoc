@@ -180,8 +180,8 @@ def init_llm(
                 temperature=temperature,
                 num_ctx=ctx_size,
                 num_predict=ctx_size,
-                repeat_penalty=1.5,
-                timeout=20 * 1000,
+                repeat_penalty=2,
+                timeout=10000,
                 callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
             )
         else:
@@ -191,7 +191,7 @@ def init_llm(
                 model=model,
                 verbose=verbose,
                 temperature=temperature,
-                timeout=30000,
+                timeout=10000,
                 max_retries=5,
                 callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]),
             )

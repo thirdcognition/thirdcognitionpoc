@@ -1,10 +1,10 @@
-from turtle import st
+import streamlit as st
 from lib.db_tools import FileDataTable, get_chroma_collection, get_db_files, init_db
 from lib.document_parse import markdown_to_text
 from lib.streamlit_tools import check_auth, get_all_categories, llm_edit
 
 st.set_page_config(
-    page_title="TC POC: Admin",
+    page_title="TC POC: Manage Uploads",
     page_icon="static/icon.png",
     layout="centered",
     menu_items={
@@ -39,6 +39,7 @@ def manage_file(filename):
                 .first()
             )
             database_session.delete(instance)
+            database_session.commit()
             get_db_files(reset=True)
             st.rerun()
     header_col1, header_col2 = st.columns([1, 4], vertical_alignment="bottom")
@@ -236,7 +237,7 @@ def manage_file(filename):
 
 def main():
     init_db()
-    st.title("Admin interface for TC POC")
+    st.title("Manage Uploads")
 
     if not check_auth():
         return
@@ -250,3 +251,7 @@ def main():
 
     for file in files.keys():
         manage_file(file)
+
+
+if __name__ == "__main__":
+    main()

@@ -11,6 +11,7 @@ from lib.db_tools import (
     JourneyDataTable,
     get_db_files,
     get_db_journey,
+    get_vectorstore,
     init_db,
 )
 from lib.chain import (

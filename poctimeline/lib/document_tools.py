@@ -1,5 +1,6 @@
 from functools import cache
 from typing import Dict, List
+import streamlit as st
 from langchain_chroma import Chroma
 from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
@@ -10,7 +11,8 @@ from langchain_core.runnables import (
     RunnableParallel,
     RunnablePassthrough,
     RunnableBranch,
-    RunnableWithMessageHistory
+    RunnableWithMessageHistory,
+    RunnableLambda
 )
 from langchain_core.output_parsers import StrOutputParser
 from langchain_experimental.text_splitter import SemanticChunker
@@ -18,7 +20,7 @@ from langchain.schema.document import Document
 from langchain_community.document_compressors import FlashrankRerank
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
-from langchain.chains.history_aware_retriever import create_history_aware_retriever
+from langchain_core.messages import AIMessage
 
 from lib.db_tools import get_vectorstore
 from lib.load_env import EMBEDDING_CHAR_LIMIT, INSTRUCT_CHAR_LIMIT
@@ -33,20 +35,19 @@ def get_text_splitter(chunk_size, chunk_overlap):
         chunk_size=chunk_size, chunk_overlap=chunk_overlap
     )
 
-chat_history_store = {}
-
 def get_session_history(session_id: str) -> BaseChatMessageHistory:
-    global chat_history_store
-    if session_id not in chat_history_store:
-        chat_history_store[session_id] = ChatMessageHistory()
-    return chat_history_store[session_id]
+    if "chat_history" not in st.session_state:
+        st.session_state["chat_history"] = {}
 
-history_chains = {}
+    if session_id not in st.session_state["chat_history"]:
+        st.session_state["chat_history"][session_id] = ChatMessageHistory()
+    return st.session_state["chat_history"][session_id]
 
 def get_chain_with_history(chain_id: str, chain:RunnableSequence):
-    global history_chains
-    if chain_id in history_chains:
-        return history_chains[chain_id]
+    if "history_chains" not in st.session_state:
+        st.session_state["history_chains"] = {}
+    if chain_id in st.session_state["history_chains"]:
+        return st.session_state["history_chains"][chain_id]
 
     history_chain = RunnableWithMessageHistory(
         runnable=chain,
@@ -56,13 +57,17 @@ def get_chain_with_history(chain_id: str, chain:RunnableSequence):
         history_messages_key="chat_history"
     )
 
-    history_chains[chain_id] = history_chain
+    st.session_state["history_chains"][chain_id] = history_chain
     return history_chain
 
 compressor = None
 
 def rerank_documents(list_of_documents: list[Document], query: str, amount=5):
     global compressor
+
+    print("\n\n\nReranking documents")
+    print(f"Amount of documents: {len(list_of_documents)}")
+    print(f"Query: {query}\n\n\n")
 
     if len(list_of_documents) > 5:
         if compressor is None:
@@ -98,7 +103,7 @@ rag_chains = {}
 
 def rag_chain(store_id:str, embedding_id="hyde", prompt_id = "question", llm_id = "chat", reset=False, with_history=False) -> RunnableSequence:
     global rag_chains
-    chain_id = f"{store_id}-{embedding_id}-{prompt_id}-{llm_id}"
+    chain_id = f"{store_id}-{embedding_id}-{prompt_id}-{llm_id}-{"history" if with_history else "nohistory"}"
     if chain_id in rag_chains and not reset:
         return rag_chains[chain_id]
 
@@ -112,58 +117,72 @@ def rag_chain(store_id:str, embedding_id="hyde", prompt_id = "question", llm_id 
     prompt = get_prompt(prompt_id)
 
     def format_params(params):
+        print(f"\n\nformat params {params=}\n\n")
         question = params["question"]
         for key in question.keys():
-            if key == "context":
-                params["documents"].append(Document(page_content=question[key]))
-            else:
-                params[key] = question[key]
-
+            # if key == "chat_history":
+            #     params["documents"].append(Document(page_content="Chat history:"+"\n".join(mes.content for mes in question[key])))
+            # else:
+            params[key] = question[key]
+        print(f"\n\nformatted params {params=}\n\n")
         return params
 
-    def add_context(params):
-        params["question"] = f"context:\n{params['context']}\n\nquery:\n{params['question']}"
-        return params
-
-    # def log_results(params):
-    #     print(f"\n\n\nlog\n\n {params=}\n\n\n")
+    # def add_context(params):
+    #     print(f"\n\nadd context {params=}\n\n")
+    #     if "chat_history" in params.keys():
+    #         params["orig_question"] = params["question"]
+    #         params["context"] = f"History:\n{params['chat_history']}\n\nQuery:\n{params['question']}"
     #     return params
+
+    def log_results(params):
+        print(f"\n\n\nlog\n\n {params=}\n\n\n")
+        return params
 
     documents:List = None
     def store_documents(params):
-        documents = params["documents"]
+        print(f"\n\nstore docs {params=}\n\n")
+        nonlocal documents
+        if isinstance(params, Dict) and "documents" in params.keys():
+            documents = params["documents"]
+        elif isinstance(params, List) and len(params) > 0 and isinstance(params[0], Document):
+            documents = params
         return params
 
     def set_metadata(params):
-        if documents is None or len(documents) == 0:
-            return params
+        print(f"\n\nmetadata orig {params=}\n\n")
 
-        if isinstance(params, str):
+        if isinstance(params, AIMessage):
             params = {
                 "answer": params
             }
+
+        if documents is None or len(documents) == 0:
+            return params
+
         if "metadata" not in params:
             params["metadata"] = {
                 "references": documents
             }
         else:
             params["metadata"]["references"] = documents
+
         return params
 
     qa_chain = (
         RunnableParallel(
             {
                 "context": RunnableParallel({
-                    "documents": add_context | retriever, # | log_results,
+                    "documents":  retriever,  # add_context | retriever | log_results,
                     "question": RunnablePassthrough(),
                 }) | format_params | rerank_rag | store_documents,
-                "question": RunnablePassthrough(),
+                "question": RunnableLambda(lambda x: x["question"]),
+                "chat_history": RunnableLambda(lambda x: x["chat_history"] if "chat_history" in x.keys() else []),
             }
-        )
+        ) | log_results
         | prompt
         | llm
-        | StrOutputParser()
         | set_metadata
+        # | StrOutputParser()
     )
 
     if with_history:

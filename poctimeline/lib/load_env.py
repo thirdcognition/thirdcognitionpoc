@@ -109,9 +109,12 @@ print(f"\tInstruct: {INSTRUCT_LLM=} {INSTRUCT_CONTEXT_SIZE=} {INSTRUCT_CHAR_LIMI
 print(
     f"\tInstruct detailed: {INSTRUCT_DETAILED_LLM=} {INSTRUCT_DETAILED_CONTEXT_SIZE=} {INSTRUCT_DETAILED_CHAR_LIMIT}"
 )
+print(
+    f"\tStructured: {STRUCTURED_LLM=} {STRUCTURED_CONTEXT_SIZE=} {STRUCTURED_CHAR_LIMIT}"
+)
 print(f"\tTool: {TOOL_LLM=} {TOOL_CONTEXT_SIZE=} {TOOL_CHAR_LIMIT}")
 
-USE_OLLAMA_embeddings = os.getenv("USE_OLLAMA_EMBEDDING", "False") == "True" or False
+USE_OLLAMA_EMBEDDINGS = os.getenv("USE_OLLAMA_EMBEDDING", "False") == "True" or False
 USE_HF_EMBEDDINGS = os.getenv("USE_HF_EMBEDDING", "False") == "True" or False
 USE_LOCAL_EMBEDDINGS = os.getenv("USE_LOCAL_EMBEDDING", "True") == "True" or False
 
@@ -122,7 +125,7 @@ if USE_LOCAL_EMBEDDINGS:
 
     print("+++ LOCAL EMBEDDING +++")
 
-if USE_OLLAMA_embeddings:
+if USE_OLLAMA_EMBEDDINGS:
     EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "bge-small-en")
     EMBEDDING_CHAR_LIMIT = int(os.getenv("OLLAMA_EMBEDDING_CHAR_LIMIT", 1000))
     EMBEDDING_OVERLAP = int(os.getenv("OLLAMA_EMBEDDING_OVERLAP", 100))

@@ -27,12 +27,13 @@ ocr = None
 
 #     return _ret + resp
 
+
 def extract_from_images_with_rapidocr(
     images: Sequence[Union[Iterable[np.ndarray], bytes]],
     start,
     step,
     ocrs,
-    progress_cb = None,
+    progress_cb=None,
 ) -> str:
 
     global ocr
@@ -47,7 +48,7 @@ def extract_from_images_with_rapidocr(
 
     for img in images:
         if progress_cb:
-           progress_cb(start + step * i / total, "Analysing image")
+            progress_cb(start + step * i / total, "Analysing image")
 
         i = i + 1
         result = None
@@ -75,7 +76,7 @@ def extract_images_from_page(
     step,
     xrefs,
     ocrs,
-    progress_cb = None,
+    progress_cb=None,
 ) -> str:
     """Extract images from page and get the text with RapidOCR."""
 
@@ -113,6 +114,7 @@ def extract_images_from_page(
         imgs, start + substep_total, step - substep_total, ocrs, progress_cb=progress_cb
     )
 
+
 # Function to convert PDF to text using PyMuPDFLoader
 def load_pymupdf(file: io.BytesIO, filetype, progress_cb=None):
     doc = fitz.open(stream=file.read(), filetype=filetype)
@@ -133,7 +135,10 @@ def load_pymupdf(file: io.BytesIO, filetype, progress_cb=None):
 
     for page in doc:
         if progress_cb:
-            progress_cb(page_percentage_total / total * i + i * step, f"Parsing page {page.number}")
+            progress_cb(
+                page_percentage_total / total * i + i * step,
+                f"Parsing page {page.number}",
+            )
 
         page_string = re.sub(" {2,}", " ", page.get_text())
         page_string += extract_images_from_page(
@@ -153,9 +158,17 @@ def load_pymupdf(file: io.BytesIO, filetype, progress_cb=None):
     if progress_cb:
         progress_cb(0.6, text="Splitting text...")
 
-    chunks = semantic_splitter(text, progress_cb=lambda x,y: progress_cb(min(1, 0.6 + 0.4 * y / x), f"Splitting text {y+1}/{x}") if progress_cb else None)
+    chunks = semantic_splitter(
+        text,
+        progress_cb=lambda x, y: (
+            progress_cb(min(1, 0.6 + 0.4 * y / x), f"Splitting text {y+1}/{x}")
+            if progress_cb
+            else None
+        ),
+    )
 
     return chunks
+
 
 def markdown_to_text(markdown_string):
     """Converts a markdown string to plaintext"""

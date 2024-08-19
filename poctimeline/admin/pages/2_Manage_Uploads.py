@@ -8,12 +8,13 @@ st.set_page_config(
     page_icon="static/icon.png",
     layout="centered",
     menu_items={
-        'About': """# ThirdCognition PoC
+        "About": """# ThirdCognition PoC
 [ThirdCognition](https://thirdcognition.com)
 This is an *extremely* cool admin tool!
         """
-    }
+    },
 )
+
 
 def manage_file(filename):
     database_session = init_db()
@@ -32,7 +33,11 @@ def manage_file(filename):
     col1, col2 = st.columns([1, 10], vertical_alignment="center")
     col2.subheader(filename, divider=True)
     with col1.popover(":x:"):
-        if st.button(f"Are you sure you want to remove {filename}?", key=f"delete_button_{filename}", use_container_width=True):
+        if st.button(
+            f"Are you sure you want to remove {filename}?",
+            key=f"delete_button_{filename}",
+            use_container_width=True,
+        ):
             instance = (
                 database_session.query(FileDataTable)
                 .where(FileDataTable.filename == filename)
@@ -74,7 +79,9 @@ def manage_file(filename):
             updates = {
                 "disabled": disable_checkbox,
                 "category_tag": category_tags,
-                "chroma_collection": [col.strip() for col in chroma_collection.split(",")],
+                "chroma_collection": [
+                    col.strip() for col in chroma_collection.split(",")
+                ],
             }
 
             changes = False
@@ -112,10 +119,8 @@ def manage_file(filename):
             filetype = filename.split(".")[-1]
             summary = file_entry["summary"]
             text = file_entry["formatted_text"]
-            thoughts = None #file_entry["format_thoughts"]
+            thoughts = None  # file_entry["format_thoughts"]
             raw = file_entry["texts"]
-
-
 
             if filename in rewrite_text:
                 text = rewrite_text[filename]
@@ -161,20 +166,17 @@ def manage_file(filename):
                         rewrite_text[filename] = ""
                         rewrite_thoughts[filename] = ""
 
-
                 if rewrite:
                     text = None
                     with st.spinner("Rewriting"):
                         if raw is not None and filetype != "md":
-                            text, thoughts = llm_edit(
-                                "text_formatter", raw, guidance
-                            )
+                            text, thoughts = llm_edit("text_formatter", raw, guidance)
                         elif filetype == "md":
                             if len(raw) > 1 or len(raw[0]) > 1000:
                                 text, thoughts = llm_edit(
                                     "text_formatter",
                                     [markdown_to_text("\n".join(raw))],
-                                    guidance
+                                    guidance,
                                 )
                             else:
                                 text = markdown_to_text(raw[0])
@@ -206,7 +208,12 @@ def manage_file(filename):
 
             with tab4:
                 # print(f"{file_entry["chroma_collection"]=}")
-                rag_id = st.selectbox("RAG DB", file_entry["chroma_collection"], placeholder="Choose one", index=None)
+                rag_id = st.selectbox(
+                    "RAG DB",
+                    file_entry["chroma_collection"],
+                    placeholder="Choose one",
+                    index=None,
+                )
                 # print("RAG ID:", rag_id)
 
                 if rag_id:
@@ -234,6 +241,7 @@ def manage_file(filename):
                             st.write(f"Error: {e}")
                 else:
                     st.write("Select RAG DB first.")
+
 
 def main():
     init_db()

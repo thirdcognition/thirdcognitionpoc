@@ -24,7 +24,7 @@ from lib.chain import (
     get_llm,
     # get_vectorstore,
 )
-from prompts import JourneyStructure
+from lib.prompts import JourneyStructure
 
 # main loop
 # 1. Send the introduction message which is optimized to user specific details
@@ -84,7 +84,7 @@ class QueryState(TypedDict):
 def get_chat_graph(vectorstore_id: str = None):
     graph_builder = StateGraph(QueryState)
     llm_json = get_llm("json")
-    grader_chain = get_chain("grader")
+    grader_chain = get_chain("grader")()
     retriever = get_vectorstore(vectorstore_id, "hyde").as_retriever(
         search_type="similarity_score_threshold",
         search_kwargs={"k": 40, "score_threshold": 0.3},

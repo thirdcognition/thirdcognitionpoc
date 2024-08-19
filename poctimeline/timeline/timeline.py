@@ -1,5 +1,10 @@
 # import required dependencies
+import os
+import sys
 import streamlit as st
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
 from lib.chat import DELIMITER, chat_elements, init_journey_chat
 from lib.journey_shared import JourneyModel
@@ -8,6 +13,7 @@ from lib.journey_shared import JourneyModel
 # chat_history = { "default": [] } #[[] for _ in range(11)]
 # query_history = { "default": [] }
 # chat_state = "default"
+
 
 def page_not_found():
     st.title("Journey not found")
@@ -23,15 +29,23 @@ def main():
         menu_items={
             # 'Get Help': 'https://www.extremelycoolapp.com/help',
             # 'Report a bug': "https://www.extremelycoolapp.com/bug",
-            'About': """# ThirdCognition PoC
+            "About": """# ThirdCognition PoC
 [ThirdCognition](https://thirdcognition.com)
 This is an *extremely* cool app!
             """
-        }
+        },
     )
 
-    journey_name = st.query_params.get("journey", None) or ("active_journey" in st.session_state and st.session_state.active_journey) or None
-    chat_step = st.query_params.get("state", None) or ("active_step" in st.session_state and st.session_state.active_step) or ""
+    journey_name = (
+        st.query_params.get("journey", None)
+        or ("active_journey" in st.session_state and st.session_state.active_journey)
+        or None
+    )
+    chat_step = (
+        st.query_params.get("state", None)
+        or ("active_step" in st.session_state and st.session_state.active_step)
+        or ""
+    )
     journey_found = init_journey_chat(journey_name)
 
     if not journey_found and journey_name is not None:
@@ -41,9 +55,11 @@ This is an *extremely* cool app!
     if "active_journey" not in st.session_state:
         st.session_state.active_journey = journey_name
 
-    if "active_step" not in st.session_state or chat_step != st.session_state.active_step:
+    if (
+        "active_step" not in st.session_state
+        or chat_step != st.session_state.active_step
+    ):
         st.session_state.active_step = chat_step
-
 
     # st.header("ThirdCognition Proof of concept demostration")
     if "chat_state" not in st.session_state:
@@ -61,7 +77,7 @@ This is an *extremely* cool app!
 
     if journey_name != None:
         journey_list = st.session_state.journey_list
-        journey:JourneyModel = st.session_state.journey_list[journey_name]
+        journey: JourneyModel = st.session_state.journey_list[journey_name]
         if chat_state == "default":
             st.subheader("ThirdCognition Virtual Buddy", divider=True)
         else:
@@ -70,9 +86,9 @@ This is an *extremely* cool app!
         # st.subheader(journey["title"], divider=True)
         # st.write(journey["summary"])
 
-
         with st.sidebar:
-            st.markdown("""<style>
+            st.markdown(
+                """<style>
             button[data-testid=baseButton-secondary] {
                 display: block;
                 text-align: left;
@@ -92,23 +108,26 @@ This is an *extremely* cool app!
                 border: none;
                 cursor: auto !important;
             }
-            </style>""", unsafe_allow_html=True)
+            </style>""",
+                unsafe_allow_html=True,
+            )
 
             for i, subject in enumerate(journey.subjects):
-                with st.expander(f"{subject.title}", expanded=(f"{journey_name}_{i}" in chat_state)):
+                with st.expander(
+                    f"{subject.title}", expanded=(f"{journey_name}_{i}" in chat_state)
+                ):
                     for j, step in enumerate(subject.steps):
-                        step_id = f'{journey_name}{DELIMITER}{i}{DELIMITER}{j}'
+                        step_id = f"{journey_name}{DELIMITER}{i}{DELIMITER}{j}"
                         if st.button(
                             step.title,
                             use_container_width=True,
                             disabled=(step_id == chat_state),
-                            key=f'step_{step_id}',
+                            key=f"step_{step_id}",
                         ):  # , on_click=set_chat_state, args=(i, task)
                             chat_state = step_id
                             st.session_state.chat_state = chat_state
                             st.session_state.chat_journey = journey_name
                             st.rerun()
-
 
         for journey_name in journey_list:
             if (
@@ -120,6 +139,7 @@ This is an *extremely* cool app!
 
     if chat_state == "default" and st.session_state.chat_state == chat_state:
         chat_elements("default", journey_name)
+
 
 if __name__ == "__main__":
     main()

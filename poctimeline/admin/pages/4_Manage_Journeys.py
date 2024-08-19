@@ -1,9 +1,20 @@
+import time
 import streamlit as st
+from streamlit.delta_generator import DeltaGenerator
 
-from lib.journey_shared import delete_journey, save_journey
+from lib.chain import get_chain
+from lib.journey_shared import (
+    create_subject_prompt_editor,
+    delete_journey,
+    gen_journey_subject,
+    get_files_for_journey,
+    llm_gen_json_step,
+    save_journey,
+)
 from lib.db_tools import (
     JourneyModel,
     StepModel,
+    SubjectModel,
     get_db_journey,
     init_db,
 )
@@ -12,7 +23,7 @@ from lib.load_env import (
     CLIENT_HOST,
 )
 
-from lib.prompts import JourneyStructure
+from lib.prompts import ActionStructure, JourneyStructure
 
 from lib.streamlit_tools import check_auth
 
@@ -21,105 +32,463 @@ st.set_page_config(
     page_icon="static/icon.png",
     layout="centered",
     menu_items={
-        'About': """# ThirdCognition PoC
+        "About": """# ThirdCognition PoC
 [ThirdCognition](https://thirdcognition.com)
 This is an *extremely* cool admin tool!
         """
-    }
+    },
 )
 
-# def edit_journey(journey_name, journey:JourneyModel):
-#     st.header(f"Edit journey: {journey_name}")
 
-#     journey = edit_journey_details(journey_name, journey)
+def save_journey_ui(id, journey_name, journey: JourneyModel):
+    subcol1, subcol2, _ = st.columns([1, 1, 5])
+    if subcol1.button("Save", key=f"save_button_{id}", use_container_width=True):
+        save_journey(journey_name, journey)
+        st.session_state.editing_journey = None
+        st.session_state.editing_journey_details = None
+        st.session_state.editing_journey_subject = None
+        st.session_state.editing_journey_step = None
+        st.session_state.edit_mode[id] = False
+        time.sleep(0.1)
+        st.rerun()
+    if subcol2.button("Cancel", key=f"cancel_button_{id}", use_container_width=True):
+        st.session_state.editing_journey = None
+        st.session_state.editing_journey_details = None
+        st.session_state.editing_journey_subject = None
+        st.session_state.editing_journey_step = None
+        st.session_state.editing_journey_actions = False
+        st.session_state.edit_mode[id] = False
+        time.sleep(0.1)
+        st.rerun()
 
-#     if journey.subjects:
-#         st.subheader("Journey subjects")
-#         for i, subject in enumerate(journey.subjects):
-#             st.write(f"### Subject {i}: {subject['title']}")
-#             for j, step in enumerate(subject.steps):
-#                 with st.expander(f"Step {j}: {step.title}"):
-#                     journey.subjects[i].steps[j] = edit_journey_subject_step(journey_name, journey.subjects[i].steps[j], i, j)
 
-#     if st.button("Save into database"):
-#         save_journey(journey_name, journey)
-
-
-def edit_journey_details(journey_name, journey:JourneyModel):
-    # print(journey_name, journey)
-    if journey.title:
+def journey_details_ui(
+    journey_name: str, journey: JourneyModel, edit_mode: bool = False
+):
+    if edit_mode:
+        journey.instructions = st.text_area(
+            f"(gen) Instructions",
+            value=journey.instructions,
+            key=f"journey_instructions_{journey_name}",
+        )
         journey.title = st.text_input(
-            f"Journey title", value=journey.title, key=f"journey_title_{journey_name}"
+            f"Journey title",
+            value=journey.title,
+            key=f"journey_title_{journey_name}",
         )
-    if journey.summary:
         journey.summary = st.text_area(
-            f"Journey summary", value=journey.summary, key=f"journey_summary_{journey_name}", height=200
+            f"Journey summary",
+            value=journey.summary,
+            key=f"journey_summary_{journey_name}",
+            height=200,
         )
-    if journey.chroma_collection:
         journey.chroma_collection = st.text_input(
-            f"Chroma databases", value=",".join(journey.chroma_collection), key=f"journey_chroma_collections_{journey_name}"
+            f"Chroma databases",
+            value=",".join(journey.chroma_collection),
+            key=f"journey_chroma_collections_{journey_name}",
         ).split(",")
 
-    return journey
-
-def edit_journey_subject_step(journey_name, step:StepModel, subject_index, step_index, show_structured=True, show_actions=True):
-    st.write(f"##### Step {step_index+1}:")
-    if show_structured:
-        try:
-            step_json:JourneyStructure = step.structured
-            step_json.title = st.text_input(
-                "Title", value=step_json.title, key=f"journey_step_title_{journey_name}_{subject_index}_{step_index}"
-            )
-
-            step_json.intro = st.text_area(
-                "Intro",
-                value=step_json.intro,
-                key=f"journey_step_intro_{journey_name}_{subject_index}_{step_index}",
-                height=200
-            )
-
-            step_json.content = st.text_area(
-                "Content",
-                value=step_json.content,
-                key=f"journey_step_content_{journey_name}_{subject_index}_{step_index}",
-                height=400
-            )
-
-            if show_actions:
-                for j, action in enumerate(step_json.actions):
-                    st.write(f"##### Teaching action {j+1}:")
-
-                    action.title = st.text_input("Title", value=action.title, key=f"journey_step_action_title_{journey_name}_{subject_index}_{step_index}_{j}")
-                    action.description = st.text_area("Description", value=action.description, key=f"journey_step_action_description_{journey_name}_{subject_index}_{step_index}_{j}")
-                    for k, resource in enumerate(action.resources):
-                        action.resources[k] = st.text_input(f"Resource {k+1}", value=resource, key=f"journey_step_action_resource_{journey_name}_{subject_index}_{step_index}_{j}_{k}")
-                    action.test = st.text_area("Test", value=action.test, key=f"journey_step_action_test_{journey_name}_{subject_index}_{step_index}_{j}")
-        except Exception as e:
-            st.write(f"Failed to use JSON: {e}")
     else:
-        step.title = st.text_input(
-            "Title", value=step.title, key=f"journey_step_title_{journey_name}_{subject_index}_{step_index}"
-        )
+        st.write(f"#### {journey.title.strip()}")
+        st.write(journey.summary)
 
-        step.intro = st.text_area(
-            "Intro",
-            value=step.intro,
-            key=f"journey_step_intro_{journey_name}_{subject_index}_{step_index}",
-        )
+        if journey.chroma_collection and len(journey.chroma_collection) > 0:
+            st.write("Connected Chroma databases:")
+            st.write("* " + "\n* ".join(journey.chroma_collection))
 
-        step.content = st.text_area(
-            "Content",
-            value=step.content,
-            key=f"journey_step_content_{journey_name}_{subject_index}_{step_index}",
+
+def journey_subject_details_ui(
+    journey_name: str,
+    subject_index: int,
+    journey: JourneyModel,
+    edit_mode: bool = False,
+):
+    subject = journey.subjects[subject_index]
+
+    subject.prompts = create_subject_prompt_editor(
+        f"{journey_name}_subject_{subject_index}", subject, edit_mode
+    )
+
+    if edit_mode:
+        journey.subjects[subject_index].instructions = st.text_area(
+            f"(gen) Instructions",
+            value=subject.instructions,
+            key=f"subject_instructions_{journey_name}_{subject_index}",
         )
-        if show_actions:
+        journey.subjects[subject_index].step_amount = st.number_input(
+            f"(gen) (approx) Items",
+            min_value=1,
+            max_value=20,
+            value=subject.step_amount or 5,
+            key=f"subject_step_amount_{journey_name}_{subject_index}",
+        )
+        journey.subjects[subject_index].title = st.text_input(
+            f"Title",
+            value=subject.title,
+            key=f"subject_title_{journey_name}_{subject_index}",
+        )
+        journey.subjects[subject_index].summary = st.text_area(
+            f"Summary",
+            value=subject.summary,
+            key=f"subject_summary_{journey_name}_{subject_index}",
+            height=200,
+        )
+        journey.subjects[subject_index].db_files = get_files_for_journey(
+            journey.chroma_collection[0], journey_name, subject_index, subject.db_files
+        )
+        # if st.button("Regenerate", key=f"regenerate_button_{journey_name}_{subject_index}"):
+        #     journey.subjects[subject_index] = gen_journey_subject(journey, subject)
+        # save_journey_ui(f"{journey_name}_{subject_index}", journey_name, journey)
+    else:
+        if subject.instructions:
+            st.write("### Instructions:")
+            st.write(subject.instructions)
+        st.write(f"### {subject.title}:")
+        st.write(subject.summary)
+        if subject.files and len(subject.files) > 0:
+            st.write("Files used:")
+            st.write("* " + "\n* ".join(subject.files))
+
+
+def journey_subject_step_ui(
+    journey_name: str,
+    subject_index: int,
+    step_index: int,
+    journey: JourneyModel,
+    edit_mode: bool = False,
+    container1: DeltaGenerator = None,
+):
+    step: StepModel = journey.subjects[subject_index].steps[step_index]
+    step_structured: JourneyStructure = step.structured
+    if container1 is None:
+        container1 = st.container()
+
+    with container1:
+        if edit_mode:
+            if step_structured is None:
+                step.title = st.text_input(
+                    "Title",
+                    value=step.title,
+                    key=f"journey_step_title_simple_{journey_name}_{subject_index}_{step_index}",
+                )
+
+                step.subject = st.text_input(
+                    "Subject",
+                    value=step.subject,
+                    key=f"journey_step_subject_simple_{journey_name}_{subject_index}_{step_index}",
+                )
+
+                step.intro = st.text_area(
+                    "Intro",
+                    value=step.intro,
+                    key=f"journey_step_intro_simple_{journey_name}_{subject_index}_{step_index}",
+                    height=200,
+                )
+
+                step.content = st.text_area(
+                    "Content",
+                    value=step.content,
+                    key=f"journey_step_content_simple_{journey_name}_{subject_index}_{step_index}",
+                    height=400,
+                )
+            else:
+                step_structured.title = st.text_input(
+                    "Title",
+                    value=step_structured.title,
+                    key=f"journey_step_title_structured_{journey_name}_{subject_index}_{step_index}",
+                )
+                step.title = step_structured.title
+
+                step_structured.subject = st.text_input(
+                    "Subject",
+                    value=step_structured.subject,
+                    key=f"journey_step_subject_structured_{journey_name}_{subject_index}_{step_index}",
+                )
+                step.subject = step_structured.subject
+
+                step_structured.intro = st.text_area(
+                    "Intro",
+                    value=step_structured.intro,
+                    key=f"journey_step_intro_structured_{journey_name}_{subject_index}_{step_index}",
+                    height=200,
+                )
+                step.intro = step_structured.intro
+
+                step_structured.content = st.text_area(
+                    "Content",
+                    value=step_structured.content,
+                    key=f"journey_step_content_structured_{journey_name}_{subject_index}_{step_index}",
+                    height=400,
+                )
+                step.content = step_structured.content
+
+            # save_journey_ui(f"{journey_name}_{subject_index}_{step_index}", journey_name, journey)
+        else:
+            if step_structured is None:
+                st.write(f"#### {step.title}")
+                st.write(f"{step.subject}")
+
+                st.write("##### Intro:")
+                st.write(step.intro)
+
+                st.write("##### Content:")
+                st.write(step.content)
+            else:
+                st.write(f"#### {step_structured.title}")
+                st.write(f"{step_structured.subject}")
+
+                st.write("##### Intro:")
+                st.write(step_structured.intro)
+
+                st.write("##### Content:")
+                st.write(step_structured.content)
+
+
+def journey_subject_step_actions_ui(
+    journey_name: str,
+    subject_index: int,
+    step_index: int,
+    journey: JourneyModel,
+    edit_mode: bool = False,
+    container1: DeltaGenerator = None,
+    container2: DeltaGenerator = None,
+):
+    step: StepModel = journey.subjects[subject_index].steps[step_index]
+    if container1 is None or container2 is None:
+        container1, container2 = st.tabs(["Simple", "Structured"])
+    action_index = 0
+    action: ActionStructure = None
+
+    col1, col2 = container2.columns([1, 4])
+    with container2:
+        if step.structured is not None:
+            if 0 < len(step.structured.actions) > 0:
+                action_index = (
+                    col1.radio(
+                        "Action",
+                        [i + 1 for i, action in enumerate(step.structured.actions)],
+                        key=f"journey_step_action_index_{journey_name}_{subject_index}_{step_index}",
+                        index=0,
+                    )
+                    - 1
+                )
+                action = step.structured.actions[action_index]
+            if edit_mode:
+                col1.button(
+                    "Add action",
+                    key=f"add_action_{journey_name}_{subject_index}_{step_index}",
+                    on_click=add_action,
+                    args=(journey_name, journey, subject_index, step_index),
+                )
+    if edit_mode:
+        with container1:
+            with st.popover(":sparkle: Generate new actions", use_container_width=True):
+                if st.button(
+                    f"Are you sure you want to generate {journey_name}: {journey.subjects[subject_index].steps[step_index].title} actions?",
+                    key=f"generate_actions_button_{journey_name}",
+                    use_container_width=True,
+                ):
+                    subject = journey.subjects[subject_index]
+                    new_actions, _ = get_chain("journey_step_actions")(
+                        (
+                            subject.prompts.step_actions.system,
+                            subject.prompts.step_actions.user,
+                        )
+                    ).invoke(
+                        {
+                            "context": step.content,
+                            "journey_instructions": journey.instructions,
+                            "instructions": subject.instructions,
+                            "subject": f"Title: {step.title}\nSubject: {step.subject}",
+                            "amount": (
+                                len(step.structured.actions)
+                                if step.structured is not None
+                                else 10
+                            ),
+                        }
+                    )
+                    journey.subjects[subject_index].steps[
+                        step_index
+                    ].actions = new_actions
+                    new_structured = llm_gen_json_step(
+                        journey.subjects[subject_index].steps[step_index]
+                    )
+
+                    journey.subjects[subject_index].steps[
+                        step_index
+                    ].structured.actions = new_structured.actions
+                    st.rerun()
+
+                st.write(
+                    "This will regenerate the actions for this step. This may take a few seconds.\n\nYou'll need to manually save after regeneration."
+                )
             step.actions = st.text_area(
-                "actions",
+                "Actions",
                 value=step.actions,
                 key=f"journey_step_Actions_{journey_name}_{subject_index}_{step_index}",
+                height=400,
             )
+            with st.popover(
+                ":sparkle: Regenerate structured actions", use_container_width=True
+            ):
+                if st.button(
+                    f"Are you sure you want regenerate {journey_name}: {journey.subjects[subject_index].steps[step_index].title} actions?",
+                    key=f"generate_structured_actions_button_{journey_name}",
+                    use_container_width=True,
+                ):
+                    new_structured = llm_gen_json_step(
+                        journey.subjects[subject_index].steps[step_index]
+                    )
+                    journey.subjects[subject_index].steps[
+                        step_index
+                    ].structured.actions = new_structured.actions
+                    st.rerun()
 
-    return step
+                st.write(
+                    "This will regenerate the structured actions for this step. This may take a few seconds.\n\nYou'll need to manually save after regeneration."
+                )
+        with container2:
+            if step.structured is not None:
+                if action is not None:
+                    col2.button(
+                        "Remove action",
+                        key=f"remove_action_{journey_name}_{subject_index}_{step_index}_{action_index}",
+                        on_click=remove_action,
+                        args=(
+                            journey_name,
+                            journey,
+                            subject_index,
+                            step_index,
+                            action_index,
+                        ),
+                    )
+                    action.title = col2.text_input(
+                        "Title",
+                        value=action.title,
+                        key=f"journey_step_action_title_{journey_name}_{subject_index}_{step_index}_{action_index}",
+                    )
+                    action.description = col2.text_area(
+                        "Description",
+                        value=action.description,
+                        key=f"journey_step_action_description_{journey_name}_{subject_index}_{step_index}_{action_index}",
+                    )
+                    col2.button(
+                        "Add Resource",
+                        key=f"journey_step_action_resource_add_{journey_name}_{subject_index}_{step_index}_{action_index}",
+                        on_click=add_resource,
+                        args=(
+                            journey_name,
+                            journey,
+                            subject_index,
+                            step_index,
+                            action_index,
+                        ),
+                    )
+                    for resource_index, resource in enumerate(action.resources):
+                        action.resources[resource_index] = col2.text_area(
+                            f"Resource {resource_index+1}",
+                            value=resource,
+                            key=f"journey_step_action_resource_{journey_name}_{subject_index}_{step_index}_{action_index}_{resource_index}",
+                        )
+                        col2.button(
+                            "Remove Resource",
+                            key=f"journey_step_action_resource_remove_{journey_name}_{subject_index}_{step_index}_{action_index}_{resource_index}",
+                            on_click=remove_resource,
+                            args=(
+                                journey_name,
+                                journey,
+                                subject_index,
+                                step_index,
+                                action_index,
+                                resource_index,
+                            ),
+                        )
+                    action.test = col2.text_area(
+                        "Test",
+                        value=action.test,
+                        key=f"journey_step_action_test_{journey_name}_{subject_index}_{step_index}_{action_index}",
+                    )
+    else:
+        with container1:
+            st.write(step.actions.replace("\n", "\n\n"))
+        with container2:
+            if step.structured is not None and action is not None:
+                col2.write("##### Title:")
+                col2.write(f"{action.title}")
+                col2.write("##### Description:")
+                col2.write(f"{action.description}")
+                col2.write("##### Resources:")
+                col2.write(
+                    "\n".join([f"  - {resource}" for resource in action.resources])
+                )
+                col2.write("##### Test:")
+                col2.write(f"{action.test}")
+
+
+def add_subject(journey_name: str, journey: JourneyModel):
+    journey.subjects.append(SubjectModel(title="New subject", summary="", steps=[]))
+
+
+def remove_subject(journey_name: str, journey: JourneyModel, subject_index: int):
+    journey.subjects.pop(subject_index)
+
+
+def add_step(journey_name: str, journey: JourneyModel, subject_index: int):
+    journey.subjects[subject_index].steps.append(
+        StepModel(title="New step", actions="")
+    )
+
+
+def remove_step(
+    journey_name: str, journey: JourneyModel, subject_index: int, step_index: int
+):
+    journey.subjects[subject_index].steps.pop(step_index)
+
+
+def add_action(
+    journey_name: str, journey: JourneyModel, subject_index: int, step_index: int
+):
+    journey.subjects[subject_index].steps[step_index].structured.actions.append(
+        ActionStructure(title="", description="", resources=[], test="")
+    )
+
+
+def remove_action(
+    journey_name: str,
+    journey: JourneyModel,
+    subject_index: int,
+    step_index: int,
+    action_index: int,
+):
+    journey.subjects[subject_index].steps[step_index].structured.actions.pop(
+        action_index
+    )
+
+
+def add_resource(
+    journey_name: str,
+    journey: JourneyModel,
+    subject_index: int,
+    step_index: int,
+    action_index: int,
+):
+    journey.subjects[subject_index].steps[step_index].structured.actions[
+        action_index
+    ].resources.append("")
+
+
+def remove_resource(
+    journey_name: str,
+    journey: JourneyModel,
+    subject_index: int,
+    step_index: int,
+    action_index: int,
+    resource_index: int,
+):
+    journey.subjects[subject_index].steps[step_index].structured.actions[
+        action_index
+    ].resources.pop(resource_index)
+
 
 def main():
     init_db()
@@ -135,171 +504,172 @@ def main():
     else:
         st.header("No journeys created yet.")
 
-    for journey_name in db_journey.keys():
+    if "edit_mode" not in st.session_state or len(st.session_state.edit_mode) == 0:
+        st.session_state.edit_mode = [False for _ in db_journey.keys()]
+    for journey_index, journey_name in enumerate(db_journey.keys()):
         # st.write(db_journey[journey_name])
-        journey:JourneyModel = db_journey[journey_name]
-        col1, col2, col3 = st.columns([2, 12, 3], vertical_alignment="center")
-        with col1.popover(":x:"):
-            if st.button(f"Are you sure you want to remove {journey_name}?", key=f"delete_button_{journey_name}", use_container_width=True):
+        journey: JourneyModel = db_journey[journey_name]
+        col_edit, col_delete, col2, col3 = st.columns(
+            [2, 2, 12, 3], vertical_alignment="center"
+        )
+        edit_mode = st.session_state.edit_mode[journey_index]
+        st.session_state.edit_mode[journey_index] = col_edit.checkbox(
+            ":pencil:",
+            key=f"edit_button_{journey_name}",
+            value=edit_mode,
+        )
+        with col_delete.popover(":x:"):
+            if st.button(
+                f"Are you sure you want to remove {journey_name}?",
+                key=f"delete_button_{journey_name}",
+                use_container_width=True,
+            ):
                 delete_journey(journey_name)
         col2.subheader(f"&nbsp;{journey_name}", divider=True)
-        col3.link_button(":paperclip:&nbsp;&nbsp;Link", f"{CLIENT_HOST}?journey={journey_name}", use_container_width=True)
+        col3.link_button(
+            ":paperclip:&nbsp;&nbsp;Link",
+            f"{CLIENT_HOST}?journey={journey_name}",
+            use_container_width=True,
+        )
 
-        if "editing_journey" not in st.session_state:
-            st.session_state.editing_journey = None
-            st.session_state.editing_journey_details = None
-            st.session_state.editing_journey_subject = None
-            st.session_state.editing_journey_step = None
-
-        col1, col2 = st.columns([1, 4], vertical_alignment="top")
-        if (
-            col1.button("Edit details", key=f"edit_button_{journey_name}", disabled=st.session_state.editing_journey == journey_name
-            and st.session_state.editing_journey_details is True)
-            or st.session_state.editing_journey == journey_name
-            and st.session_state.editing_journey_details
-        ):
-            st.session_state.editing_journey = journey_name
-            st.session_state.editing_journey_details = True
-            # with col2:
-            journey_edit = edit_journey_details(journey_name, journey)
-            subcol1, subcol2, _ = st.columns([1, 1, 5])
-            if subcol1.button("Save", key=f"save_button_{journey_name}", use_container_width=True):
-                save_journey(journey_name, journey_edit)
-            if subcol2.button("Cancel", key=f"cancel_button_{journey_name}", use_container_width=True):
-                st.session_state.editing_journey = None
-                st.session_state.editing_journey_details = None
-                st.session_state.editing_journey_subject = None
-                st.session_state.editing_journey_step = None
-                st.rerun()
-        else:
-            col2.write(f'#### {journey.title.strip()}')
-            col2.write(journey.summary)
-
-        if journey.chroma_collection and len(journey.chroma_collection) > 0:
-            col2.write("Connected Chroma databases:")
-            col2.write("* " + "\n* ".join(journey.chroma_collection))
-
-        if journey.files and len(journey.files) > 0:
-            col2.write("Files used:")
-            col2.write("* " + "\n* ".join(journey.files))
-
-        if col1.toggle("Extend", key=f"show_toggle_subjects_{journey_name}") or (st.session_state.editing_journey_subject is not None or st.session_state.editing_journey_step is not None):
-            journey_edit = journey
-            for i, subject in enumerate(journey.subjects):
-                with st.container(border=True):
-                    col1, col2 = st.columns([1, 3])
-                    col1.write(f"#### Subject {i+1}:")
-                    if (
-                        col1.button(
-                            "Edit subject", key=f"edit_button_{journey_name}_{i}"
-                        )
-                        or "editing_journey" in st.session_state
-                        and st.session_state.editing_journey == journey_name
-                        and "editing_journey_step" in st.session_state
-                        and st.session_state.editing_journey_subject == i
-                        and st.session_state.editing_journey_step == None
+        tab1, tab2 = st.tabs(["Details", "Subjects"])
+        with tab1:
+            journey_details_ui(
+                journey_name, journey, st.session_state.edit_mode[journey_index]
+            )
+        with tab2:
+            col1, col2 = st.columns([1, 1], vertical_alignment="center")
+            subject_titles = [subject.title for subject in journey.subjects]
+            subject_title = col1.selectbox(
+                "Subject",
+                options=subject_titles,
+                key=f"subject_select_{journey_name}_subject",
+                index=0,
+            )
+            subject_index = subject_titles.index(subject_title)
+            subject = journey.subjects[subject_index]
+            if st.session_state.edit_mode[journey_index]:
+                mod_col1, mod_col2, mod_col3 = col1.columns([1, 1, 1])
+                mod_col1.button(
+                    "**+**",
+                    key="add_subject_button_{journey_name}",
+                    on_click=add_subject,
+                    args=(journey_name, journey),
+                    use_container_width=True,
+                )
+                with mod_col2.popover(":sparkle:", use_container_width=True):
+                    if st.button(
+                        f"Are you sure you want regenerate {journey_name}: {subject_title}?",
+                        key=f"generate_subject_button_{journey_name}",
+                        use_container_width=True,
                     ):
-
-                        st.session_state.editing_journey = journey_name
-                        st.session_state.editing_journey_subject = i
+                        journey.subjects[subject_index] = gen_journey_subject(
+                            journey, subject
+                        )
+                        save_journey(journey_name, journey)
+                        st.session_state.editing_journey = None
+                        st.session_state.editing_journey_details = None
+                        st.session_state.editing_journey_subject = None
                         st.session_state.editing_journey_step = None
-                        # col1, col2 = st.columns([1, 3])
-                        journey_edit.subjects[i].title = st.text_input(
-                            f"Title", value=subject.title, key=f"subject_title_{journey_name}_{i}"
+                        st.session_state.edit_mode[journey_index] = False
+                        time.sleep(0.1)
+                        st.rerun()
+
+                with mod_col3.popover(":x:", use_container_width=True):
+                    st.button(
+                        f"Are you sure you want to remove {journey_name}: {subject_title}?",
+                        key=f"delete_subject_button_{journey_name}",
+                        use_container_width=True,
+                        on_click=remove_subject,
+                        args=(journey_name, journey, subject_index),
+                    )
+
+            step_titles = [step.title for step in subject.steps]
+            step_title = col2.selectbox(
+                "Step",
+                options=step_titles,
+                key=f"step_select_{journey_name}_step",
+                index=0,
+            )
+            step_index = None
+            if step_title is not None:
+                step_index = (
+                    step_titles.index(step_title) if 0 < len(step_titles) else []
+                )
+            # step = subject.steps[step_index]
+            if st.session_state.edit_mode[journey_index]:
+                mod_col1, mod_col2, mod_col3 = col2.columns([1, 1, 1])
+                mod_col1.button(
+                    "**+**",
+                    key="add_step_button_{journey_name}",
+                    on_click=add_step,
+                    args=(journey_name, journey, subject_index),
+                    use_container_width=True,
+                )
+                with mod_col2.popover(":sparkle:", use_container_width=True):
+                    if st.button(
+                        f"Are you sure you want regenerate {journey_name}: {subject_title} - {step_title}?",
+                        key=f"generate_step_button_{journey_name}",
+                        use_container_width=True,
+                    ):
+                        journey.subjects[subject_index] = gen_journey_subject(
+                            journey, subject, step_index
                         )
-                        journey_edit.subjects[i].summary = st.text_area(
-                            f"Summary", value=subject.summary, key=f"subject_summary_{journey_name}_{i}", height=200
-                        )
-                        subcol1, subcol2, _ = st.columns([1, 1, 5])
-                        if subcol1.button("Save", key=f"save_button_{journey_name}_{i}", use_container_width=True):
-                            save_journey(journey_name, journey_edit)
-                        if subcol2.button("Cancel", key=f"cancel_button_{journey_name}_{i}", use_container_width=True):
-                            st.session_state.editing_journey = None
-                            st.session_state.editing_journey_details = None
-                            st.session_state.editing_journey_subject = None
-                            st.session_state.editing_journey_step = None
-                            st.rerun()
-                    else:
-                        if col1.button("Delete", key=f"subject_delete_{journey_name}_{i}"):
-                            print("delete")
-                            new_subjects = journey_edit.subjects
-                            st.rerun()
-                        else:
-                            col2.write(subject.title + ":")
-                            col2.write(subject.summary)
-                            if subject.files and len(subject.files) > 0:
-                                col2.write("Files used:")
-                                col2.write("* " + "\n* ".join(subject.files))
+                        save_journey(journey_name, journey)
+                        st.session_state.editing_journey = None
+                        st.session_state.editing_journey_details = None
+                        st.session_state.editing_journey_subject = None
+                        st.session_state.editing_journey_step = None
+                        st.session_state.edit_mode[journey_index] = False
+                        time.sleep(0.1)
+                        st.rerun()
+                with mod_col3.popover(":x:", use_container_width=True):
+                    st.button(
+                        f"Are you sure you want to remove {journey_name}: {subject_title} - {step_title}?",
+                        key=f"delete_step_button_{journey_name}",
+                        use_container_width=True,
+                        on_click=remove_step,
+                        args=(journey_name, journey, subject_index, step_index),
+                    )
 
-                    if (col1.toggle("Extend", key=f"show_toggle_steps_{journey_name}_{i}") or (st.session_state.editing_journey_subject is not None or st.session_state.editing_journey_step is not None)):
-                        for j, step in enumerate(subject.steps):
-                            with st.expander(f'##### Step {j+1}: {step.title}'):
-                                col1, col2 = st.columns([1, 2])
-                                show_structured = col1.toggle("Show structured", key=f"journey_step_info_structured_{journey_name}_{i}_{j}", value=True)
-                                show_actions = col2.toggle("Show actions", key=f"journey_step_info_actions_{journey_name}_{i}_{j}")
-                                if (
-                                    st.button(
-                                        "Edit step", key=f"edit_button_{journey_name}_{i}_{j}"
-                                    )
-                                    or "editing_journey" in st.session_state
-                                    and st.session_state.editing_journey == journey_name
-                                    and "editing_journey_step" in st.session_state
-                                    and st.session_state.editing_journey_subject == i
-                                    and st.session_state.editing_journey_step == j
-                                ):
-                                    st.session_state.editing_journey = journey_name
-                                    st.session_state.editing_journey_subject = i
-                                    st.session_state.editing_journey_step = j
-                                    journey_edit.subjects[i].steps[j] = edit_journey_subject_step(journey_name, journey.subjects[i].steps[j], i, j, show_structured=show_structured, show_actions=show_actions)
-                                    col1, col2, _ = st.columns([1, 1, 5])
-                                    if col1.button("Save", key=f"save_button_{journey_name}_{i}_{j}", use_container_width=True):
-                                        save_journey(journey_name, journey_edit)
-                                    if col2.button("Cancel", key=f"cancel_button_{journey_name}_{i}_{j}", use_container_width=True):
-                                        st.session_state.editing_journey = None
-                                        st.session_state.editing_journey_details = None
-                                        st.session_state.editing_journey_subject = None
-                                        st.session_state.editing_journey_step = None
-                                        st.rerun()
+            # for subject_index, subject in enumerate(journey.subjects):
+            tab1, tab2, tab4, tab5 = st.tabs(
+                [
+                    "Details",
+                    "Step details",
+                    "Actions simple",
+                    "Actions structured",
+                ]
+            )
 
-                                else:
-                                    if step.structured and show_structured:
-                                        structured:JourneyStructure = step.structured
-                                        col1, col2 = st.columns([1, 5])
-                                        col1.write("##### Intro:")
-                                        col2.write(structured.intro)
+            with tab1:
+                journey_subject_details_ui(
+                    journey_name,
+                    subject_index,
+                    journey,
+                    st.session_state.edit_mode[journey_index],
+                )
 
-                                        col1, col2 = st.columns([1, 5])
-                                        col1.write("##### Content:")
-                                        col2.write(structured.content)
-
-                                        # st.write("##### Actions:")
-                                        if show_actions:
-                                            for k, action in enumerate(structured.actions):
-                                                col1, col2 = st.columns([1, 5])
-                                                col1.write(f"###### Action {k+1}:")
-                                                col2.write(f"**Title:** {action.title}")
-                                                col2.write(f"**Description:** {action.description}")
-                                                col2.write(f"**Resources:**")
-                                                for l, resource in enumerate(action.resources):
-                                                    col2.write(f"  - {resource}")
-                                                col2.write(f"**Test:** {action.test}")
-
-                                        # col1, col2 = st.columns([1, 5])
-                                        # col1.write("##### Priority:")
-                                        # col2.write(structured.priority)
-                                    else:
-                                        col1, col2 = st.columns([1, 5])
-                                        col1.write("##### Intro:")
-                                        col2.write(step.intro)
-
-                                        col1, col2 = st.columns([1, 5])
-                                        col1.write("##### Content:")
-                                        col2.write(step.content)
-
-                                        if show_actions:
-                                            col1, col2 = st.columns([1, 5])
-                                            col1.write("##### Actions:")
-                                            col2.write(step.actions)
+            if 0 < len(step_titles) and step_index is not None:
+                journey_subject_step_ui(
+                    journey_name,
+                    subject_index,
+                    step_index,
+                    journey,
+                    st.session_state.edit_mode[journey_index],
+                    tab2,
+                )
+                journey_subject_step_actions_ui(
+                    journey_name,
+                    subject_index,
+                    step_index,
+                    journey,
+                    st.session_state.edit_mode[journey_index],
+                    tab4,
+                    tab5,
+                )
+        if st.session_state.edit_mode[journey_index]:
+            save_journey_ui(journey_index, journey_name, journey)
 
 
 if __name__ == "__main__":

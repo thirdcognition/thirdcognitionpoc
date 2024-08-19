@@ -9,7 +9,7 @@ from streamlit.runtime.uploaded_file_manager import UploadedFile
 from lib.chain import get_chain
 from lib.db_tools import (
     FileDataTable,
-    JourneyDataTable,
+    # JourneyDataTable,
     get_chroma_collection,
     get_db_files,
     init_db,
@@ -202,7 +202,7 @@ def process_file_data(filename, category):
                     list_of_docs = create_document_lists(summary_texts, source=filename)
                     # print(f"{ list_of_docs = }")
 
-                    shorter_text, shorter_thoughts = get_chain("summary_documents").invoke(
+                    shorter_text, shorter_thoughts = get_chain("summary_documents")().invoke(
                         {"context": list_of_docs}
                     )
 

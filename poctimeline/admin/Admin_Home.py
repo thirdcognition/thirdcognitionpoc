@@ -1,4 +1,9 @@
+import os
 import streamlit as st
+import sys
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
 from lib.chat import chat_elements, init_journey_chat
 from lib.streamlit_tools import check_auth, get_all_categories
@@ -8,12 +13,13 @@ st.set_page_config(
     page_icon="static/icon.png",
     layout="centered",
     menu_items={
-        'About': """# ThirdCognition PoC
+        "About": """# ThirdCognition PoC
 [ThirdCognition](https://thirdcognition.com)
 This is an *extremely* cool admin tool!
         """
-    }
+    },
 )
+
 
 def main():
 
@@ -27,7 +33,6 @@ Select 👈 a the section from sidebar to edit the content!
     """
     )
 
-
     if not auth_valid:
         st.write("Please log in for more functionality.")
         return
@@ -35,10 +40,14 @@ Select 👈 a the section from sidebar to edit the content!
     with st.container():
         st.write("### Engage with the RAG:")
         categories = get_all_categories()
-        selected_category = st.selectbox("Select a category", categories, key="category", index=None)
+        selected_category = st.selectbox(
+            "Select a category", categories, key="category", index=None
+        )
 
         if selected_category:
-            journey_found = init_journey_chat(rag_collection=f"rag_{selected_category}" if selected_category else None)
+            journey_found = init_journey_chat(
+                rag_collection=f"rag_{selected_category}" if selected_category else None
+            )
             if "chat_state" not in st.session_state:
                 st.session_state.chat_state = "default"
 

@@ -1,7 +1,7 @@
 from functools import cache
 from typing import Dict, List
 import streamlit as st
-from langchain_chroma import Chroma
+# from langchain_chroma import Chroma
 from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
     MarkdownHeaderTextSplitter,
@@ -10,11 +10,11 @@ from langchain_core.runnables import (
     RunnableSequence,
     RunnableParallel,
     RunnablePassthrough,
-    RunnableBranch,
+    # RunnableBranch,
     RunnableWithMessageHistory,
     RunnableLambda
 )
-from langchain_core.output_parsers import StrOutputParser
+# from langchain_core.output_parsers import StrOutputParser
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain.schema.document import Document
 from langchain_community.document_compressors import FlashrankRerank
@@ -24,7 +24,7 @@ from langchain_core.messages import AIMessage
 
 from lib.db_tools import get_vectorstore
 from lib.load_env import EMBEDDING_CHAR_LIMIT, INSTRUCT_CHAR_LIMIT
-from lib.chain import  get_embeddings, get_llm, get_prompt, init_llms
+from lib.chain import  get_chain, get_embeddings, get_llm, init_llms
 
 @cache
 def get_text_splitter(chunk_size, chunk_overlap):
@@ -101,9 +101,11 @@ def rerank_rag(params: Dict):
 
 rag_chains = {}
 
-def rag_chain(store_id:str, embedding_id="hyde", prompt_id = "question", llm_id = "chat", reset=False, with_history=False) -> RunnableSequence:
+def rag_chain(store_id:str, embedding_id="hyde", chain_id = "question", reset=False, with_history=False) -> RunnableSequence:
     global rag_chains
-    chain_id = f"{store_id}-{embedding_id}-{prompt_id}-{llm_id}-{"history" if with_history else "nohistory"}"
+    chain = get_chain(chain_id)
+
+    chain_id = f"{store_id}-{embedding_id}-{chain_id}-{chain.llm_id}-{"history" if with_history else "nohistory"}"
     if chain_id in rag_chains and not reset:
         return rag_chains[chain_id]
 
@@ -113,26 +115,18 @@ def rag_chain(store_id:str, embedding_id="hyde", prompt_id = "question", llm_id 
         search_kwargs={"k": 40, "score_threshold": 0.3},
     )
 
-    llm = get_llm(llm_id)
-    prompt = get_prompt(prompt_id)
+    executable = chain()
+    llm = get_llm(chain.llm_id)
+    prompt = chain.prompt_template or chain.prompt.get_chat_prompt_template()
+
+    # llm = get_llm(llm_id)
+    # prompt = get_prompt(chain_id)
 
     def format_params(params):
-        # print(f"\n\nformat params {params=}\n\n")
         question = params["question"]
         for key in question.keys():
-            # if key == "chat_history":
-            #     params["documents"].append(Document(page_content="Chat history:"+"\n".join(mes.content for mes in question[key])))
-            # else:
             params[key] = question[key]
-        # print(f"\n\nformatted params {params=}\n\n")
         return params
-
-    # def add_context(params):
-    #     print(f"\n\nadd context {params=}\n\n")
-    #     if "chat_history" in params.keys():
-    #         params["orig_question"] = params["question"]
-    #         params["context"] = f"History:\n{params['chat_history']}\n\nQuery:\n{params['question']}"
-    #     return params
 
     def log_results(params):
         print(f"\n\n\nlog\n\n {params=}\n\n\n")
@@ -140,7 +134,6 @@ def rag_chain(store_id:str, embedding_id="hyde", prompt_id = "question", llm_id 
 
     documents:List = None
     def store_documents(params):
-        # print(f"\n\nstore docs {params=}\n\n")
         nonlocal documents
         if isinstance(params, Dict) and "documents" in params.keys():
             documents = params["documents"]
@@ -181,6 +174,7 @@ def rag_chain(store_id:str, embedding_id="hyde", prompt_id = "question", llm_id 
         ) #| log_results
         | prompt
         | llm
+        # | executable
         | set_metadata
         # | StrOutputParser()
     )

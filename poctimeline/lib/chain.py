@@ -1,7 +1,5 @@
 from typing import Dict, List
 
-from langchain_chroma import Chroma
-
 from langchain.chains.hyde.base import HypotheticalDocumentEmbedder
 from langchain.chains.combine_documents.stuff import create_stuff_documents_chain
 
@@ -19,11 +17,11 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import (
     RunnableSequence,
     RunnableParallel,
-    RunnablePassthrough,
+    # RunnablePassthrough,
     RunnableLambda,
-    Runnable,
+    # Runnable,
 )
-from langchain_core.prompts.prompt import PromptTemplate
+# from langchain_core.prompts.prompt import PromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain.output_parsers.retry import RetryOutputParser
 
@@ -48,7 +46,7 @@ from lib.load_env import (
     USE_HF_EMBEDDINGS,
     USE_LOCAL_EMBEDDINGS,
     USE_OLLAMA,
-    USE_OLLAMA_embeddings,
+    USE_OLLAMA_EMBEDDINGS,
 )
 from lib.prompts import (
     PromptFormatter,
@@ -75,10 +73,89 @@ from lib.prompts import (
 
 llms = {}
 embeddings = {}
-prompts: Dict[str, PromptTemplate] = {}
-chains: Dict[str, RunnableSequence] = {}
+# prompts: Dict[str, PromptTemplate] = {}
 
-def get_chain(chain) -> RunnableSequence:
+
+class Chain:
+    def __init__(
+        self,
+        llm_id="default",
+        prompt: PromptFormatter = text_formatter,
+        custom_prompt: tuple[str, str] | None = None,
+    ):
+        self.llm_id = llm_id
+        self.prompt = prompt
+        self.custom_prompt = custom_prompt
+        self.chain = None
+        self.prompt_template = None
+
+    def __call__(
+        self, custom_prompt: tuple[str, str] | None = None, **kwargs
+    ) -> RunnableSequence:
+        if len(llms.keys()) == 0:
+            init_llms()
+
+        if self.prompt_template is None or custom_prompt is not None:
+            if custom_prompt is not None:
+                self.custom_prompt = custom_prompt
+
+            if self.custom_prompt is None:
+                self.prompt_template = (
+                    self.prompt.get_chat_prompt_template()
+                )  # ChatPromptTemplate.from_messages(messages)
+            else:
+                self.prompt_template = self.prompt.get_chat_prompt_template(
+                    custom_system=self.custom_prompt[0],
+                    custom_user=self.custom_prompt[1],
+                )
+
+        if self.chain is None or custom_prompt is not None:
+            self.chain = self.prompt_template | llms[self.llm_id]
+
+            if self.prompt.parser is not None:
+                retry_parser = RetryOutputParser.from_llm(
+                    parser=self.prompt.parser, llm=llms[self.llm_id], max_retries=5
+                )
+
+                def add_format_instructions(params: Dict):
+                    if "format_instructions" not in params.keys():
+                        params["format_instructions"] = (
+                            self.prompt.parser.get_format_instructions()
+                        )
+                    return params
+
+                # print(f"Prompt {id = }")
+
+                def rerun_parser(x):
+                    x["completion"] = x["completion"].content.strip()
+                    return retry_parser.parse_with_prompt(**x)
+
+                self.chain = RunnableParallel(
+                    completion=self.chain,
+                    prompt_value=self.prompt_template,
+                ) | RunnableLambda(rerun_parser)
+
+                if (
+                    isinstance(self.prompt.parser, PydanticOutputParser)
+                    and "format_instructions" in self.prompt_template.input_variables
+                ):
+                    # print("Add format instructions")
+                    self.chain = add_format_instructions | self.chain
+                # else:
+                #     self.chain = self.chain | self.prompt.parser
+
+            else:
+                self.chain = self.chain | StrOutputParser()
+
+        return self.chain
+
+
+from typing import Dict, Union, Callable
+
+chains: Dict[str, Union[Chain, Callable]] = {}
+
+
+def get_chain(chain) -> Chain:
     if len(chains.keys()) == 0:
         init_llms()
 
@@ -86,7 +163,7 @@ def get_chain(chain) -> RunnableSequence:
 
 
 def get_llm(llm_id="default"):
-    if len(chains.keys()) == 0:
+    if len(llms.keys()) == 0:
         init_llms()
 
     if llm_id in llms.keys():
@@ -97,69 +174,12 @@ def get_llm(llm_id="default"):
     return llm
 
 
-def get_prompt(prompt_id="helper") -> PromptTemplate:
-    if len(chains.keys()) == 0:
-        init_llms()
-
-    return prompts[prompt_id]
-
-
 def get_embeddings(embedding_id="base"):
     if len(embeddings.keys()) == 0:
         init_llms()
 
     if embedding_id in embeddings.keys():
         return embeddings[embedding_id]
-
-def init_chain(
-    id,
-    llm="default",
-    prompt: PromptFormatter = text_formatter,
-    init_llm=True,
-    structured=False,
-):  # templates_mistral
-    if f"{id}" not in prompts:
-        prompts[f"{id}"] = (
-            prompt.get_chat_prompt_template()
-        )  # ChatPromptTemplate.from_messages(messages)
-
-    if f"{id}" not in chains and init_llm:
-        chains[f"{id}"] = prompts[f"{id}"] | llms[llm]
-
-        if prompt.parser is not None:
-            retry_parser = RetryOutputParser.from_llm(
-                parser=prompt.parser, llm=llms[llm], max_retries=5
-            )
-
-            def add_format_instructions(params: Dict):
-                if "format_instructions" not in params.keys():
-                    params["format_instructions"] = (
-                        prompt.parser.get_format_instructions()
-                    )
-                return params
-
-            # print(f"Prompt {id = }")
-
-            def rerun_parser(x):
-                x["completion"] = x["completion"].content.strip()
-                return retry_parser.parse_with_prompt(**x)
-
-            chains[f"{id}"] = RunnableParallel(
-                completion=chains[f"{id}"],
-                prompt_value=prompts[f"{id}"],
-            ) | RunnableLambda(rerun_parser)
-
-            if (
-                isinstance(prompt.parser, PydanticOutputParser)
-                and "format_instructions" in prompts[f"{id}"].input_variables
-            ):
-                # print("Add format instructions")
-                chains[f"{id}"] = add_format_instructions | chains[f"{id}"]
-            # else:
-            #     chains[f"{id}"] = chains[f"{id}"] | prompt.parser
-
-        else:
-            chains[f"{id}"] = chains[f"{id}"] | StrOutputParser()
 
 
 def init_llm(
@@ -182,7 +202,11 @@ def init_llm(
                 num_predict=ctx_size,
                 repeat_penalty=2,
                 timeout=10000,
-                callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]) if verbose else None,
+                callback_manager=(
+                    CallbackManager([StreamingStdOutCallbackHandler()])
+                    if verbose
+                    else None
+                ),
             )
         else:
             llms[f"{id}"] = Type(
@@ -193,10 +217,16 @@ def init_llm(
                 temperature=temperature,
                 timeout=10000,
                 max_retries=5,
-                callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]) if verbose else None,
+                callback_manager=(
+                    CallbackManager([StreamingStdOutCallbackHandler()])
+                    if verbose
+                    else None
+                ),
             )
 
+
 initialized = False
+
 
 def init_llms():
     print("Initialize llms...")
@@ -246,7 +276,11 @@ def init_llms():
                 num_ctx=STRUCTURED_CONTEXT_SIZE,
                 num_predict=STRUCTURED_CONTEXT_SIZE,
                 verbose=DEBUGMODE,
-                callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]) if DEBUGMODE else None,
+                callback_manager=(
+                    CallbackManager([StreamingStdOutCallbackHandler()])
+                    if DEBUGMODE
+                    else None
+                ),
             )
         if USE_GROQ:
             llms["json"] = DEFAULT_LLM_MODEL(
@@ -256,65 +290,42 @@ def init_llms():
                 temperature=0,
                 timeout=30000,
                 verbose=DEBUGMODE,
-                callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]) if DEBUGMODE else None,
+                callback_manager=(
+                    CallbackManager([StreamingStdOutCallbackHandler()])
+                    if DEBUGMODE
+                    else None
+                ),
             )
 
     init_llm("tool", temperature=0, model=TOOL_LLM, ctx_size=TOOL_CONTEXT_SIZE)
-
     init_llm("chat", temperature=0.5, Type=DEFAULT_LLM_MODEL)
-
     init_llm("warm", temperature=0.4)
 
-    init_chain("summary", "instruct_detailed", summary)
-    init_chain("summary_guided", "instruct", summary_guided)
-    init_chain(
-        "action",
-        "instruct_detailed_0",
-        action,
+    chains["summary"] = Chain(
+        "instruct_detailed", summary
+    )  # init_chain("summary", "instruct_detailed", summary)
+    chains["summary_guided"] = Chain("instruct", summary_guided)
+    chains["action"] = Chain("instruct_detailed_0", action)
+    chains["grader"] = Chain("json", grader)
+    chains["check"] = Chain("instruct_0", check)
+    chains["text_formatter"] = Chain("instruct_detailed", text_formatter)
+    chains["text_formatter_compress"] = Chain(
+        "instruct_detailed", text_formatter_compress
     )
-    init_chain(
-        "grader",
-        "json",
-        grader,
+    chains["text_formatter_guided_0"] = Chain(
+        "instruct_detailed", text_formatter_guided
     )
-    init_chain(
-        "check",
-        "instruct_0",
-        check,
+    chains["md_formatter"] = Chain("instruct_detailed", md_formatter)
+    chains["md_formatter_guided"] = Chain("instruct_detailed_0", md_formatter_guided)
+    chains["journey_structured"] = Chain("json", journey_structured)
+    chains["journey_steps"] = Chain("json", journey_steps)
+    chains["journey_step_details"] = Chain("instruct_warm", journey_step_details)
+    chains["journey_step_intro"] = Chain("instruct_detailed_warm", journey_step_intro)
+    chains["journey_step_actions"] = Chain(
+        "instruct_detailed_warm", journey_step_actions
     )
-    init_chain("text_formatter", "instruct_detailed", text_formatter)
-    init_chain("text_formatter_compress", "instruct_detailed", text_formatter_compress)
-    init_chain(
-        "text_formatter_guided_0",
-        "instruct_detailed",
-        text_formatter_guided,
-    )
-    init_chain("md_formatter", "instruct_detailed", md_formatter)
-    init_chain(
-        "md_formatter_guided",
-        "instruct_detailed_0",
-        md_formatter_guided,
-    )
-    init_chain("journey_structured", "json", journey_structured)
-    init_chain(
-        "journey_steps",
-        "json",
-        journey_steps,
-    )
-    init_chain(
-        "journey_step_details",
-        "instruct_warm",
-        journey_step_details,
-    )
-    init_chain("journey_step_intro", "instruct_detailed_warm", journey_step_intro)
-    init_chain("journey_step_actions", "instruct_detailed_warm", journey_step_actions)
-    init_chain("question", "chat", question)
-
-    if "helper" not in prompts:
-        init_chain("helper", "chat", helper, init_llm=False)
-
-    if "hyde" not in prompts:
-        init_chain("hyde", "chat", hyde, init_llm=False)
+    chains["question"] = Chain("chat", question)
+    chains["helper"] = Chain("chat", helper)
 
     global embeddings
 
@@ -327,7 +338,7 @@ def init_llms():
                 model_kwargs=model_kwargs,
                 encode_kwargs=encode_kwargs,
             )
-        elif USE_OLLAMA_embeddings:
+        elif USE_OLLAMA_EMBEDDINGS:
             embeddings["base"] = OllamaEmbeddings(
                 model=EMBEDDING_MODEL, base_url=OLLAMA_URL
             )
@@ -338,27 +349,33 @@ def init_llms():
 
     if "hyde" not in embeddings:
         embeddings["hyde"] = HypotheticalDocumentEmbedder.from_llm(
-            llms["default"], embeddings["base"], custom_prompt=prompts["hyde"]
+            llms["default"],
+            embeddings["base"],
+            custom_prompt=hyde.get_chat_prompt_template(),  # prompts["hyde"]
         )
 
     if "summary_documents" not in chains:
         chain = create_stuff_documents_chain(
             RunnableLambda(
-                lambda params: chains["text_formatter_compress"].invoke(params)[0]
+                lambda params: chains["text_formatter_compress"]().invoke(params)[0]
             ),
-            prompts["text_formatter_compress"],
+            chains[
+                "text_formatter_compress"
+            ].prompt.get_chat_prompt_template(),  # prompts["text_formatter_compress"],
             output_parser=text_formatter_compress.parser,
         )
 
-        chains["summary_documents"] = (
-            RunnableLambda(lambda params: chain.invoke(params)[0]) | chains["summary"]
+        chains["summary_documents"] = lambda: (
+            RunnableLambda(lambda params: chain.invoke(params)[0]) | chains["summary"]()
         )
 
     if "reduce_journey_documents" not in chains:
-        chains["reduce_journey_documents"] = create_stuff_documents_chain(
+        chains["reduce_journey_documents"] = lambda: create_stuff_documents_chain(
             RunnableLambda(
-                lambda params: chains["text_formatter_compress"].invoke(params)[0]
+                lambda params: chains["text_formatter_compress"]().invoke(params)[0]
             ),
-            prompts["text_formatter_compress"],
+            chains[
+                "text_formatter_compress"
+            ].prompt.get_chat_prompt_template(),  # prompts["text_formatter_compress"],
             output_parser=text_formatter_compress.parser,
         )

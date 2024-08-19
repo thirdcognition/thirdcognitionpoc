@@ -8,42 +8,36 @@ from lib.chain import get_chain
 from lib.db_tools import FileDataTable, init_db
 from lib.document_parse import markdown_to_text
 
-with open('admin_auth.yaml') as file:
+with open("admin_auth.yaml") as file:
     auth_config = yaml.load(file, Loader=SafeLoader)
 
-# authenticator: stauth.Authenticate = None
-# = stauth.Authenticate(
-#     auth_config['credentials'],
-#     auth_config['cookie']['name'],
-#     auth_config['cookie']['key'],
-#     auth_config['cookie']['expiry_days'],
-#     auth_config['pre-authorized']
-# )
 
 def check_auth():
     # global authenticator
     # if authenticator is None:
     authenticator = stauth.Authenticate(
-        auth_config['credentials'],
-        auth_config['cookie']['name'],
-        auth_config['cookie']['key'],
-        auth_config['cookie']['expiry_days'],
-        auth_config['pre-authorized']
+        auth_config["credentials"],
+        auth_config["cookie"]["name"],
+        auth_config["cookie"]["key"],
+        auth_config["cookie"]["expiry_days"],
+        auth_config["pre-authorized"],
     )
 
     authenticator.login()
-    if st.session_state['authentication_status']:
+    if st.session_state["authentication_status"]:
         col1, col2 = st.columns([7, 1])
         col1.write(f'Welcome *{st.session_state["name"]}*')
-        with col2: authenticator.logout()
+        with col2:
+            authenticator.logout()
         return True
     else:
-        if st.session_state['authentication_status'] is False:
-            st.error('Username/password is incorrect')
-        if st.session_state['authentication_status'] is None:
-            st.warning('Please enter your username and password')
+        if st.session_state["authentication_status"] is False:
+            st.error("Username/password is incorrect")
+        if st.session_state["authentication_status"] is None:
+            st.warning("Please enter your username and password")
 
         return False
+
 
 def get_all_categories():
     database_session = init_db()
@@ -64,6 +58,7 @@ def get_all_categories():
 
     return uniq_categories
 
+
 def llm_edit(chain, texts, guidance=None, force=False) -> tuple[str, str]:
     text = ""
     thoughts = ""
@@ -74,7 +69,9 @@ def llm_edit(chain, texts, guidance=None, force=False) -> tuple[str, str]:
     if total > 1 and chain == "summary":
         total += 1
 
-    if not force and (texts == None or texts[0] == None or total == 1 and len(texts[0]) < 1000):
+    if not force and (
+        texts == None or texts[0] == None or total == 1 and len(texts[0]) < 1000
+    ):
         return None, None
 
     bar = st.progress(0, text="Processing...")
@@ -95,7 +92,7 @@ def llm_edit(chain, texts, guidance=None, force=False) -> tuple[str, str]:
 
             inputs.append(input)
 
-            mid_results, mid_thoughts = get_chain(chain + guided_llm).invoke(input)
+            mid_results, mid_thoughts = get_chain(chain + guided_llm)().invoke(input)
 
             text += mid_results + "\n\n"
             thoughts += mid_thoughts + "\n\n"
@@ -118,7 +115,7 @@ def llm_edit(chain, texts, guidance=None, force=False) -> tuple[str, str]:
             guided_llm = "_guided"
             input["question"] = guidance
 
-        text, thoughts = get_chain(chain + guided_llm).invoke(input)
+        text, thoughts = get_chain(chain + guided_llm)().invoke(input)
 
     bar.empty()
 

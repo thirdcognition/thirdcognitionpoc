@@ -8,7 +8,7 @@ from langchain_core.documents.base import Document
 from lib.db_tools import JourneyModel, get_db_files, get_db_journey, init_db
 from lib.document_tools import get_session_history, rag_chain
 
-DELIMITER="±~"
+DELIMITER = "±~"
 
 def send_message(message, journey_name, chat_state):
     if journey_name:
@@ -17,11 +17,18 @@ def send_message(message, journey_name, chat_state):
     else:
         chain = st.session_state.chains["rag_ThirdCognition"]
     st.session_state["exec_query"] = message
-    chain.invoke({"question": message}, config={"session_id": chat_state, "callbacks": [StreamingStdOutCallbackHandler()]})
+    chain.invoke(
+        {"question": message},
+        config={
+            "session_id": chat_state,
+            "callbacks": [StreamingStdOutCallbackHandler()],
+        },
+    )
     st.session_state["exec_query"] = None
     # st.rerun()
 
-def get_stream_data(message:str, chat_state:str):
+
+def get_stream_data(message: str, chat_state: str):
     def stream_data():
         if message not in st.session_state.chat_history_seen[chat_state]:
             st.session_state.chat_history_seen[chat_state].append(message)
@@ -32,7 +39,8 @@ def get_stream_data(message:str, chat_state:str):
 
     return stream_data
 
-def init_journey_chat(journey_name:str = None, rag_collection:str = None):
+
+def init_journey_chat(journey_name: str = None, rag_collection: str = None):
     init_db()
 
     if "journey_list" not in st.session_state:
@@ -54,7 +62,9 @@ def init_journey_chat(journey_name:str = None, rag_collection:str = None):
                     if collection not in collection_keys:
                         chains[collection] = rag_chain(collection, with_history=True)
         else:
-            collection = "rag_ThirdCognition" if rag_collection is None else rag_collection
+            collection = (
+                "rag_ThirdCognition" if rag_collection is None else rag_collection
+            )
             chains[collection] = rag_chain(collection, with_history=True)
 
         st.session_state.journey_chain_ids = journey_chain_ids
@@ -66,8 +76,12 @@ def init_journey_chat(journey_name:str = None, rag_collection:str = None):
     return True
 
 
-def chat_elements(chat_state, journey_name = None):
-    st.session_state.chat_history_seen = st.session_state.chat_history_seen if "chat_history_seen" in st.session_state else {}
+def chat_elements(chat_state, journey_name=None):
+    st.session_state.chat_history_seen = (
+        st.session_state.chat_history_seen
+        if "chat_history_seen" in st.session_state
+        else {}
+    )
     if chat_state not in st.session_state.chat_history_seen:
         st.session_state.chat_history_seen[chat_state] = []
 
@@ -89,10 +103,15 @@ def chat_elements(chat_state, journey_name = None):
                 st.write(message.content)
                 if journey_name:
                     references = dict[str, Document]({})
-                    if message.response_metadata is not None and "references" in message.response_metadata.keys():
+                    if (
+                        message.response_metadata is not None
+                        and "references" in message.response_metadata.keys()
+                    ):
                         for reference in message.response_metadata["references"]:
                             if "file" in reference.metadata.keys():
-                                references[reference.metadata["file"].replace("formatted_", "")] = reference
+                                references[
+                                    reference.metadata["file"].replace("formatted_", "")
+                                ] = reference
 
                     if len(references.keys()) > 0:
                         # st.write("###### _References:_")
@@ -109,9 +128,16 @@ def chat_elements(chat_state, journey_name = None):
                                 [col1, col2] = st.columns([1, 3])
                                 col1.write(file)
                                 if filetype != "epub":
-                                    col1.download_button("Download", db_file["file_data"],  file_name=file, key=file+"_"+chat_state+"_"+str(i))
+                                    col1.download_button(
+                                        "Download",
+                                        db_file["file_data"],
+                                        file_name=file,
+                                        key=file + "_" + chat_state + "_" + str(i),
+                                    )
 
-                                col2.container(height=150).write(reference.page_content) #db_file["summary"])
+                                col2.container(height=150).write(
+                                    reference.page_content
+                                )  # db_file["summary"])
         else:
             # print(f"{message = }")
             if message.content not in st.session_state.chat_history_seen[chat_state]:
@@ -121,11 +147,15 @@ def chat_elements(chat_state, journey_name = None):
                 with st.chat_message("AI"):
                     st.write(message.content)
 
-    if chat_state == "default" and st.session_state.chat_state == chat_state and len(history.messages) == 0:
+    if (
+        chat_state == "default"
+        and st.session_state.chat_state == chat_state
+        and len(history.messages) == 0
+    ):
         if journey_name:
             journey = st.session_state.journey_list[journey_name]
             history.add_ai_message(
-                    f"""Welcome to ThirdCognition Virtual Buddy POC
+                f"""Welcome to ThirdCognition Virtual Buddy POC
 
 This proof of concept has been provided for you to see how it is possible to generate learning content
 with just the help of our tool. This is a work in progress and should not be considered a final product.
@@ -139,29 +169,26 @@ outside of your respective organization.
 You can now ask any questions you might have 👇. If you want to experience the preliminary learning journey,
 you can do so by selecting any of the subjects provided for you from the menu on the left.
                     """,
-                )
+            )
         else:
             history.add_ai_message(
-                    f"""Welcome to ThirdCognition Virtual Buddy
+                f"""Welcome to ThirdCognition Virtual Buddy
                     You can ask me anything you'd want to know about ThirdCognition
                     and I will do my best to answer you. :smile:
                     """,
-                )
+            )
         st.rerun()
 
-    if (
-        len(history.messages) == 0
-        and "chat_journey" in st.session_state
-    ):
+    if len(history.messages) == 0 and "chat_journey" in st.session_state:
         # print(f"{ chat_state = }")
         subject_index = int(chat_state.split(DELIMITER)[1])
         step_index = int(chat_state.split(DELIMITER)[2])
-        journey:JourneyModel = st.session_state.journey_list[st.session_state.chat_journey]
+        journey: JourneyModel = st.session_state.journey_list[
+            st.session_state.chat_journey
+        ]
         st.subheader(journey.subjects[subject_index].steps[step_index].title)
         history.add_ai_message(
-            AIMessage(
-                journey.subjects[subject_index].steps[step_index].intro
-            )
+            AIMessage(journey.subjects[subject_index].steps[step_index].intro)
         )
         st.rerun()
 

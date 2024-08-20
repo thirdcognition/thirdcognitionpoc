@@ -1,10 +1,15 @@
 from datetime import datetime
 import os
+import sys
+
 import gc
 from io import StringIO
 import sqlalchemy as sqla
 import streamlit as st
 from streamlit.runtime.uploaded_file_manager import UploadedFile
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
 from lib.chain import get_chain
 from lib.db_tools import (

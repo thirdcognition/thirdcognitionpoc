@@ -152,22 +152,23 @@ def llm_gen_step(rag_chain:RunnableSequence, content, journey:JourneyModel, subj
         gen_step.intro = class_intro.strip()
         gen_step.actions = class_actions.strip()
 
-    gen_step.structured = llm_gen_json_step(gen_step)
-    if gen_step.structured is not None:
+    json_step = llm_gen_json_step(gen_step)
+    if json_step is not None and isinstance(json_step, JourneyStructure):
+        gen_step.structured = json_step
         gen_step.title = gen_step.structured.title
         gen_step.subject = gen_step.structured.subject
         gen_step.intro = gen_step.structured.intro
         gen_step.content = gen_step.structured.content
         gen_step.actions = "\n".join([ textwrap.dedent(f"""
-            ## Action {i+1}: {action.title}:
-            {action.description}
+            ## Action {i+1}: {action.title.strip()}:
+            {action.description.strip()}
 
             ##### Resources:
 
-            - {f"\n - ".join(action.resources)}
+            - {f"\n            - ".join(action.resources)}
 
             #### Test:
-            {action.test}
+            {action.test.strip()}
 
             ---
             """) for i, action in enumerate(gen_step.structured.actions)])

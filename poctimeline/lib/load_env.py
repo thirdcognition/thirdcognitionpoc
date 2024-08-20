@@ -44,6 +44,9 @@ EMBEDDING_OVERLAP: int = 100
 CLIENT_HOST = os.getenv("CLIENT_HOST", "http://localhost:3100")
 ADMIN_HOST = os.getenv("ADMIN_HOST", "http://localhost:4000")
 
+RATE_LIMIT_PER_SECOND = float(os.getenv("RATE_LIMIT_PER_SECOND", 5))
+RATE_LIMIT_INTEVAL = float(os.getenv("RATE_LIMIT_INTEVAL", 0.1))
+
 OLLAMA_URL = None
 if USE_OLLAMA:
     DEFAULT_LLM_MODEL = ChatOllama
@@ -104,6 +107,7 @@ if USE_GROQ:
 
     print("+++ GROQ +++")
 
+print(f"\tLimits: {RATE_LIMIT_INTEVAL=} {RATE_LIMIT_PER_SECOND=}")
 print(f"\tChat: {CHAT_LLM=} {CHAT_CONTEXT_SIZE=} {CHAT_CHAR_LIMIT}")
 print(f"\tInstruct: {INSTRUCT_LLM=} {INSTRUCT_CONTEXT_SIZE=} {INSTRUCT_CHAR_LIMIT}")
 print(

@@ -201,13 +201,23 @@ class TagsParser(BaseOutputParser[bool]):
         tag_contents_joined = "\n".join(tag_contents)
 
         if len(text_contents_joined) == 0 and len(tag_contents_joined) > 0 or in_tag:
-            excpect_msg = f"""Tag parser expected tags {self.start_tag} and {self.end_tag} in pairs.
+            excpect_msg = textwrap.dedent(f"""
+                Expected tags {self.start_tag} and {self.end_tag} in pairs.
                 But got only tag: {self.start_tag if len(text_contents_joined) == 0 else self.end_tag}.
-                Please make sure to close the tags that have been opened."""
+                Please make sure to close the tags that have been opened.
+                """)
             raise OutputParserException(excpect_msg)
+        elif len(tag_contents_joined) > 0 and len(text_contents_joined) < self.min_len:
+            excpect_msg = textwrap.dedent(f"""
+            Expected a response message at least {self.min_len} characters long
+            but got only [thinking_start] .... [thinking_end] response. Please make
+            sure that the response is long enough and also contains text outside of the tags.
+            """)
         elif len(text_contents_joined) < self.min_len:
-            excpect_msg = f"""Tag parser expected a response message at least {self.min_len} characters long.
-            "Please make sure that the response is long enough."""
+            excpect_msg = textwrap.dedent(f"""
+            Expected a response message at least {self.min_len} characters long.
+            Please make sure that the response is long enough.
+            """)
 
             raise OutputParserException(excpect_msg)
 
@@ -217,6 +227,31 @@ class TagsParser(BaseOutputParser[bool]):
     def _type(self) -> str:
         return "tag_output_parser"
 
+class HallucinationParser(BaseOutputParser[bool]):
+    """Custom parser to clean specified tag from results."""
+
+    def parse(self, text: Union[str, BaseMessage]) -> tuple[bool, BaseMessage]:
+        # print(f"Parsing tags: {text}")
+        if isinstance(text, BaseMessage):
+            text = text.content
+
+        # Extract all floats from the text using regular expressions
+        floats = [float(n) for n in re.findall(r"[-+]?(?:\d*\.*\d+)", text)]
+
+        if len(floats) == 0:
+            excpect_msg = f"""Unable to verify if the content is based on context."""
+            raise OutputParserException(excpect_msg)
+        if floats[0] == 0.0:
+            excpect_msg = f"""The generated text is not based on the context. Please rewrite the text so that it matches provided context."""
+            raise OutputParserException(excpect_msg)
+
+        # raise OutputParserException(f"Unexpected error: Testing errors.")
+
+        return True, text
+
+    @property
+    def _type(self) -> str:
+        return "hallucination_parser"
 
 text_formatter = PromptFormatter(
     system=textwrap.dedent(
@@ -225,7 +260,8 @@ text_formatter = PromptFormatter(
         {pre_think_instruct}
         {keep_pre_think_together}
         Rewrite the text specified by the user between the context start and context end in full detail using natural language.
-        Don't use html tags or markdown. Remove all mentions of confidentiality. Use only information from the available in the text."""
+        Don't use html tags or markdown. Remove all mentions of confidentiality. Use only information from the available in the text.
+        """
     ),
     user=textwrap.dedent(
         """
@@ -248,7 +284,8 @@ text_formatter_compress = PromptFormatter(
         Summarise, compress and reduce the text specified by the user between the context start and context end in retaining details using natural language.
         Don't return the context text as it is, process it to shorter form.
         The context is a part of a longer document. Don't use html tags or markdown. Remove all mentions of confidentiality.
-        Use only information from the available in the text."""
+        Use only information from the available in the text.
+        """
     ),
     user=textwrap.dedent(
         """
@@ -256,7 +293,8 @@ text_formatter_compress = PromptFormatter(
         {context}
         Context end
 
-        Format the text in the context."""
+        Format the text in the context.
+        """
     ),
 )
 text_formatter_compress.parser = TagsParser(min_len=100)
@@ -268,7 +306,8 @@ text_formatter_guided = PromptFormatter(
         {pre_think_instruct}
         {keep_pre_think_together}
         Rewrite the text between the context start and context end using only information and follow the instructions exactly.
-        Don't use html tags or markdown."""
+        Don't use html tags or markdown.
+        """
     ),
     user=textwrap.dedent(
         """
@@ -278,7 +317,8 @@ text_formatter_guided = PromptFormatter(
         {context}
         Context end
 
-        Format the text in the context."""
+        Format the text in the context.
+        """
     ),
 )
 text_formatter_guided.parser = TagsParser(min_len=100)
@@ -290,7 +330,8 @@ md_formatter = PromptFormatter(
         {pre_think_instruct}
         {keep_pre_think_together}
         Rewrite the text between the context start and context end using markdown syntax. Use only information from the context.
-        Remove all mentions of confidentiality."""
+        Remove all mentions of confidentiality.
+        """
     ),
     user=textwrap.dedent(
         """
@@ -298,7 +339,8 @@ md_formatter = PromptFormatter(
         {context}
         Context end
 
-        Format the text in the context."""
+        Format the text in the context.
+        """
     ),
 )
 md_formatter.parser = TagsParser(min_len=100)
@@ -310,7 +352,8 @@ md_formatter_guided = PromptFormatter(
         {pre_think_instruct}
         {keep_pre_think_together}
         Rewrite the text between the context start and context end using markdown syntax. Use only information from the context
-        and follow the instructions exactly. Remove all mentions of confidentiality. Follow the instructions exactly."""
+        and follow the instructions exactly. Remove all mentions of confidentiality. Follow the instructions exactly.
+        """
     ),
     user=textwrap.dedent(
         """
@@ -320,7 +363,8 @@ md_formatter_guided = PromptFormatter(
         {context}
         Context end
 
-        Format the text in the context."""
+        Format the text in the context.
+        """
     ),
 )
 md_formatter_guided.parser = TagsParser(min_len=100)
@@ -332,7 +376,8 @@ action = PromptFormatter(
         {pre_think_instruct}
         {keep_pre_think_together}
         Use the following pieces of information between the context start and context end to complete the task.
-        If you don't know the how, just say that you don't know how."""
+        If you don't know the how, just say that you don't know how.
+        """
     ),
     user=textwrap.dedent(
         """
@@ -342,19 +387,22 @@ action = PromptFormatter(
         {context}
         Context end
 
-        Complete the task with the details from context."""
+        Complete the task with the details from context.
+        """
     ),
 )
 action.parser = TagsParser(min_len=10)
 
 grader = PromptFormatter(
     system=textwrap.dedent(
-        f"""You are a grader assessing relevance of a retrieved document to a user question.
+        f"""
+        You are a grader assessing relevance of a retrieved document to a user question.
 
-    If the document contains keywords related to the user question, grade it as relevant.
-    It does not need to be a stringent test. The goal is to filter out erroneous retrievals.
-    Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question.
-    Provide the binary score as a JSON with a single key 'score' and no premable or explanation."""
+        If the document contains keywords related to the user question, grade it as relevant.
+        It does not need to be a stringent test. The goal is to filter out erroneous retrievals.
+        Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question.
+        Provide the binary score as a JSON with a single key 'score' and no premable or explanation.
+        """
     ),
     user=textwrap.dedent(
         """
@@ -364,14 +412,18 @@ grader = PromptFormatter(
         Here is the user question:
         {question}
 
-        Grade the document based on the question."""
+        Grade the document based on the question.
+        """
     ),
 )
 grader.parser = JsonOutputParser()
 
 check = PromptFormatter(
     system=textwrap.dedent(
-        f"""Act as a verification machine. Check that the items matches the format exactly and answer with one of the appropriate option only. Do not explain your answer or add anything else after or before the answer."""
+        f"""
+        Act as a verification machine. Check that the items matches the format exactly and answer with one of
+        the appropriate option only. Do not explain your answer or add anything else after or before the answer.
+        """
     ),
     user=textwrap.dedent(
         """
@@ -386,9 +438,91 @@ check = PromptFormatter(
 
         Do the items match the format?
         Respond with one of the options only.
-        Do not explain your answer or add anything else after or before the answer."""
+        Do not explain your answer or add anything else after or before the answer.
+        """
     ),
 )
+
+error_retry = PromptFormatter(
+    system=textwrap.dedent(
+        f"""
+        Act as a error fixer. You are given a prompt, a completion and an error message.
+        The completion did not satisfy the constraints given in the prompt. Fix the completion
+        based on the error.
+        """
+    ),
+    user=textwrap.dedent(
+        """
+        Prompt:
+        {prompt}
+        Completion:
+        {completion}
+
+        Above, the Completion did not satisfy the constraints given in the Prompt.
+        Details: {error}
+        Please try again:
+        """
+    ),
+)
+
+question_classifier = PromptFormatter(
+    system=textwrap.dedent(
+        f"""
+        Act as a strict question classifier.
+        Return "yes" if the message is a question or "no" if not.
+        Do not add anything else in the response.
+        Just return "yes" or "no".
+        """
+    ),
+    user=textwrap.dedent(
+        """
+        Is this a question:
+        {question}
+
+        Respond with "yes" or "no"
+        """
+    ),
+)
+
+hallucination = PromptFormatter(
+    system=textwrap.dedent(
+        f"""
+        You are a grader assessing whether an LLM generation is grounded in / supported by a set of retrieved facts.
+
+        Give a binary score 1 or 0, where 1 means that the answer is grounded in / supported by the set of facts or history and answers the question.
+
+        After the score write a short explanation if the answer does not pass test. Always return the score of 0 or 1 regardless.
+
+        Example 1:
+        1
+
+        Generated content is grounded in facts
+
+        Example 2:
+        0
+
+        Generated content is built on information which is not in scope
+
+        Example 3:
+        0
+
+        Generated content is guessing
+        """
+    ),
+    user=textwrap.dedent(
+        """
+        {input}
+
+        LLM generation: {output}
+
+        Return 1 or 0 score and explanation regardless.
+        """
+    ),
+)
+hallucination.parser = HallucinationParser()
+
+        # Facts: {{context}}
+        # History: {{chat_history}}
 
 helper = PromptFormatter(
     system=textwrap.dedent(
@@ -404,7 +538,8 @@ helper = PromptFormatter(
         Context start
         {context}
         Context end
-        Question: {question}"""
+        Question: {question}
+        """
     ),
 )
 helper.parser = TagsParser(min_len=10)
@@ -412,17 +547,19 @@ helper.parser = TagsParser(min_len=10)
 chat = PromptFormatter(
     system=textwrap.dedent(
         f"""
-        You are an helpful assistant answering in a lighthearted and funny way, but don't over do it.
-        {pre_think_instruct}
-        Use max three sentences maximum and keep the answer concise.
-        Don't explain your responses, apologize or mention that you are an assistant."""
+        You are replying in a lighthearted and funny way, but don't over do it.
+        Use max three sentences maximum and keep the answer concise. You can use history
+        to make the answer more relevant but focus on 2-3 latest Human messages.
+        Don't explain your responses, apologize or mention that you are an assistant.
+        """
     ),
     user=textwrap.dedent(
         """
-        {question}"""
+        {question}
+        """
     ),
 )
-chat.parser = TagsParser(min_len=10)
+# chat.parser = TagsParser(min_len=10)
 
 question = PromptFormatter(
     system=textwrap.dedent(
@@ -430,14 +567,16 @@ question = PromptFormatter(
         You are an assistant for question-answering tasks.
         Use the following pieces of retrieved context and conversation history to answer the question.
         If you don't know the answer, say that you don't know. Limit your response to three sentences maximum
-        and keep the answer concise. Don't reveal that the context is empty, just say you don't know."""
+        and keep the answer concise. Don't reveal that the context is empty, just say you don't know.
+        """
     ),
     user=textwrap.dedent(
         """
         Context start
         {context}
         Context end
-        Question: {question}"""
+        Question: {question}
+        """
     ),
 )
 
@@ -460,7 +599,8 @@ summary = PromptFormatter(
         You are an assistant for summarizing texts.
         {pre_think_instruct}
         {keep_pre_think_together}
-        Summarize the text between the context start and context end using natural language."""
+        Summarize the text between the context start and context end using natural language.
+        """
     ),
     user=textwrap.dedent(
         """
@@ -480,7 +620,8 @@ summary_guided = PromptFormatter(
         {pre_think_instruct}
         {keep_pre_think_together}
         Summarize the text between the context start and context end using natural language
-        and follow the instructions exactly."""
+        and follow the instructions exactly.
+        """
     ),
     user=textwrap.dedent(
         """
@@ -585,7 +726,7 @@ journey_step_details = PromptFormatter(
         within that topic.
         The study materials should be exhaustive, detailed and generated from the context.
         If instructions are provided follow them exactly.
-         """
+        """
     ),
 )
 journey_step_details.parser = TagsParser(min_len=10)
@@ -692,11 +833,11 @@ class JourneyStructure(BaseModel):
 
 
 journey_structured = PromptFormatter(
-    system="""
+    system=textwrap.dedent("""
     Act as a structured data formatter and use specified format instructions exactly
     to format the context data. Return only the JSON object with the formatted data.
-    """,
-    user="""
+    """),
+    user=textwrap.dedent("""
     context start
     {context}
     context end
@@ -707,7 +848,7 @@ journey_structured = PromptFormatter(
     ----------------
     Format the context data using the format instructions.
     Return only the properly formatted JSON object with the formatted data.
-    """,
+    """),
 )
 journey_structured.parser = PydanticOutputParser(pydantic_object=JourneyStructure)
 

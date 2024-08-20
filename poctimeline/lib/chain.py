@@ -1,5 +1,10 @@
+import pprint as pp
+import re
+import textwrap
+import time
 from typing import Dict, List
 
+from groq import RateLimitError
 from langchain.chains.hyde.base import HypotheticalDocumentEmbedder
 from langchain.chains.combine_documents.stuff import create_stuff_documents_chain
 
@@ -9,7 +14,7 @@ from langchain_huggingface import (
 )
 from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
 from langchain_community.embeddings.ollama import OllamaEmbeddings
-
+from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, BaseMessage
 # from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain.callbacks.manager import CallbackManager
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
@@ -17,13 +22,14 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import (
     RunnableSequence,
     RunnableParallel,
-    # RunnablePassthrough,
+    RunnableBranch,
+    RunnablePassthrough,
     RunnableLambda,
     # Runnable,
 )
 # from langchain_core.prompts.prompt import PromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain.output_parsers.retry import RetryOutputParser
+from langchain.output_parsers.retry import RetryWithErrorOutputParser, NAIVE_COMPLETION_RETRY_WITH_ERROR
 
 from lib.load_env import (
     CHAT_CONTEXT_SIZE,
@@ -38,6 +44,8 @@ from lib.load_env import (
     INSTRUCT_DETAILED_LLM,
     INSTRUCT_LLM,
     OLLAMA_URL,
+    RATE_LIMIT_INTEVAL,
+    RATE_LIMIT_PER_SECOND,
     STRUCTURED_CONTEXT_SIZE,
     STRUCTURED_LLM,
     TOOL_CONTEXT_SIZE,
@@ -57,6 +65,9 @@ from lib.prompts import (
     md_formatter_guided,
     action,
     check,
+    error_retry,
+    hallucination,
+    question_classifier,
     helper,
     chat,
     question,
@@ -71,10 +82,35 @@ from lib.prompts import (
     journey_structured,
 )
 
+from langchain_core.rate_limiters import InMemoryRateLimiter
+
+RATE_LIMITER = InMemoryRateLimiter(
+    requests_per_second=RATE_LIMIT_PER_SECOND,  # <-- Super slow! We can only make a request once every 10 seconds!!
+    check_every_n_seconds=RATE_LIMIT_INTEVAL,  # Wake up every 100 ms to check whether allowed to make a request,
+    max_bucket_size=10,  # Controls the maximum burst size.
+)
+
 llms = {}
 embeddings = {}
 # prompts: Dict[str, PromptTemplate] = {}
 
+def print_params(msg, params):
+    if DEBUGMODE:
+        print(f"\n\n\n{msg}")
+        print(f"'\n\n{pp.pformat(params).replace("\\n", "\n")}\n\n")
+
+def format_chain_params(params):
+    print_params("Format chain", params)
+    if "__params" in params.keys() and isinstance(params["__params"], Dict):
+        set_params = params["__params"]
+        for key in set_params.keys():
+            params[key] = set_params[key]
+        params.pop("__params", None)
+    return params
+
+def log_chain(params):
+    print_params("Log chain", params)
+    return params
 
 class Chain:
     def __init__(
@@ -82,12 +118,16 @@ class Chain:
         llm_id="default",
         prompt: PromptFormatter = text_formatter,
         custom_prompt: tuple[str, str] | None = None,
+        check_for_hallucinations: bool = False,
     ):
         self.llm_id = llm_id
         self.prompt = prompt
         self.custom_prompt = custom_prompt
         self.chain = None
         self.prompt_template = None
+        self.hallucination_prompt = hallucination
+        self.check_for_hallucinations = check_for_hallucinations
+        self.error_prompt = error_retry
 
     def __call__(
         self, custom_prompt: tuple[str, str] | None = None, **kwargs
@@ -110,42 +150,214 @@ class Chain:
                 )
 
         if self.chain is None or custom_prompt is not None:
-            self.chain = self.prompt_template | llms[self.llm_id]
+            response = None
+            check_params = None
+            store_params:Dict = None
+            prompt_value = None
+            def retry_setup(params):
+                print_params("Retry setup", params)
+                nonlocal check_params
+                return {
+                    "completion": check_params["output"],
+                    "prompt": params["prompt"],  #hallucination_check_params["input"],
+                    "error": params["completion"]
+                }
 
-            if self.prompt.parser is not None:
-                retry_parser = RetryOutputParser.from_llm(
-                    parser=self.prompt.parser, llm=llms[self.llm_id], max_retries=5
+            def store_params(params):
+                print_params("Store params", params)
+                nonlocal store_params
+                store_params = params
+                return params
+
+            def param_restore(result):
+                print_params("Param restore", {
+                    "result": result, "response": response
+                })
+                if result[0]:
+                    return response
+                else:
+                    return result[1]
+
+            def param_reset(params):
+                print_params("Param reset", params)
+                nonlocal check_params
+                nonlocal response
+                nonlocal store_params
+                nonlocal prompt_value
+
+                check_params = None
+                response = None
+                store_params = None
+                prompt_value = None
+                return params
+
+
+            self.chain = self.prompt_template | llms[self.llm_id]
+            if USE_GROQ:
+                chain:RunnableSequence = self.chain
+                def rate_limit(params):
+                    nonlocal chain
+                    retries = 0
+                    while retries < 5:
+                        retries += 1
+                        try:
+                            return chain.invoke(params)
+                        except RateLimitError as e:
+                            print(f"Running into rate limits: {e}")
+                            floats = [float(n) for n in re.findall(r"[-+]?(?:\d*\.*\d+)", e.message)]
+                            time.sleep(max(floats) + 1)
+                self.chain = RunnableLambda(rate_limit)
+
+            if self.check_for_hallucinations:
+                def param_check(params):
+                    nonlocal store_params
+                    nonlocal check_params
+                    nonlocal response
+                    nonlocal prompt_value
+                    print_params("Param check", params)
+                    response = params["completion"]
+                    system_message:SystemMessage = params["prompt_value"].messages[0]
+                    human_message:HumanMessage = params["prompt_value"].messages[1]
+                    history:List[BaseMessage] = params["params"]["chat_history"] if "chat_history" in params["params"].keys() else []
+                    new_params = {
+                        "input": f"Output instruction: {system_message.content.strip()}\n" +
+                            f"Human message: {human_message.content.strip()}\n" +
+                            f"Chat history:\n {"\n".join([f"{item.__class__.__name__}: {item.content}" for item in history])}\n" ,
+                        "output": params["completion"].content.strip(),
+                    }
+                    prompt_value = params["prompt_value"]
+                    check_params = new_params
+                    print_params(f"New params", new_params)
+                    return new_params
+                # Store params and prepare verification chain values
+
+                # Initial chain
+                hallucination_chain = (RunnableParallel(
+                        # Run the original chain
+                        completion=self.chain,
+                        prompt_value=self.prompt_template,
+                        params=RunnablePassthrough()
+                    )
+                    | RunnableLambda(param_check)
+                    # Run against param_check params
+                    | self.hallucination_prompt.get_chat_prompt_template()
+                    | get_llm("structured_0")
                 )
 
+                def set_retry_prompt(params):
+                    print_params("Set retry prompt", params)
+                    nonlocal prompt_value
+                    return prompt_value
+
+                # Retry chain if 1st chain fails
+                hallucination_chain_retry = (
+                    RunnableParallel(
+                        # Run the fix chain instead of original chain
+                        completion=(
+                            RunnableLambda(retry_setup) |
+                            self.error_prompt.get_agent_prompt_template() |
+                            get_llm("structured_0")
+                        ),
+                        prompt_value=RunnableLambda(set_retry_prompt),
+                        params=RunnablePassthrough()
+                    )
+                    # Reset the 1st chain params with the new output from the retry chain
+                    | RunnableLambda(param_check)
+                    | self.hallucination_prompt.get_chat_prompt_template()
+                    | get_llm("structured_0")
+                )
+
+                hallucination_parser = RetryWithErrorOutputParser(
+                    parser=self.hallucination_prompt.parser,
+                    retry_chain=hallucination_chain_retry,
+                    max_retries=5
+                )
+
+                def rerun_parser(x):
+                    print_params("Rerun hallucination parser", x)
+                    x["completion"] = x["completion"].content.strip()
+                    return hallucination_parser.parse_with_prompt(x["completion"], x["prompt_value"])
+
+                hallucination_chain = (
+                    RunnableParallel(
+                        completion=hallucination_chain,
+                        prompt_value=self.prompt_template,
+                    ) |
+                    RunnableLambda(rerun_parser) |
+                    RunnableLambda(param_restore)
+                )
+
+                self.chain = (
+                    RunnableLambda(store_params) |
+                    RunnableBranch(
+                        (lambda x: (
+                            ("context" in store_params.keys() and len(str(store_params["context"]))>100)) or
+                            ("chat_history" in store_params.keys() and len(store_params["chat_history"])>2),
+                            hallucination_chain
+                        ),
+                        self.chain
+                    ) |
+                    RunnableLambda(param_reset)
+                )
+                # self.chain = RunnableLambda(store_params) | hallucination_chain
+
+            if self.prompt.parser is not None:
+                def param_check(params):
+                    nonlocal store_params
+                    nonlocal check_params
+                    nonlocal response
+                    print_params("Param check", params)
+                    response = params["completion"]
+                    new_params = {
+                        "output": params["completion"].content.strip(),
+                    }
+                    check_params = new_params
+                    return params
+                parser_chain = RunnableParallel(
+                    completion=self.chain,
+                    prompt_value=self.prompt_template,
+                    params=RunnablePassthrough()
+                ) | RunnableLambda(param_check)
+
+                parser_retry_chain = (
+                    RunnableLambda(retry_setup) |
+                    self.error_prompt.get_agent_prompt_template() |
+                    llms[self.llm_id] #get_llm("structured_0")
+                )
+                retry_parser = RetryWithErrorOutputParser(
+                    parser=self.prompt.parser,
+                    retry_chain=parser_retry_chain,
+                    max_retries=5
+                )
+
+
+                def rerun_parser(x):
+                    print_params("Rerun format parser", x)
+                    x["completion"] = x["completion"].content.strip()
+                    return retry_parser.parse_with_prompt(x["completion"], x["prompt_value"])
+
                 def add_format_instructions(params: Dict):
+                    print_params("Add format instructions", params)
                     if "format_instructions" not in params.keys():
                         params["format_instructions"] = (
                             self.prompt.parser.get_format_instructions()
                         )
                     return params
 
-                # print(f"Prompt {id = }")
-
-                def rerun_parser(x):
-                    x["completion"] = x["completion"].content.strip()
-                    return retry_parser.parse_with_prompt(**x)
-
-                self.chain = RunnableParallel(
-                    completion=self.chain,
-                    prompt_value=self.prompt_template,
-                ) | RunnableLambda(rerun_parser)
 
                 if (
                     isinstance(self.prompt.parser, PydanticOutputParser)
                     and "format_instructions" in self.prompt_template.input_variables
                 ):
-                    # print("Add format instructions")
-                    self.chain = add_format_instructions | self.chain
-                # else:
-                #     self.chain = self.chain | self.prompt.parser
+                    parser_chain = add_format_instructions | parser_chain
 
+                self.chain = parser_chain | RunnableLambda(rerun_parser)
             else:
                 self.chain = self.chain | StrOutputParser()
+
+
+        fallback_chain = RunnableLambda(lambda x: AIMessage(content=f"I seem to be having some trouble answering, please try again a bit later."))
+        self.chain = self.chain.with_fallbacks([fallback_chain])
 
         return self.chain
 
@@ -202,6 +414,7 @@ def init_llm(
                 num_predict=ctx_size,
                 repeat_penalty=2,
                 timeout=10000,
+                rate_limiter=RATE_LIMITER,
                 callback_manager=(
                     CallbackManager([StreamingStdOutCallbackHandler()])
                     if verbose
@@ -217,6 +430,7 @@ def init_llm(
                 temperature=temperature,
                 timeout=10000,
                 max_retries=5,
+                rate_limiter=RATE_LIMITER,
                 callback_manager=(
                     CallbackManager([StreamingStdOutCallbackHandler()])
                     if verbose
@@ -264,6 +478,12 @@ def init_llms():
         model=INSTRUCT_DETAILED_LLM,
         ctx_size=INSTRUCT_DETAILED_CONTEXT_SIZE,
     )
+    init_llm(
+        "structured", temperature=0.2, model=STRUCTURED_LLM, ctx_size=STRUCTURED_CONTEXT_SIZE
+    )
+    init_llm(
+        "structured_0", temperature=0, model=STRUCTURED_LLM, ctx_size=STRUCTURED_CONTEXT_SIZE
+    )
 
     if "json" not in llms:
         if USE_OLLAMA:
@@ -272,10 +492,11 @@ def init_llms():
                 base_url=OLLAMA_URL,
                 model=STRUCTURED_LLM,
                 model_kwargs={"response_format": {"type": "json_object"}},
-                temperature=0,
+                temperature=0.1,
                 num_ctx=STRUCTURED_CONTEXT_SIZE,
                 num_predict=STRUCTURED_CONTEXT_SIZE,
                 verbose=DEBUGMODE,
+                rate_limiter=RATE_LIMITER,
                 callback_manager=(
                     CallbackManager([StreamingStdOutCallbackHandler()])
                     if DEBUGMODE
@@ -287,9 +508,10 @@ def init_llms():
                 api_key=GROQ_API_KEY,
                 model=STRUCTURED_LLM,
                 model_kwargs={"response_format": {"type": "json_object"}},
-                temperature=0,
+                temperature=0.1,
                 timeout=30000,
                 verbose=DEBUGMODE,
+                rate_limiter=RATE_LIMITER,
                 callback_manager=(
                     CallbackManager([StreamingStdOutCallbackHandler()])
                     if DEBUGMODE
@@ -302,30 +524,31 @@ def init_llms():
     init_llm("warm", temperature=0.4)
 
     chains["summary"] = Chain(
-        "instruct_detailed", summary
+        "instruct_detailed", summary, check_for_hallucinations=True
     )  # init_chain("summary", "instruct_detailed", summary)
-    chains["summary_guided"] = Chain("instruct", summary_guided)
+    chains["summary_guided"] = Chain("instruct", summary_guided, check_for_hallucinations=True)
     chains["action"] = Chain("instruct_detailed_0", action)
     chains["grader"] = Chain("json", grader)
     chains["check"] = Chain("instruct_0", check)
-    chains["text_formatter"] = Chain("instruct_detailed", text_formatter)
+    chains["text_formatter"] = Chain("instruct_detailed", text_formatter, check_for_hallucinations=True)
     chains["text_formatter_compress"] = Chain(
-        "instruct_detailed", text_formatter_compress
+        "instruct_detailed", text_formatter_compress, check_for_hallucinations=True
     )
     chains["text_formatter_guided_0"] = Chain(
-        "instruct_detailed", text_formatter_guided
+        "instruct_detailed", text_formatter_guided, check_for_hallucinations=True
     )
-    chains["md_formatter"] = Chain("instruct_detailed", md_formatter)
-    chains["md_formatter_guided"] = Chain("instruct_detailed_0", md_formatter_guided)
+    chains["md_formatter"] = Chain("instruct_detailed", md_formatter, check_for_hallucinations=True)
+    chains["md_formatter_guided"] = Chain("instruct_detailed_0", md_formatter_guided, check_for_hallucinations=True)
     chains["journey_structured"] = Chain("json", journey_structured)
-    chains["journey_steps"] = Chain("json", journey_steps)
-    chains["journey_step_details"] = Chain("instruct_warm", journey_step_details)
-    chains["journey_step_intro"] = Chain("instruct_detailed_warm", journey_step_intro)
+    chains["journey_steps"] = Chain("json", journey_steps, check_for_hallucinations=True)
+    chains["journey_step_details"] = Chain("instruct_warm", journey_step_details, check_for_hallucinations=True)
+    chains["journey_step_intro"] = Chain("instruct_detailed_warm", journey_step_intro, check_for_hallucinations=True)
     chains["journey_step_actions"] = Chain(
-        "instruct_detailed_warm", journey_step_actions
+        "instruct_detailed_warm", journey_step_actions, check_for_hallucinations=True
     )
-    chains["question"] = Chain("chat", question)
+    chains["question"] = Chain("chat", question, check_for_hallucinations=True)
     chains["helper"] = Chain("chat", helper)
+    chains["chat"] = Chain("chat", chat)
 
     global embeddings
 

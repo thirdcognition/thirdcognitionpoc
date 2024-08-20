@@ -8,6 +8,7 @@ import chromadb
 
 from langchain_chroma import Chroma
 from chromadb.utils.embedding_functions import create_langchain_embedding
+from chromadb.config import Settings as ChromaSettings
 import streamlit as st
 from lib.chain import get_embeddings, init_llms
 from lib.load_env import CHROMA_PATH, FILE_TABLENAME, JOURNEY_TABLENAME, SQLITE_DB
@@ -201,7 +202,7 @@ def get_chroma_collection(
         return collections[name]
 
     global chroma_client
-    chroma_client = chroma_client or chromadb.PersistentClient(path=path)
+    chroma_client = chroma_client or chromadb.PersistentClient(path=path, settings=ChromaSettings(anonymized_telemetry=False))
 
     if update:
         chroma_client.delete_collection(name=name)
@@ -229,7 +230,7 @@ def get_vectorstore(
 ) -> Chroma:
     init_llms()
     global chroma_client
-    chroma_client = chroma_client or chromadb.PersistentClient(path=path)
+    chroma_client = chroma_client or chromadb.PersistentClient(path=path, settings=ChromaSettings(anonymized_telemetry=False))
 
     global vectorstores
 
@@ -241,6 +242,7 @@ def get_vectorstore(
         client=chroma_client,
         collection_name=id,
         embedding_function=get_embeddings(embedding_id),
+        client_settings=ChromaSettings(anonymized_telemetry=False),
     )
 
     vectorstores[id] = vectorstore

@@ -1,6 +1,11 @@
+import os
+import sys
 import time
 from typing import List
 import streamlit as st
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
 from lib.journey_shared import (
     create_subject_prompt_editor,

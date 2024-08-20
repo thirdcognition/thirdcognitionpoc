@@ -1,6 +1,11 @@
+import os
+import sys
 import time
 import streamlit as st
 from streamlit.delta_generator import DeltaGenerator
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
 from lib.chain import get_chain
 from lib.journey_shared import (

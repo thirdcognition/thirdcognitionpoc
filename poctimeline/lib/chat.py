@@ -60,12 +60,12 @@ def init_journey_chat(journey_name: str = None, rag_collection: str = None):
             if len(collections) > 0:
                 for collection in collections:
                     if collection not in collection_keys:
-                        chains[collection] = rag_chain(collection, with_history=True)
+                        chains[collection] = rag_chain(collection, with_history=True, with_chat=True)
         else:
             collection = (
                 "rag_ThirdCognition" if rag_collection is None else rag_collection
             )
-            chains[collection] = rag_chain(collection, with_history=True)
+            chains[collection] = rag_chain(collection, with_history=True, with_chat=True)
 
         st.session_state.journey_chain_ids = journey_chain_ids
         st.session_state.chains = chains

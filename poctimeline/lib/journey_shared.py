@@ -196,8 +196,8 @@ def llm_gen_step(rag_chain:RunnableSequence, content, journey:JourneyModel, subj
         )
     else:
         gen_step = StepModel(
-            title = gen_step.title.strip(),
-            subject = gen_step.subject.strip(),
+            title = step.title.strip(),
+            subject = step.subject.strip(),
             content = class_content.strip(),
             intro = class_intro.strip(),
             actions = class_actions.strip(),

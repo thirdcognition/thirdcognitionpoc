@@ -655,6 +655,8 @@ journey_steps = PromptFormatter(
         with the specified format structure.
         If instructions are provided follow them exactly.
         Only use the information available within the context.
+        If there's a history with previous conversation, use it to
+        make sure you don't repeat the same subjects or actions.
         Return only the properly formatted JSON object with the formatted data.
         """
     ),
@@ -682,6 +684,8 @@ journey_steps = PromptFormatter(
         Format the context data using the format structure.
         Do not add any information to the context or come up with subjects
         not defined within the context.
+        If there's a history with previous conversation, use it to
+        make sure you don't repeat the same subjects or actions.
         Return only the properly formatted JSON object with the formatted data.
         """
     ),
@@ -701,6 +705,8 @@ journey_step_details = PromptFormatter(
         {keep_pre_think_together}
         Create the study material for the student with the following information between context start and end.
         Only use the information available within the context. Do not add or remove information from the context.
+        If there's a history with previous conversation, use it to
+        make sure you don't repeat the same subjects or actions.
         If instructions are provided follow them exactly.
         """
     ),
@@ -725,6 +731,8 @@ journey_step_details = PromptFormatter(
         a topic or subject, make sure the list includes only items which fall within
         within that topic.
         The study materials should be exhaustive, detailed and generated from the context.
+        If there's a history with previous conversation, use it to
+        make sure you don't repeat the same subjects or actions.
         If instructions are provided follow them exactly.
         """
     ),
@@ -742,6 +750,8 @@ journey_step_intro = PromptFormatter(
         You only have one student you're tutoring so don't have to address more than one person.
         {pre_think_instruct}
         {keep_pre_think_together}
+        If there's a history with previous conversation, use it to
+        make sure you don't repeat the same subjects or actions.
         Use the content for the class available between content start and end.
         """
     ),
@@ -778,6 +788,8 @@ journey_step_actions = PromptFormatter(
         with their summary and material to use when teaching the student about the subject.
         {pre_think_instruct}
         {keep_pre_think_together}
+        If there's a history with previous conversation, use it to
+        make sure you don't repeat the same subjects or actions.
         Use the content for the class available between content start and end.
         """
     ),
@@ -802,6 +814,8 @@ journey_step_actions = PromptFormatter(
         Prepare also a list of document resources and their summary to use with each action when teaching the student about the subject.
         If instructions are provided, follow them exactly. If instructions specify a topic or subject, make sure the list includes only
         items which fall within within that topic. Create at maximum the specified amount of items.
+        If there's a history with previous conversation, use it to
+        make sure you don't repeat the same subjects or actions.
         """
     ),
 )
@@ -815,6 +829,8 @@ journey_step_action_details = PromptFormatter(
         to use as a base for the discussion and lesson with the student.
         {pre_think_instruct}
         {keep_pre_think_together}
+        If there's a history with previous conversation, use it to
+        make sure you don't repeat the same subjects or actions.
         Use the provided resource description and the content available between content start and end to create the resources.
         """
     ),
@@ -835,6 +851,8 @@ journey_step_action_details = PromptFormatter(
         Prepare max 10 sentences of material as the resource described to be used while teaching a student.
         If instructions are provided, follow them exactly. If instructions specify a topic or subject, make sure the list includes only
         items which fall within within that topic.
+        If there's a history with previous conversation, use it to
+        make sure you don't repeat the same subjects or actions.
         """
     ),
 )

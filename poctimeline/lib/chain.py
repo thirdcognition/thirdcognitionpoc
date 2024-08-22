@@ -235,7 +235,7 @@ class Chain:
                         "input": f"Output instruction: {system_message.content.strip()}\n" +
                             (f"Context:\n {"\n".join((doc.page_content if isinstance(doc, Document) else doc).strip() for doc in context)}\n" if len(context) > 0 else "") +
                             f"Human message: {human_message.content.strip()}\n" +
-                            f"Chat history:\n {"\n".join([f"{item.__class__.__name__}: {item.content}" for item in history]) if len(history) > 0 else ""}\n",
+                            (f"Chat history:\n {"\n".join([(f"{item.__class__.__name__}: {item.content}" if isinstance(item, BaseMessage) else item) for item in history]) if len(history) > 0 else ""}\n") if len(history) > 0 else "",
                         "output": params["completion"].content.strip(),
                     }
                     prompt_value = params["prompt_value"]
@@ -305,7 +305,7 @@ class Chain:
                     RunnableBranch(
                         (lambda x: (
                             ("context" in store_params.keys() and len(str(store_params["context"]))>100)) or
-                            ("chat_history" in store_params.keys() and len(store_params["chat_history"])>2),
+                            ("chat_history" in store_params.keys() and len(store_params["chat_history"])>0),
                             hallucination_chain
                         ),
                         self.chain

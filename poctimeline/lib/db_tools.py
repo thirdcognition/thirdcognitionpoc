@@ -18,6 +18,7 @@ from lib.prompts import (
     journey_step_details,
     journey_step_intro,
     journey_step_actions,
+    journey_step_action_details
 )
 
 chroma_client = None
@@ -59,6 +60,11 @@ class JourneyPrompts(BaseModel):
     step_actions: CustomPrompt = Field(
         default=CustomPrompt(
             system=journey_step_actions.system, user=journey_step_actions.user
+        )
+    )
+    step_action_details: CustomPrompt = Field(
+        default=CustomPrompt(
+            system=journey_step_action_details.system, user=journey_step_action_details.user
         )
     )
 

@@ -42,7 +42,7 @@ def create_subject(
     st.subheader(f"Subject {subject_index+1}")
 
     subject.prompts = create_subject_prompt_editor(
-        f"{journey_name}_subject_{subject_index}", subject
+        f"{journey_name}_subject_{subject_index + 1}", subject
     )
 
     subject.instructions = st.text_area(
@@ -145,6 +145,7 @@ def get_journey_gen(journey_name):
                     )
                 )
                 st.session_state.journey_get_details[journey_name] = journey_details
+                st.rerun()
 
     # Check that all subjects have files defined
     def check_subject_files(subjects: List[SubjectModel]):
@@ -153,6 +154,10 @@ def get_journey_gen(journey_name):
                 return False
         return True
 
+    generate_resources = False
+    if but_col1 is not None and len(journey_details.subjects or []) > 0:
+        generate_resources = but_col1.checkbox("Generate resources (extremely slow)", value=False)
+
     if (
         but_col2 is not None
         and len(journey_details.subjects or []) > 0
@@ -160,13 +165,14 @@ def get_journey_gen(journey_name):
             "Generate",
             key=f"generate_journey_{journey_name}",
             disabled=not check_subject_files(journey_details.subjects),
+            use_container_width=True
         )
     ):
         st.session_state.journey_generator_running = True
 
         for i, subject in enumerate(journey_details.subjects):
             # print(f"Generating subject {i+1} for journey {journey_name}")
-            subject = gen_journey_subject(journey_details, subject)
+            subject = gen_journey_subject(journey_details, subject, generate_resources=generate_resources)
 
             if subject is not None:
                 journey_details.subjects[i] = subject
@@ -191,16 +197,18 @@ def get_journey_gen(journey_name):
             journey_details.summary = summary
             journey_details.db_files = files
 
-        save_journey(journey_name, journey_details)
-        journey_details.complete = True
-        st.session_state.journey_get_details[journey_name] = journey_details
-        st.session_state.journey_get_details = {}
-        st.session_state.journey_create = False
-        st.session_state.journey_generator_running = False
-        time.sleep(0.1)
-        # get_db_journey(reset=True)
-        st.rerun()
-
+        if save_journey(journey_name, journey_details):
+            st.success("Journey saved.")
+            journey_details.complete = True
+            st.session_state.journey_get_details[journey_name] = journey_details
+            st.session_state.journey_get_details = {}
+            st.session_state.journey_create = False
+            st.session_state.journey_generator_running = False
+            time.sleep(0.1)
+            # get_db_journey(reset=True)
+            st.rerun()
+        else:
+            st.error("Journey save failed.")
     return journey_details
 
 

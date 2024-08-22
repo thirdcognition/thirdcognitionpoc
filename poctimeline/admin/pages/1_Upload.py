@@ -207,9 +207,15 @@ def process_file_data(filename, category):
                     list_of_docs = create_document_lists(summary_texts, source=filename)
                     # print(f"{ list_of_docs = }")
 
-                    shorter_text, shorter_thoughts = get_chain("summary_documents")().invoke(
+                    results = get_chain("summary_documehorter_text, shorter_thoughtsnts")().invoke(
                         {"context": list_of_docs}
                     )
+
+                    if isinstance(results, tuple) and len(results) == 2:
+                        shorter_text, shorter_thoughts = results
+                    else:
+                        shorter_text = results
+                        shorter_thoughts = ''
 
                     # shorter_text, shorter_thoughts = llm_edit("summary", [summary_text])
 

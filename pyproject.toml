@@ -32,6 +32,10 @@ sentence-transformers = "^3.0.1"
 langchain-chroma = "^0.1.2"
 langgraph = "^0.2.3"
 langchain-huggingface = "^0.0.3"
+langchain-aws = "^0.1.16"
+langchain-anthropic = "^0.1.23"
+langchain-openai = "^0.1.22"
+azure-identity = "^1.17.1"
 
 [build-system]
 requires = ["poetry-core"]

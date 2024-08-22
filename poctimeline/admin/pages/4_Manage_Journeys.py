@@ -7,6 +7,7 @@ from streamlit.delta_generator import DeltaGenerator
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
+from lib.document_tools import rag_chain
 from lib.chain import get_chain
 from lib.journey_shared import (
     create_subject_prompt_editor,
@@ -14,6 +15,8 @@ from lib.journey_shared import (
     gen_journey_subject,
     get_files_for_journey,
     llm_gen_json_step,
+    llm_gen_resource,
+    llm_gen_update_actions,
     save_journey,
 )
 from lib.db_tools import (
@@ -45,10 +48,8 @@ This is an *extremely* cool admin tool!
 )
 
 
-def save_journey_ui(id, journey_name, journey: JourneyModel):
-    subcol1, subcol2, _ = st.columns([1, 1, 5])
-    if subcol1.button("Save", key=f"save_button_{id}", use_container_width=True):
-        save_journey(journey_name, journey)
+def save_journey_command(journey_name, id, journey: JourneyModel):
+    if save_journey(journey_name, journey):
         st.session_state.editing_journey = None
         st.session_state.editing_journey_details = None
         st.session_state.editing_journey_subject = None
@@ -56,6 +57,14 @@ def save_journey_ui(id, journey_name, journey: JourneyModel):
         st.session_state.edit_mode[id] = False
         time.sleep(0.1)
         st.rerun()
+    else:
+        st.error("Error saving journey")
+
+
+def save_journey_ui(id, journey_name, journey: JourneyModel):
+    subcol1, subcol2, _ = st.columns([1, 1, 5])
+    if subcol1.button("Save", key=f"save_button_{id}", use_container_width=True):
+        save_journey_command(journey_name, id, journey)
     if subcol2.button("Cancel", key=f"cancel_button_{id}", use_container_width=True):
         st.session_state.editing_journey = None
         st.session_state.editing_journey_details = None
@@ -111,7 +120,7 @@ def journey_subject_details_ui(
     subject = journey.subjects[subject_index]
 
     subject.prompts = create_subject_prompt_editor(
-        f"{journey_name}_subject_{subject_index}", subject, edit_mode
+        f"{journey_name}_subject_{subject_index + 1}", subject, edit_mode
     )
 
     if edit_mode:
@@ -258,7 +267,8 @@ def journey_subject_step_actions_ui(
     container1: DeltaGenerator = None,
     container2: DeltaGenerator = None,
 ):
-    step: StepModel = journey.subjects[subject_index].steps[step_index]
+    subject = journey.subjects[subject_index]
+    step: StepModel = subject.steps[step_index]
     if container1 is None or container2 is None:
         container1, container2 = st.tabs(["Simple", "Structured"])
     action_index = 0
@@ -286,15 +296,20 @@ def journey_subject_step_actions_ui(
                     args=(journey_name, journey, subject_index, step_index),
                 )
     if edit_mode:
+        doc_chain = rag_chain(journey.chroma_collection[0], "hyde")
         with container1:
             with st.popover(":sparkle: Generate new actions", use_container_width=True):
+                generate_action_resources = st.checkbox(
+                    "Generate resources (extremely slow)",
+                    value=False,
+                    key=f"generate_action_button_resources_{journey_name}",
+                )
                 if st.button(
-                    f"Are you sure you want to generate {journey_name}: {journey.subjects[subject_index].steps[step_index].title} actions?",
+                    f"Are you sure you want to generate {journey_name}: {step.title} actions?",
                     key=f"generate_actions_button_{journey_name}",
                     use_container_width=True,
                 ):
-                    subject = journey.subjects[subject_index]
-                    new_actions, _ = get_chain("journey_step_actions")(
+                    new_actions = get_chain("journey_step_actions")(
                         (
                             subject.prompts.step_actions.system,
                             subject.prompts.step_actions.user,
@@ -312,20 +327,29 @@ def journey_subject_step_actions_ui(
                             ),
                         }
                     )
-                    journey.subjects[subject_index].steps[
-                        step_index
-                    ].actions = new_actions
-                    new_structured = llm_gen_json_step(
-                        journey.subjects[subject_index].steps[step_index]
-                    )
+                    if isinstance(new_actions, tuple) and len(new_actions) == 2:
+                        new_actions, _ = new_actions
 
-                    journey.subjects[subject_index].steps[
-                        step_index
-                    ].structured.actions = new_structured.actions
+                    # print(f"{new_actions=}")
+                    # step =step
+                    step.actions = new_actions.strip()
+                    new_structured = llm_gen_json_step(step)
+                    # print(f"{new_structured=}")
+                    step.structured.actions = new_structured.actions
+                    step = llm_gen_update_actions(
+                        doc_chain,
+                        journey,
+                        subject,
+                        step,
+                        new_structured,
+                        generate_resources=generate_action_resources,
+                    )
+                    journey.subjects[subject_index].steps[step_index] = step
+
                     st.rerun()
 
                 st.write(
-                    "This will regenerate the actions for this step. This may take a few seconds.\n\nYou'll need to manually save after regeneration."
+                    "This will regenerate the actions for this step. This may take a few minutes.\n\nYou'll need to manually save after regeneration."
                 )
             step.actions = st.text_area(
                 "Actions",
@@ -336,83 +360,45 @@ def journey_subject_step_actions_ui(
             with st.popover(
                 ":sparkle: Regenerate structured actions", use_container_width=True
             ):
+                generate_action_resources = st.checkbox(
+                    "Generate resources (extremely slow)",
+                    value=False,
+                    key=f"generate_structured_actions_resources_{journey_name}",
+                )
                 if st.button(
                     f"Are you sure you want regenerate {journey_name}: {journey.subjects[subject_index].steps[step_index].title} actions?",
                     key=f"generate_structured_actions_button_{journey_name}",
                     use_container_width=True,
                 ):
-                    new_structured = llm_gen_json_step(
-                        journey.subjects[subject_index].steps[step_index]
+                    new_structured = llm_gen_json_step(step)
+                    step.structured.actions = new_structured.actions
+
+                    step = llm_gen_update_actions(
+                        doc_chain,
+                        journey,
+                        subject,
+                        step,
+                        new_structured,
+                        generate_resources=generate_action_resources,
                     )
-                    journey.subjects[subject_index].steps[
-                        step_index
-                    ].structured.actions = new_structured.actions
+                    journey.subjects[subject_index].steps[step_index] = step
                     st.rerun()
 
                 st.write(
-                    "This will regenerate the structured actions for this step. This may take a few seconds.\n\nYou'll need to manually save after regeneration."
+                    "This will regenerate the structured actions for this step. This may take a few minutes.\n\nYou'll need to manually save after regeneration."
                 )
         with container2:
             if step.structured is not None:
                 if action is not None:
-                    col2.button(
-                        "Remove action",
-                        key=f"remove_action_{journey_name}_{subject_index}_{step_index}_{action_index}",
-                        on_click=remove_action,
-                        args=(
+                    with col2:
+                        edit_action_ui(
                             journey_name,
                             journey,
                             subject_index,
                             step_index,
                             action_index,
-                        ),
-                    )
-                    action.title = col2.text_input(
-                        "Title",
-                        value=action.title,
-                        key=f"journey_step_action_title_{journey_name}_{subject_index}_{step_index}_{action_index}",
-                    )
-                    action.description = col2.text_area(
-                        "Description",
-                        value=action.description,
-                        key=f"journey_step_action_description_{journey_name}_{subject_index}_{step_index}_{action_index}",
-                    )
-                    col2.button(
-                        "Add Resource",
-                        key=f"journey_step_action_resource_add_{journey_name}_{subject_index}_{step_index}_{action_index}",
-                        on_click=add_resource,
-                        args=(
-                            journey_name,
-                            journey,
-                            subject_index,
-                            step_index,
-                            action_index,
-                        ),
-                    )
-                    for resource_index, resource in enumerate(action.resources):
-                        action.resources[resource_index] = col2.text_area(
-                            f"Resource {resource_index+1}",
-                            value=resource,
-                            key=f"journey_step_action_resource_{journey_name}_{subject_index}_{step_index}_{action_index}_{resource_index}",
                         )
-                        col2.button(
-                            "Remove Resource",
-                            key=f"journey_step_action_resource_remove_{journey_name}_{subject_index}_{step_index}_{action_index}_{resource_index}",
-                            on_click=remove_resource,
-                            args=(
-                                journey_name,
-                                journey,
-                                subject_index,
-                                step_index,
-                                action_index,
-                                resource_index,
-                            ),
-                        )
-                    action.test = col2.text_area(
-                        "Test",
-                        value=action.test,
-                        key=f"journey_step_action_test_{journey_name}_{subject_index}_{step_index}_{action_index}",
-                    )
+
     else:
         with container1:
             st.write(step.actions.replace("\n", "\n\n"))
@@ -422,12 +408,126 @@ def journey_subject_step_actions_ui(
                 col2.write(f"{action.title}")
                 col2.write("##### Description:")
                 col2.write(f"{action.description}")
-                col2.write("##### Resources:")
-                col2.write(
-                    "\n".join([f"  - {resource}" for resource in action.resources])
-                )
+                if len(action.resources) > 0:
+                    col2.write("##### Resources:")
+                    for resource in action.resources:
+                        col2.write(f"###### {resource.title}")
+                        col2.write(f"{resource.summary}")
+                        col2.write(f"{resource.reference}")
+                # col2.write(
+                #     "\n".join([f"  - {resource}" for resource in action.resources])
+                # )
                 col2.write("##### Test:")
                 col2.write(f"{action.test}")
+
+
+def edit_action_ui(
+    journey_name: str,
+    journey: JourneyModel,
+    subject_index: int,
+    step_index: int,
+    action_index: int,
+):
+    action = (
+        journey.subjects[subject_index]
+        .steps[step_index]
+        .structured.actions[action_index]
+    )
+    st.button(
+        "Remove action",
+        key=f"remove_action_{journey_name}_{subject_index}_{step_index}_{action_index}",
+        on_click=remove_action,
+        args=(
+            journey_name,
+            journey,
+            subject_index,
+            step_index,
+            action_index,
+        ),
+    )
+    action.title = st.text_input(
+        "Title",
+        value=action.title,
+        key=f"journey_step_action_title_{journey_name}_{subject_index}_{step_index}_{action_index}",
+    )
+    action.description = st.text_area(
+        "Description",
+        value=action.description,
+        key=f"journey_step_action_description_{journey_name}_{subject_index}_{step_index}_{action_index}",
+    )
+    st.button(
+        "Add Resource",
+        key=f"journey_step_action_resource_add_{journey_name}_{subject_index}_{step_index}_{action_index}",
+        on_click=add_resource,
+        args=(
+            journey_name,
+            journey,
+            subject_index,
+            step_index,
+            action_index,
+        ),
+    )
+    doc_chain = rag_chain(journey.chroma_collection[0], "hyde")
+    for resource_index, resource in enumerate(action.resources):
+        resource = action.resources[resource_index]
+        resource.title = st.text_input(
+            f"Resource {resource_index+1} title",
+            value=resource.title,
+            key=f"journey_step_action_resource_title_{journey_name}_{subject_index}_{step_index}_{action_index}_{resource_index}",
+        )
+        resource.summary = st.text_area(
+            f"Resource {resource_index+1} summary",
+            value=resource.summary,
+            key=f"journey_step_action_resource_summary_{journey_name}_{subject_index}_{step_index}_{action_index}_{resource_index}",
+            height=200,
+        )
+        if st.button(
+            "Regenerate resource summary (slow)",
+            key=f"journey_step_action_resource_generate_{journey_name}_{subject_index}_{step_index}_{action_index}_{resource_index}",
+            on_click=generate_resource,
+            args=(
+                doc_chain,
+                journey_name,
+                journey,
+                subject_index,
+                step_index,
+                action_index,
+                resource_index,
+            ),
+        ):
+            st.rerun()
+        resource.reference = st.text_area(
+            f"Resource {resource_index+1} reference",
+            value=resource.reference,
+            key=f"journey_step_action_resource_reference_{journey_name}_{subject_index}_{step_index}_{action_index}_{resource_index}",
+        )
+        # = st.text_area(
+        #     f"Resource {resource_index+1}",
+        #     value=resource,
+        #     key=f"journey_step_action_resource_{journey_name}_{subject_index}_{step_index}_{action_index}_{resource_index}",
+        # )
+
+        st.button(
+            "Remove Resource",
+            key=f"journey_step_action_resource_remove_{journey_name}_{subject_index}_{step_index}_{action_index}_{resource_index}",
+            on_click=remove_resource,
+            args=(
+                journey_name,
+                journey,
+                subject_index,
+                step_index,
+                action_index,
+                resource_index,
+            ),
+        )
+    action.test = st.text_area(
+        "Test",
+        value=action.test,
+        key=f"journey_step_action_test_{journey_name}_{subject_index}_{step_index}_{action_index}",
+    )
+    journey.subjects[subject_index].steps[step_index].structured.actions[
+        action_index
+    ] = action
 
 
 def add_subject(journey_name: str, journey: JourneyModel):
@@ -480,6 +580,33 @@ def add_resource(
     journey.subjects[subject_index].steps[step_index].structured.actions[
         action_index
     ].resources.append("")
+
+
+def generate_resource(
+    rag_chain,
+    journey_name: str,
+    journey: JourneyModel,
+    subject_index: int,
+    step_index: int,
+    action_index: int,
+    resource_index: int,
+):
+
+    journey.subjects[subject_index].steps[step_index].structured.actions[
+        action_index
+    ].resources[resource_index].summary = llm_gen_resource(
+        rag_chain,
+        journey,
+        journey.subjects[subject_index],
+        journey.subjects[subject_index].steps[step_index],
+        journey.subjects[subject_index]
+        .steps[step_index]
+        .structured.actions[action_index],
+        journey.subjects[subject_index]
+        .steps[step_index]
+        .structured.actions[action_index]
+        .resources[resource_index],
+    )
 
 
 def remove_resource(
@@ -563,22 +690,20 @@ def main():
                     use_container_width=True,
                 )
                 with mod_col2.popover(":sparkle:", use_container_width=True):
+                    generate_resources = st.checkbox(
+                        "Generate resources (extremely slow)",
+                        value=False,
+                        key=f"generate_resources_{journey_name}",
+                    )
                     if st.button(
                         f"Are you sure you want regenerate {journey_name}: {subject_title}?",
                         key=f"generate_subject_button_{journey_name}",
                         use_container_width=True,
                     ):
                         journey.subjects[subject_index] = gen_journey_subject(
-                            journey, subject
+                            journey, subject, generate_resources=generate_resources
                         )
-                        save_journey(journey_name, journey)
-                        st.session_state.editing_journey = None
-                        st.session_state.editing_journey_details = None
-                        st.session_state.editing_journey_subject = None
-                        st.session_state.editing_journey_step = None
-                        st.session_state.edit_mode[journey_index] = False
-                        time.sleep(0.1)
-                        st.rerun()
+                        save_journey_command(journey_name, journey_index, journey)
 
                 with mod_col3.popover(":x:", use_container_width=True):
                     st.button(
@@ -612,22 +737,23 @@ def main():
                     use_container_width=True,
                 )
                 with mod_col2.popover(":sparkle:", use_container_width=True):
+                    generate_action_resources = st.checkbox(
+                        "Generate resources (extremely slow)",
+                        value=False,
+                        key=f"generate_step_resources_{journey_name}",
+                    )
                     if st.button(
                         f"Are you sure you want regenerate {journey_name}: {subject_title} - {step_title}?",
                         key=f"generate_step_button_{journey_name}",
                         use_container_width=True,
                     ):
                         journey.subjects[subject_index] = gen_journey_subject(
-                            journey, subject, step_index
+                            journey,
+                            subject,
+                            step_index,
+                            generate_resources=generate_action_resources,
                         )
-                        save_journey(journey_name, journey)
-                        st.session_state.editing_journey = None
-                        st.session_state.editing_journey_details = None
-                        st.session_state.editing_journey_subject = None
-                        st.session_state.editing_journey_step = None
-                        st.session_state.edit_mode[journey_index] = False
-                        time.sleep(0.1)
-                        st.rerun()
+                        save_journey_command(journey_name, journey_index, journey)
                 with mod_col3.popover(":x:", use_container_width=True):
                     st.button(
                         f"Are you sure you want to remove {journey_name}: {subject_title} - {step_title}?",

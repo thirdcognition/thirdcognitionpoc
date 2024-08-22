@@ -92,7 +92,13 @@ def llm_edit(chain, texts, guidance=None, force=False) -> tuple[str, str]:
 
             inputs.append(input)
 
-            mid_results, mid_thoughts = get_chain(chain + guided_llm)().invoke(input)
+            result = get_chain(chain + guided_llm)().invoke(input)
+
+            if isinstance(result, tuple) and len(result) == 2:
+                mid_results, mid_thoughts = result
+            else:
+                mid_results = result
+                mid_thoughts = ''
 
             text += mid_results + "\n\n"
             thoughts += mid_thoughts + "\n\n"
@@ -115,8 +121,20 @@ def llm_edit(chain, texts, guidance=None, force=False) -> tuple[str, str]:
             guided_llm = "_guided"
             input["question"] = guidance
 
-        text, thoughts = get_chain(chain + guided_llm)().invoke(input)
+        result = get_chain(chain + guided_llm)().invoke(input)
+
+        if isinstance(result, tuple) and len(result) == 2:
+            text, thoughts = result
+        else:
+            text = result
+            thoughts = ''
 
     bar.empty()
 
     return text, thoughts
+
+def nav_to(url):
+    nav_script = """
+        <meta http-equiv="refresh" content="0; url='%s'">
+    """ % (url)
+    st.write(nav_script, unsafe_allow_html=True)

@@ -44,16 +44,16 @@ Select 👈 a the section from sidebar to edit the content!
             "Select a category", categories, key="category", index=0
         )
 
-        # if selected_category:
-        journey_found = init_journey_chat(
-            rag_collection=f"rag_{selected_category}" if selected_category else f"rag_{categories[0]}"
-        )
-        if "chat_state" not in st.session_state:
-            st.session_state.chat_state = "default"
+        if selected_category:
+            journey_found = init_journey_chat(
+                rag_collection=f"rag_{selected_category}"
+            )
+            if "chat_state" not in st.session_state:
+                st.session_state.chat_state = "default"
 
-        chat_elements("default")
-        # else:
-        #     st.write("Please select a category to start chatting.")
+            chat_elements("default")
+        else:
+            st.write("Please select a category to start chatting.")
 
 
 if __name__ == "__main__":

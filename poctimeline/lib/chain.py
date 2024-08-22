@@ -7,6 +7,7 @@ from typing import Dict, List
 from groq import RateLimitError
 from langchain.chains.hyde.base import HypotheticalDocumentEmbedder
 from langchain.chains.combine_documents.stuff import create_stuff_documents_chain
+from langchain.schema.document import Document
 
 from langchain_huggingface import (
     # HuggingFaceBgeEmbeddings,
@@ -14,6 +15,7 @@ from langchain_huggingface import (
 )
 from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
 from langchain_community.embeddings.ollama import OllamaEmbeddings
+from langchain_core.language_models.llms import BaseLLM
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, BaseMessage
 # from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain.callbacks.manager import CallbackManager
@@ -50,6 +52,8 @@ from lib.load_env import (
     STRUCTURED_LLM,
     TOOL_CONTEXT_SIZE,
     TOOL_LLM,
+    USE_AZURE,
+    USE_BEDROCK,
     USE_GROQ,
     USE_HF_EMBEDDINGS,
     USE_LOCAL_EMBEDDINGS,
@@ -79,18 +83,20 @@ from lib.prompts import (
     journey_step_details,
     journey_step_intro,
     journey_step_actions,
+    journey_step_action_details,
     journey_structured,
 )
 
 from langchain_core.rate_limiters import InMemoryRateLimiter
 
 RATE_LIMITER = InMemoryRateLimiter(
-    requests_per_second=RATE_LIMIT_PER_SECOND,  # <-- Super slow! We can only make a request once every 10 seconds!!
-    check_every_n_seconds=RATE_LIMIT_INTEVAL,  # Wake up every 100 ms to check whether allowed to make a request,
-    max_bucket_size=10,  # Controls the maximum burst size.
+    requests_per_second=RATE_LIMIT_PER_SECOND,  # 0.1 <-- Super slow! We can only make a request once every 10 seconds!!
+    check_every_n_seconds=RATE_LIMIT_INTEVAL,  # 0.1 <-- Wake up every 100 ms to check whether allowed to make a request,
+    max_bucket_size=1,  # Controls the maximum burst size.
 )
+CHAT_RATE_LIMITER = None
 
-llms = {}
+llms:Dict[str, BaseLLM] = {}
 embeddings = {}
 # prompts: Dict[str, PromptTemplate] = {}
 
@@ -193,20 +199,23 @@ class Chain:
 
 
             self.chain = self.prompt_template | llms[self.llm_id]
-            if USE_GROQ:
-                chain:RunnableSequence = self.chain
-                def rate_limit(params):
-                    nonlocal chain
-                    retries = 0
-                    while retries < 5:
-                        retries += 1
-                        try:
-                            return chain.invoke(params)
-                        except RateLimitError as e:
-                            print(f"Running into rate limits: {e}")
-                            floats = [float(n) for n in re.findall(r"[-+]?(?:\d*\.*\d+)", e.message)]
-                            time.sleep(max(floats) + 1)
-                self.chain = RunnableLambda(rate_limit)
+            def chain_sleep(params):
+                time.sleep(0.2)
+                return params
+            # if USE_GROQ:
+            #     chain:RunnableSequence = self.chain
+            #     def rate_limit(params):
+            #         nonlocal chain
+            #         retries = 0
+            #         while retries < 5:
+            #             retries += 1
+            #             try:
+            #                 return chain.invoke(params)
+            #             except RateLimitError as e:
+            #                 print(f"Running into rate limits: {e}")
+            #                 floats = [float(n) for n in re.findall(r"[-+]?(?:\d*\.*\d+)", e.message)]
+            #                 time.sleep(max(floats) + 1)
+            #     self.chain = RunnableLambda(rate_limit)
 
             if self.check_for_hallucinations:
                 def param_check(params):
@@ -219,10 +228,14 @@ class Chain:
                     system_message:SystemMessage = params["prompt_value"].messages[0]
                     human_message:HumanMessage = params["prompt_value"].messages[1]
                     history:List[BaseMessage] = params["params"]["chat_history"] if "chat_history" in params["params"].keys() else []
+                    context = params["params"].get("context", [])
+                    if isinstance(context, str):
+                        context = [context]
                     new_params = {
                         "input": f"Output instruction: {system_message.content.strip()}\n" +
+                            (f"Context:\n {"\n".join((doc.page_content if isinstance(doc, Document) else doc).strip() for doc in context)}\n" if len(context) > 0 else "") +
                             f"Human message: {human_message.content.strip()}\n" +
-                            f"Chat history:\n {"\n".join([f"{item.__class__.__name__}: {item.content}" for item in history])}\n" ,
+                            f"Chat history:\n {"\n".join([f"{item.__class__.__name__}: {item.content}" for item in history]) if len(history) > 0 else ""}\n",
                         "output": params["completion"].content.strip(),
                     }
                     prompt_value = params["prompt_value"]
@@ -296,8 +309,8 @@ class Chain:
                             hallucination_chain
                         ),
                         self.chain
-                    ) |
-                    RunnableLambda(param_reset)
+                    )
+                    | RunnableLambda(param_reset)
                 )
                 # self.chain = RunnableLambda(store_params) | hallucination_chain
 
@@ -313,11 +326,13 @@ class Chain:
                     }
                     check_params = new_params
                     return params
-                parser_chain = RunnableParallel(
-                    completion=self.chain,
-                    prompt_value=self.prompt_template,
-                    params=RunnablePassthrough()
-                ) | RunnableLambda(param_check)
+                parser_chain = (RunnableParallel(
+                        completion=self.chain,
+                        prompt_value=self.prompt_template,
+                        params=RunnablePassthrough()
+                    )
+                    | RunnableLambda(param_check)
+                )
 
                 parser_retry_chain = (
                     RunnableLambda(retry_setup) |
@@ -401,9 +416,46 @@ def init_llm(
     verbose=DEBUGMODE,
     Type=DEFAULT_LLM_MODEL,
     ctx_size=CHAT_CONTEXT_SIZE,
+    rate_limiter=RATE_LIMITER
 ):
     if f"{id}" not in llms:
         print(f"Initialize llm {id}: {model=} with {ctx_size=} and {temperature=}...")
+        if USE_BEDROCK:
+            from lib.load_env import BEDROCK_REGION
+            llms[f"{id}"] = Type(
+                model_id=model,
+                region_name=BEDROCK_REGION,
+                verbose=verbose,
+                model_kwargs={"temperature": temperature},
+                # num_ctx=ctx_size,
+                # num_predict=ctx_size,
+                # repeat_penalty=2,
+                # timeout=10000,
+                rate_limiter=rate_limiter,
+                callback_manager=(
+                    CallbackManager([StreamingStdOutCallbackHandler()])
+                    if verbose
+                    else None
+                ),
+            )
+        if USE_AZURE:
+            from lib.load_env import AZURE_API_VERSION
+            llms[f"{id}"] = Type(
+                azure_deployment=model,
+                api_version=AZURE_API_VERSION,
+                verbose=verbose,
+                temperature=temperature,
+                # num_ctx=ctx_size,
+                # num_predict=ctx_size,
+                # repeat_penalty=2,
+                # timeout=10000,
+                rate_limiter=rate_limiter,
+                callback_manager=(
+                    CallbackManager([StreamingStdOutCallbackHandler()])
+                    if verbose
+                    else None
+                ),
+            )
         if USE_OLLAMA:
             llms[f"{id}"] = Type(
                 base_url=OLLAMA_URL,
@@ -414,14 +466,14 @@ def init_llm(
                 num_predict=ctx_size,
                 repeat_penalty=2,
                 timeout=10000,
-                rate_limiter=RATE_LIMITER,
+                rate_limiter=rate_limiter,
                 callback_manager=(
                     CallbackManager([StreamingStdOutCallbackHandler()])
                     if verbose
                     else None
                 ),
             )
-        else:
+        if USE_GROQ:
             llms[f"{id}"] = Type(
                 streaming=verbose,
                 api_key=GROQ_API_KEY,
@@ -430,7 +482,7 @@ def init_llm(
                 temperature=temperature,
                 timeout=10000,
                 max_retries=5,
-                rate_limiter=RATE_LIMITER,
+                rate_limiter=rate_limiter,
                 callback_manager=(
                     CallbackManager([StreamingStdOutCallbackHandler()])
                     if verbose
@@ -486,9 +538,43 @@ def init_llms():
     )
 
     if "json" not in llms:
+        if USE_BEDROCK:
+            from lib.load_env import BEDROCK_REGION
+            llms["json"] = DEFAULT_LLM_MODEL(
+                model_id=STRUCTURED_LLM,
+                region_name=BEDROCK_REGION,
+                model_kwargs={"temperature": 0.1},
+                # num_ctx=STRUCTURED_CONTEXT_SIZE,
+                # num_predict=STRUCTURED_CONTEXT_SIZE,
+                verbose=DEBUGMODE,
+                rate_limiter=RATE_LIMITER,
+                callback_manager=(
+                    CallbackManager([StreamingStdOutCallbackHandler()])
+                    if DEBUGMODE
+                    else None
+                ),
+            )
+        if USE_AZURE:
+            from lib.load_env import AZURE_API_VERSION
+            llms["json"] = DEFAULT_LLM_MODEL(
+                azure_deployment=STRUCTURED_LLM,
+                api_version=AZURE_API_VERSION,
+                verbose=DEBUGMODE,
+                temperature=0.1,
+                model_kwargs={"response_format": {"type": "json_object"}},
+                # num_ctx=ctx_size,
+                # num_predict=ctx_size,
+                # repeat_penalty=2,
+                # timeout=10000,
+                rate_limiter=RATE_LIMITER,
+                callback_manager=(
+                    CallbackManager([StreamingStdOutCallbackHandler()])
+                    if DEBUGMODE
+                    else None
+                ),
+            )
         if USE_OLLAMA:
             llms["json"] = DEFAULT_LLM_MODEL(
-                # model=llama3_llm,
                 base_url=OLLAMA_URL,
                 model=STRUCTURED_LLM,
                 model_kwargs={"response_format": {"type": "json_object"}},
@@ -520,14 +606,14 @@ def init_llms():
             )
 
     init_llm("tool", temperature=0, model=TOOL_LLM, ctx_size=TOOL_CONTEXT_SIZE)
-    init_llm("chat", temperature=0.5, Type=DEFAULT_LLM_MODEL)
-    init_llm("warm", temperature=0.4)
+    init_llm("chat", temperature=0.5, model=CHAT_LLM, ctx_size=CHAT_CONTEXT_SIZE, rate_limiter=CHAT_RATE_LIMITER)
+    init_llm("warm", temperature=0.7, model=CHAT_LLM, ctx_size=CHAT_CONTEXT_SIZE, rate_limiter=CHAT_RATE_LIMITER)
 
     chains["summary"] = Chain(
         "instruct_detailed", summary, check_for_hallucinations=True
     )  # init_chain("summary", "instruct_detailed", summary)
-    chains["summary_guided"] = Chain("instruct", summary_guided, check_for_hallucinations=True)
-    chains["action"] = Chain("instruct_detailed_0", action)
+    chains["summary_guided"] = Chain("instruct_detailed", summary_guided, check_for_hallucinations=True)
+    chains["action"] = Chain("instruct_0", action)
     chains["grader"] = Chain("json", grader)
     chains["check"] = Chain("instruct_0", check)
     chains["text_formatter"] = Chain("instruct_detailed", text_formatter, check_for_hallucinations=True)
@@ -541,10 +627,13 @@ def init_llms():
     chains["md_formatter_guided"] = Chain("instruct_detailed_0", md_formatter_guided, check_for_hallucinations=True)
     chains["journey_structured"] = Chain("json", journey_structured)
     chains["journey_steps"] = Chain("json", journey_steps, check_for_hallucinations=True)
-    chains["journey_step_details"] = Chain("instruct_warm", journey_step_details, check_for_hallucinations=True)
-    chains["journey_step_intro"] = Chain("instruct_detailed_warm", journey_step_intro, check_for_hallucinations=True)
+    chains["journey_step_details"] = Chain("instruct_detailed", journey_step_details, check_for_hallucinations=True)
+    chains["journey_step_intro"] = Chain("instruct_warm", journey_step_intro, check_for_hallucinations=True)
     chains["journey_step_actions"] = Chain(
-        "instruct_detailed_warm", journey_step_actions, check_for_hallucinations=True
+        "instruct", journey_step_actions, check_for_hallucinations=True
+    )
+    chains["journey_step_action_details"] = Chain(
+        "instruct_detailed", journey_step_action_details, check_for_hallucinations=True
     )
     chains["question"] = Chain("chat", question, check_for_hallucinations=True)
     chains["helper"] = Chain("chat", helper)

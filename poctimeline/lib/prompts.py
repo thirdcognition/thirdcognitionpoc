@@ -197,8 +197,8 @@ class TagsParser(BaseOutputParser[bool]):
             else:
                 text_contents.append(match)
 
-        text_contents_joined = "\n".join(text_contents)
-        tag_contents_joined = "\n".join(tag_contents)
+        text_contents_joined = "\n".join(text_contents).strip()
+        tag_contents_joined = "\n".join(tag_contents).strip()
 
         if len(text_contents_joined) == 0 and len(tag_contents_joined) > 0 or in_tag:
             excpect_msg = textwrap.dedent(f"""
@@ -774,7 +774,8 @@ journey_step_actions = PromptFormatter(
         f"""
         You are ThirdCognition Virtual Buddy.
         Act as a teacher who planning 5 actions for teaching the student a specific subject and actions to verify that the student has learned the subject.
-        You only have one student you're tutoring so don't have to address more than one person.
+        You only have one student you're tutoring so don't have to address more than one person. Also add a section to each action for support document resources
+        with their summary and material to use when teaching the student about the subject.
         {pre_think_instruct}
         {keep_pre_think_together}
         Use the content for the class available between content start and end.
@@ -798,6 +799,7 @@ journey_step_actions = PromptFormatter(
         content end
 
         Write a list of actions to take to teach the subject to the student and how to verify that the student has learned the subject.
+        Prepare also a list of document resources and their summary to use with each action when teaching the student about the subject.
         If instructions are provided, follow them exactly. If instructions specify a topic or subject, make sure the list includes only
         items which fall within within that topic. Create at maximum the specified amount of items.
         """
@@ -805,14 +807,57 @@ journey_step_actions = PromptFormatter(
 )
 journey_step_actions.parser = TagsParser(min_len=10)
 
+journey_step_action_details = PromptFormatter(
+    system=textwrap.dedent(
+        f"""
+        You are ThirdCognition Virtual Buddy.
+        Act as a teacher who is creating resources and content to support teaching in class
+        to use as a base for the discussion and lesson with the student.
+        {pre_think_instruct}
+        {keep_pre_think_together}
+        Use the provided resource description and the content available between content start and end to create the resources.
+        """
+    ),
+    user=textwrap.dedent(  # Use get_journey_format_example instead
+        """
+        instuctions start
+        {journey_instructions}
+        {instructions}
+        instructions end
+
+        Resource description:
+        {resource}
+
+        content start
+        {context}
+        content end
+
+        Prepare max 10 sentences of material as the resource described to be used while teaching a student.
+        If instructions are provided, follow them exactly. If instructions specify a topic or subject, make sure the list includes only
+        items which fall within within that topic.
+        """
+    ),
+)
+journey_step_action_details.parser = TagsParser(min_len=20)
+
+
+class ResourceStructure(BaseModel):
+    title: str = Field(description="Title for the content to help in the task.", title="Title")
+    summary: str = Field(
+        description="Most important parts of the document for the step", title="Summary"
+    )
+    reference: str = Field(
+        description="Name of the resource, references or link if available.",
+        title="Reference",
+    )
 
 class ActionStructure(BaseModel):
     title: str = Field(description="Title for the step", title="Title")
     description: str = Field(
         description="Description for the teacher for what to do", title="Description"
     )
-    resources: List[str] = Field(
-        description="List of retrieved content to help the Teacher to perform the step.",
+    resources: List[ResourceStructure] = Field(
+        description="List of content to help the Teacher to perform the step.",
         title="Resources",
     )
     test: str = Field(

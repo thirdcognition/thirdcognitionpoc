@@ -684,7 +684,7 @@ def main():
                 mod_col1, mod_col2, mod_col3 = col1.columns([1, 1, 1])
                 mod_col1.button(
                     "**+**",
-                    key="add_subject_button_{journey_name}",
+                    key=f"add_subject_button_{journey_name}",
                     on_click=add_subject,
                     args=(journey_name, journey),
                     use_container_width=True,
@@ -731,7 +731,7 @@ def main():
                 mod_col1, mod_col2, mod_col3 = col2.columns([1, 1, 1])
                 mod_col1.button(
                     "**+**",
-                    key="add_step_button_{journey_name}",
+                    key=f"add_step_button_{journey_name}",
                     on_click=add_step,
                     args=(journey_name, journey, subject_index),
                     use_container_width=True,

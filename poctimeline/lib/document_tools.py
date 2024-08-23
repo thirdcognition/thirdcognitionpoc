@@ -272,7 +272,7 @@ def semantic_splitter(text, split=INSTRUCT_CHAR_LIMIT, progress_cb=None):
 
     texts = []
     for i, txt in enumerate(less_text):
-        texts = texts + semantic_splitter.split_text(txt)
+        texts = texts + (semantic_splitter.split_text(txt) if len(txt) > 100 else [txt.strip()])
         if progress_cb != None and callable(progress_cb):
             progress_cb(len(less_text), i)
 

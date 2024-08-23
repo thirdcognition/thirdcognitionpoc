@@ -76,6 +76,7 @@ class SubjectModel(BaseModel):
     prompts: JourneyPrompts = Field(default=JourneyPrompts())
     instructions: str = Field(default=None)
     step_amount: int = Field(default=None)
+    action_amount: int = Field(default=None)
     files: List[str] = Field(default_factory=list)
     db_files: Dict[str, Dict] = Field(default_factory=dict)
 

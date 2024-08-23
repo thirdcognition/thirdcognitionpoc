@@ -110,33 +110,31 @@ def llm_gen_steps(content, journey:JourneyModel, subject:SubjectModel) -> Journe
         }
     )
 
-def llm_gen_step(rag_chain:RunnableSequence, content, journey:JourneyModel, subject:SubjectModel, step:Union[JourneyStep|StepModel], prev_steps:List[Union[JourneyStep|StepModel]] = None, amount=10, generate_action_resources=False, progress_cb:Callable[[float, str], None]=None) -> StepModel:
+def llm_gen_step(content, journey:JourneyModel, subject:SubjectModel, step:Union[JourneyStep|StepModel], prev_steps:List[Union[JourneyStep|StepModel]] = None, action_amount=10, generate_action_resources=False, progress_cb:Callable[[float, str], None]=None) -> StepModel:
     class_content = None
     subject_string = f"Title: {step.title}\nSubject: {step.description}" if isinstance(step, JourneyStep) else f"Title: {step.title}\nSubject: {step.subject}"
-    previous_class_subjects = None
-    previous_class_intros = None
-    previous_class_actions = None
+    previous_class_subjects = []
+    previous_class_intros = []
+    previous_class_actions = []
     if prev_steps != None and len(prev_steps) > 0:
-        for i, prev_step in enumerate(prev_steps):
-            previous_class_subjects = []
-            previous_class_intros = []
-            previous_class_actions = []
+        for prev_step in prev_steps:
             if isinstance(prev_step, JourneyStep):
                 previous_class_subjects.append(AIMessage(f"revious title and subject: {prev_step.title}: {prev_step.description.replace('\n', ' ')}"))
             else:
                 previous_class_subjects.append(AIMessage(f"Previous title and subject: {prev_step.title}: {prev_step.subject.replace('\n', ' ')}"))
                 previous_class_intros.append(AIMessage(f"Previous intro: {prev_step.intro.replace("\n", ' ')}"))
-                previous_class_actions.append(AIMessage(f"Previous actions: {", ".join([action.title for action in prev_step.structured.actions])}"))
+                previous_class_actions.append(AIMessage(f"Previous actions: {", ".join([f"Title: {action.title}" for action in prev_step.structured.actions])}"))
 
     if progress_cb is not None:
-        progress_cb(0, "Generating step `"+step.title+"` content - ")
+        progress_cb(0, "Generating subsection `"+step.title+"` content - ")
+    doc_chain = rag_chain(journey.chroma_collection[0], "hyde_document", amount_of_documents=10)
     retry_lambda = lambda: get_chain("journey_step_details")((subject.prompts.step_detail.system, subject.prompts.step_detail.user)).invoke(
             {
-                "context": rag_chain.invoke({"question": subject_string, "context": content}),
+                "context": doc_chain.invoke({"question": subject_string, "context": content}),
                 "journey_instructions": journey.instructions,
                 "instructions": subject.instructions,
                 "subject": subject_string,
-                "chat_history": previous_class_subjects if previous_class_subjects is not None else []
+                "chat_history": previous_class_subjects
             }
         )
     try:
@@ -155,7 +153,7 @@ def llm_gen_step(rag_chain:RunnableSequence, content, journey:JourneyModel, subj
             class_content = "Error generating class content"
 
     if progress_cb is not None:
-        progress_cb(0.1, "Generating step `"+step.title+"` intro - ")
+        progress_cb(0.1, "Generating subsection `"+step.title+"` intro - ")
 
     class_intro = get_chain("journey_step_intro")((subject.prompts.step_intro.system, subject.prompts.step_intro.user)).invoke(
         {
@@ -163,14 +161,14 @@ def llm_gen_step(rag_chain:RunnableSequence, content, journey:JourneyModel, subj
             "journey_instructions": journey.instructions,
             "instructions": subject.instructions,
             "subject":subject_string,
-            "chat_history": previous_class_intros if previous_class_intros != None else []
+            "chat_history": previous_class_intros
         }
     )
 
     if isinstance(class_intro, tuple) and len(class_intro) == 2:
         class_intro, _ = class_intro
     if progress_cb is not None:
-        progress_cb(0.2, "Generating step `"+step.title+"` actions - ")
+        progress_cb(0.2, "Generating subsection `"+step.title+"` modules - ")
 
     class_actions = get_chain("journey_step_actions")((subject.prompts.step_actions.system, subject.prompts.step_actions.user)).invoke(
         {
@@ -178,8 +176,8 @@ def llm_gen_step(rag_chain:RunnableSequence, content, journey:JourneyModel, subj
             "journey_instructions": journey.instructions,
             "instructions": subject.instructions,
             "subject": subject_string,
-            "amount": amount,
-            "chat_history": previous_class_actions if previous_class_actions is not None else []
+            "amount": action_amount,
+            "chat_history": previous_class_subjects + previous_class_actions
         }
     )
     if isinstance(class_actions, tuple) and len(class_actions) == 2:
@@ -204,11 +202,11 @@ def llm_gen_step(rag_chain:RunnableSequence, content, journey:JourneyModel, subj
         )
 
     if progress_cb is not None:
-        progress_cb(0.3, "Generating step `"+step.title+"` structured format - ")
+        progress_cb(0.3, "Generating subsection `"+step.title+"` structured format - ")
 
     json_step = llm_gen_json_step(gen_step)
 
-    gen_step = llm_gen_update_actions(rag_chain, journey, subject, gen_step, json_step, generate_action_resources, progress_cb=progress_cb, progress_start=0.4, progress_end=1)
+    gen_step = llm_gen_update_actions(journey, subject, gen_step, json_step, generate_resources=generate_action_resources, progress_cb=progress_cb, progress_start=0.4, progress_end=1)
 
     return gen_step
 
@@ -254,7 +252,7 @@ def llm_gen_json_step(step: StepModel, instructions="") -> Union[JourneyStructur
 
     return structured
 
-def llm_gen_update_actions(rag_chain:RunnableSequence, journey:JourneyModel, subject: SubjectModel, gen_step:StepModel, json_step: JourneyStructure, generate_resources=False, progress_cb:Callable[[float, str], None]=None, progress_start: float=0, progress_end:float=1) -> StepModel:
+def llm_gen_update_actions(journey:JourneyModel, subject: SubjectModel, gen_step:StepModel, json_step: JourneyStructure, generate_resources=False, progress_cb:Callable[[float, str], None]=None, progress_start: float=0, progress_end:float=1) -> StepModel:
     if json_step is not None and isinstance(json_step, JourneyStructure):
         gen_step.structured = json_step
         json_step.title = gen_step.title
@@ -263,7 +261,7 @@ def llm_gen_update_actions(rag_chain:RunnableSequence, journey:JourneyModel, sub
         json_step.content = gen_step.content
         # gen_step.actions = gen_step.actions + "\n\nStructured actions:\n\n" + "\n\n".join([ get_action_details_str(i, action) for i, action in enumerate(json_step.actions)])
 
-        if (generate_resources):
+        if generate_resources:
             total_resources = sum([len(action.resources) for action in json_step.actions])
             cur = 0
 
@@ -274,18 +272,19 @@ def llm_gen_update_actions(rag_chain:RunnableSequence, journey:JourneyModel, sub
                     for j, resource in enumerate(action.resources):
                         if resource != None and resource.title != '':
                             if progress_cb is not None:
-                                progress_cb(progress_start + (cur / total_resources) * (progress_end - progress_start), f"Generating step `{gen_step.title}` action {i+1} resource {j+1} `{resource.title}` details - ")
+                                progress_cb(progress_start + (cur / total_resources) * (progress_end - progress_start), f"Generating subsection `{gen_step.title}` module {i+1} resource {j+1} `{resource.title}` details - ")
                             cur += 1
-                            resource.summary = llm_gen_resource(rag_chain, journey, subject, gen_step, action, resource, action_index=i, resource_index=j, progress_cb=progress_cb, progress_start=progress_start, progress_end=progress_end)
+                            resource.summary = llm_gen_resource(journey, subject, gen_step, action, resource)
 
     return gen_step
 
-def llm_gen_resource(rag_chain:RunnableSequence, journey:JourneyModel, subject: SubjectModel, step:StepModel, action:ActionStructure, resource:ResourceStructure) -> str:
-    resource_text = f"{resource.title} (from: {resource.reference}) - {resource.summary.replace('\n', '')}"
-    # rag_chain.invoke({"question": subject_string, "context": content})
+def llm_gen_resource(journey:JourneyModel, subject: SubjectModel, step:StepModel, action:ActionStructure, resource:ResourceStructure) -> str:
+    resource_text = f"{resource.title} (from: {resource.reference}) - {resource.summary.replace('\n', '')} for {action.title} in {step.title} of {subject.title} in {journey.title}"
+    doc_chain = rag_chain(journey.chroma_collection[0], "hyde_document", amount_of_documents=5)
+
     class_action_details = get_chain("journey_step_action_details")((subject.prompts.step_action_details.system, subject.prompts.step_action_details.user)).invoke(
         {
-            "context": rag_chain.invoke({"question": resource_text, "context": step.content}),
+            "context": doc_chain.invoke({"question": resource_text, "context": step.content}),
             "journey_instructions": journey.instructions,
             "instructions": subject.instructions,
             "resource": resource_text,
@@ -424,7 +423,7 @@ def create_subject_prompt_editor(id:str, subject: SubjectModel, edit_mode: bool 
         return prompt
 
     with st.expander(f"Prompts for {id}", expanded=False):
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Steps", "Step Intro", "Step Detail", "Step Actions", "Step Action Details", "Bulk"])
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Subsections", "Subsection Intro", "Subsection Detail", "Subsection Modules", "Subsection Module Details", "Bulk"])
         subject.prompts.steps = edit_prompt(1, subject.prompts.steps, tab1)
         subject.prompts.step_detail = edit_prompt(2, subject.prompts.step_detail, tab2)
         subject.prompts.step_intro = edit_prompt(3, subject.prompts.step_intro, tab3)
@@ -506,26 +505,26 @@ def update_subject_prompts(subject: SubjectModel, bulk: str):
     subject.prompts.step_action_details.system = prompts['step_action_details']['system']
     subject.prompts.step_action_details.user = prompts['step_action_details']['user']
 
-def gen_journey_subject(journey: JourneyModel, subject: SubjectModel, step_index: int = None, generate_resources=False) -> SubjectModel:
+def gen_journey_subject(journey: JourneyModel, subject: SubjectModel, subject_index: int = 0, step_index: int = None, generate_resources=False) -> SubjectModel:
     # journey:JourneyModel = st.session_state.journey_get_details[journey_name]
     # vectorstore = get_vectorstore("rag_"+ journey["category"][0], "hyde")
-    doc_chain = rag_chain(journey.chroma_collection[0], "hyde_document")
-    with st.status(f"Building subject document"):
+    with st.status(f"Building section {subject_index+1} document"):
         compressed = build_journey_doc_from_files(subject.db_files)
-        st.success("Generating subject document done.")
+        st.success("Generating section document done.")
     if step_index is None:
-        with st.status(f"Building subject"):
+        with st.status(f"Building section {subject_index+1}"):
             subject = gen_subject(
-                doc_chain,
                 compressed,
                 journey,
-                subject
+                subject,
+                subject_index=subject_index,
+                generate_resources=generate_resources
             )
-            st.success("Generating subject done.")
+            st.success(f"Section {subject_index+1} done.")
             subject.files = list(subject.db_files.keys())
     else:
-        with st.status(f"Building subject step {step_index+1}"):
-            bar = st.progress(0, text=f"Generating subject step {step_index+1}")
+        with st.status(f"Building section {subject_index+1} subsection {step_index+1}"):
+            bar = st.progress(0, text=f"Generating section {subject_index+1} subsection {step_index+1}")
             start_time = time.time()  # Start time of the process
             average_time_per_portion = 0  # Running average of time per portion
             def progress_cb(progress: float, message:str):
@@ -546,27 +545,27 @@ def gen_journey_subject(journey: JourneyModel, subject: SubjectModel, step_index
                 bar.progress(progress , text=f"{message} - ETC {estimated_time_str}")
             prev_steps = subject.steps[:step_index] + subject.steps[step_index+1:]
             subject.steps[step_index] = llm_gen_step(
-                doc_chain, compressed, journey, subject, subject.steps[step_index], prev_steps=prev_steps, generate_action_resources=generate_resources, progress_cb=progress_cb
+                compressed, journey, subject, subject.steps[step_index], prev_steps=prev_steps, generate_action_resources=generate_resources, progress_cb=progress_cb, action_amount=subject.action_amount or 5
             )
-            bar.progress(1.0, text=f"Generating subject step {step_index+1} done.")
-            st.success(f"Generating subject step {step_index+1} done.")
+            bar.progress(1.0, text=f"Section {subject_index+1} subsection {step_index+1} done.")
+            st.success(f"Section {subject_index+1} subsection {step_index+1} done.")
 
     return subject
 
 def gen_subject(
-    rag_chain: RunnableSequence,
     content,
     journey:JourneyModel,
     subject:SubjectModel,
+    subject_index: int = None,
     generate_resources = False
 ) -> SubjectModel:
     bar = st.progress(0, text="Generating")
 
-    bar.progress(0, text="Generating subject")
+    bar.progress(0, text=f"Generating {subject_index+1} section")
     step_items: JourneyStepList = llm_gen_steps(
         content, journey, subject
     )
-    bar.progress(0.1, text="Generate subjects...")
+    bar.progress(0.1, text="Generate subsections...")
 
     steps: list[StepModel] = []
     start_time = time.time()  # Start time of the process
@@ -575,7 +574,7 @@ def gen_subject(
     for i, step in enumerate(step_items.steps):
         bar.progress(
             0.15 + (0.8 * i / total_items),
-            text=f"Generating step {i+1} of {total_items}",
+            text=f"Generating subsection {i+1} of {total_items}",
         )
         prog_start = 0.15 + (0.8 * i / total_items)
         prog_end = 0.15 + (0.8 * (i+1) / total_items)
@@ -604,7 +603,7 @@ def gen_subject(
 
         prev_steps = steps + (step_items.steps[i+1:] if i < len(step_items.steps) - 1 else [])
         new_step = llm_gen_step(
-            rag_chain, content, journey, subject, step, prev_steps=prev_steps, generate_action_resources=generate_resources, progress_cb=progress_cb
+            content, journey, subject, step, prev_steps=prev_steps, generate_action_resources=generate_resources, progress_cb=progress_cb, action_amount=subject.action_amount or 5
         )
         steps.append(new_step)
     bar.progress(0.95, text="Generating title")

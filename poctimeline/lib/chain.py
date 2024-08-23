@@ -667,7 +667,7 @@ def init_llms():
     chains["md_formatter_guided"] = Chain("instruct_detailed_0", md_formatter_guided, check_for_hallucinations=True)
     chains["journey_structured"] = Chain("json", journey_structured)
     chains["journey_steps"] = Chain("json_detailed", journey_steps, check_for_hallucinations=True)
-    chains["journey_step_details"] = Chain("instruct_warm", journey_step_details, check_for_hallucinations=True)
+    chains["journey_step_details"] = Chain("instruct_detailed_warm", journey_step_details, check_for_hallucinations=True)
     chains["journey_step_intro"] = Chain("instruct_warm", journey_step_intro, check_for_hallucinations=True)
     chains["journey_step_actions"] = Chain(
         "instruct_detailed", journey_step_actions, check_for_hallucinations=True

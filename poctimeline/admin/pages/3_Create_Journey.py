@@ -16,6 +16,7 @@ from lib.journey_shared import (
 )
 from lib.db_tools import (
     JourneyModel,
+    JourneyPrompts,
     SubjectModel,
     get_db_journey,
     init_db,
@@ -39,14 +40,14 @@ This is an *extremely* cool admin tool!
 def create_subject(
     journey_name, subject: SubjectModel, subject_index, chroma_collection
 ) -> None:
-    st.subheader(f"Subject {subject_index+1}")
+    st.subheader(f"Section {subject_index+1}")
 
     subject.prompts = create_subject_prompt_editor(
         f"{journey_name}_subject_{subject_index + 1}", subject
     )
 
     subject.instructions = st.text_area(
-        "Instructions for subject",
+        "Instructions for section",
         key=f"journey_gen_instructions_{journey_name}_{subject_index}",
         value=subject.instructions,
     )
@@ -58,12 +59,21 @@ def create_subject(
         )
 
     subject.step_amount = col2.number_input(
-        "(approx) Items",
+        "(approx) Subsections",
         min_value=1,
         max_value=20,
-        value=5,
+        value=3,
         # value=subject.step_amount or 5,
         key=f"journey_gen_step_amount_{journey_name}_{subject_index}",
+    )
+
+    subject.action_amount = col2.number_input(
+        "(approx) Modules",
+        min_value=1,
+        max_value=20,
+        value=3,
+        # value=subject.step_amount or 5,
+        key=f"journey_gen_action_amount_{journey_name}_{subject_index}",
     )
 
     return subject
@@ -78,6 +88,7 @@ def get_journey_gen(journey_name):
         st.session_state.journey_get_details = {}
         st.session_state.journey_create = False
         st.session_state.journey_generator_running = False
+        st.session_state.journey_generator_generate_resources = False
 
     file_categories = get_all_categories()
     default_category = []
@@ -134,18 +145,26 @@ def get_journey_gen(journey_name):
                     )
             but_col1, but_col2 = st.columns([4, 1], vertical_alignment="bottom")
 
-            if but_col1.button("Add subject"):
+            but_subcol1, but_subcol2 = but_col1.columns([1, 3], vertical_alignment="center")
+
+            but_subcol2.write("_will copy prompts from previous section_")
+            if but_subcol1.button("Add section", use_container_width=True):
                 i = len(journey_details.subjects)
+                prompts = JourneyPrompts()
+                if i > 0 and journey_details.subjects[-1].prompts is not None:
+                    prompts = JourneyPrompts(**journey_details.subjects[-1].prompts.model_dump())
+
                 journey_details.subjects.append(
                     create_subject(
                         journey_name,
-                        SubjectModel(),
+                        SubjectModel(prompts=prompts),
                         i,
                         default_category,
                     )
                 )
                 st.session_state.journey_get_details[journey_name] = journey_details
                 st.rerun()
+            st.session_state.journey_generator_generate_resources = but_col1.checkbox("Generate resources (extremely slow)")
 
     # Check that all subjects have files defined
     def check_subject_files(subjects: List[SubjectModel]):
@@ -154,9 +173,6 @@ def get_journey_gen(journey_name):
                 return False
         return True
 
-    generate_resources = False
-    if but_col1 is not None and len(journey_details.subjects or []) > 0:
-        generate_resources = but_col1.checkbox("Generate resources (extremely slow)", value=False)
 
     if (
         but_col2 is not None
@@ -172,7 +188,7 @@ def get_journey_gen(journey_name):
 
         for i, subject in enumerate(journey_details.subjects):
             # print(f"Generating subject {i+1} for journey {journey_name}")
-            subject = gen_journey_subject(journey_details, subject, generate_resources=generate_resources)
+            subject = gen_journey_subject(journey_details, subject, generate_resources=st.session_state.journey_generator_generate_resources, subject_index=i)
 
             if subject is not None:
                 journey_details.subjects[i] = subject

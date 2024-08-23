@@ -104,12 +104,12 @@ def rerank_rag(params: Dict):
 
 rag_chains = {}
 
-def rag_chain(store_id:str, embedding_id="hyde", chain_id = "question", reset=False, with_history=False, with_chat=False) -> RunnableSequence:
+def rag_chain(store_id:str, embedding_id="hyde", chain_id = "question", reset=False, with_history=False, with_chat=False, amount_of_documents=5) -> RunnableSequence:
     global rag_chains
     chain = get_chain(chain_id)
     chat_chain = get_chain("chat")
 
-    chain_id = f"{store_id}-{embedding_id}-{chain_id}-{chain.llm_id}-{"history" if with_history else "nohistory"}"
+    chain_id = f"{store_id}-{embedding_id}-{chain_id}-{chain.llm_id}-{"history" if with_history else "nohistory"}-{"chat" if with_chat else "nochat"}-#{amount_of_documents}"
     if chain_id in rag_chains and not reset:
         return rag_chains[chain_id]
 
@@ -118,7 +118,7 @@ def rag_chain(store_id:str, embedding_id="hyde", chain_id = "question", reset=Fa
     vectorstore = get_vectorstore(store_id, embedding_id)
     retriever = vectorstore.as_retriever(
         search_type="similarity_score_threshold",
-        search_kwargs={"k": 5, "score_threshold": 0.3},
+        search_kwargs={"k": amount_of_documents, "score_threshold": 0.3},
     )
 
     executable = chain()

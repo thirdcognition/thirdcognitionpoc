@@ -28,7 +28,7 @@ ocr = None
 #     return _ret + resp
 
 
-def extract_from_images_with_rapidocr(
+def parse_images_to_text(
     images: Sequence[Union[Iterable[np.ndarray], bytes]],
     start,
     step,
@@ -110,7 +110,7 @@ def extract_images_from_page(
             buf = xrefs[xref]
 
         imgs.append({"xref": xref, "img": buf})
-    return extract_from_images_with_rapidocr(
+    return parse_images_to_text(
         imgs, start + substep_total, step - substep_total, ocrs, progress_cb=progress_cb
     )
 
@@ -156,7 +156,7 @@ def load_pymupdf(file: io.BytesIO, filetype, progress_cb=None):
         i += 1
 
     if progress_cb:
-        progress_cb(0.6, text="Splitting text...")
+        progress_cb(0.6, "Splitting text...")
 
     chunks = semantic_splitter(
         text,

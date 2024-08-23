@@ -207,7 +207,7 @@ def process_file_data(filename, category):
                     list_of_docs = create_document_lists(summary_texts, source=filename)
                     # print(f"{ list_of_docs = }")
 
-                    results = get_chain("summary_documehorter_text, shorter_thoughtsnts")().invoke(
+                    results = get_chain("summary_documents")().invoke(
                         {"context": list_of_docs}
                     )
 

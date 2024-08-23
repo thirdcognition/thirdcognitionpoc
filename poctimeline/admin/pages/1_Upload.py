@@ -7,6 +7,7 @@ from io import StringIO
 import sqlalchemy as sqla
 import streamlit as st
 from streamlit.runtime.uploaded_file_manager import UploadedFile
+from langchain_core.messages import BaseMessage
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
@@ -216,6 +217,8 @@ def process_file_data(filename, category):
                     else:
                         shorter_text = results
                         shorter_thoughts = ''
+
+                    shorter_text = shorter_text.content if isinstance(shorter_text, BaseMessage) else shorter_text
 
                     # shorter_text, shorter_thoughts = llm_edit("summary", [summary_text])
 

@@ -7,6 +7,7 @@ from yaml.loader import SafeLoader
 from lib.chain import get_chain
 from lib.db_tools import FileDataTable, init_db
 from lib.document_parse import markdown_to_text
+from langchain_core.messages import BaseMessage
 
 with open("admin_auth.yaml") as file:
     auth_config = yaml.load(file, Loader=SafeLoader)
@@ -100,6 +101,8 @@ def llm_edit(chain, texts, guidance=None, force=False) -> tuple[str, str]:
                 mid_results = result
                 mid_thoughts = ''
 
+            mid_results = mid_results.content if isinstance(mid_results, BaseMessage) else mid_results
+
             text += mid_results + "\n\n"
             thoughts += mid_thoughts + "\n\n"
 
@@ -128,6 +131,8 @@ def llm_edit(chain, texts, guidance=None, force=False) -> tuple[str, str]:
         else:
             text = result
             thoughts = ''
+
+        text = text.content if isinstance(text, BaseMessage) else text
 
     bar.empty()
 

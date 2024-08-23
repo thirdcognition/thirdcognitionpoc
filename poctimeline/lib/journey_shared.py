@@ -112,7 +112,7 @@ def llm_gen_steps(content, journey:JourneyModel, subject:SubjectModel) -> Journe
 
 def llm_gen_step(rag_chain:RunnableSequence, content, journey:JourneyModel, subject:SubjectModel, step:Union[JourneyStep|StepModel], prev_steps:List[Union[JourneyStep|StepModel]] = None, amount=10, generate_action_resources=False, progress_cb:Callable[[float, str], None]=None) -> StepModel:
     class_content = None
-    subject_string =  f"Title: {step.title}\nSubject: {step.description}" if isinstance(step, JourneyStep) else f"Title: {step.title}\nSubject: {step.subject}"
+    subject_string = f"Title: {step.title}\nSubject: {step.description}" if isinstance(step, JourneyStep) else f"Title: {step.title}\nSubject: {step.subject}"
     previous_class_subjects = None
     previous_class_intros = None
     previous_class_actions = None
@@ -509,7 +509,7 @@ def update_subject_prompts(subject: SubjectModel, bulk: str):
 def gen_journey_subject(journey: JourneyModel, subject: SubjectModel, step_index: int = None, generate_resources=False) -> SubjectModel:
     # journey:JourneyModel = st.session_state.journey_get_details[journey_name]
     # vectorstore = get_vectorstore("rag_"+ journey["category"][0], "hyde")
-    doc_chain = rag_chain(journey.chroma_collection[0], "hyde")
+    doc_chain = rag_chain(journey.chroma_collection[0], "hyde_document")
     with st.status(f"Building subject document"):
         compressed = build_journey_doc_from_files(subject.db_files)
         st.success("Generating subject document done.")

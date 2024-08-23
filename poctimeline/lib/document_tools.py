@@ -118,7 +118,7 @@ def rag_chain(store_id:str, embedding_id="hyde", chain_id = "question", reset=Fa
     vectorstore = get_vectorstore(store_id, embedding_id)
     retriever = vectorstore.as_retriever(
         search_type="similarity_score_threshold",
-        search_kwargs={"k": 10, "score_threshold": 0.3},
+        search_kwargs={"k": 5, "score_threshold": 0.3},
     )
 
     executable = chain()
@@ -163,8 +163,9 @@ def rag_chain(store_id:str, embedding_id="hyde", chain_id = "question", reset=Fa
         return params
 
     classification_chain = (
+        RunnableLambda(lambda x: {"question": x["question"]}) |
         question_classifier.get_chat_prompt_template() |
-        get_llm("instruct") |
+        get_llm("tester") |
         log_chain |
         RunnableLambda(lambda x: "yes" in str(x.content).lower())
     )

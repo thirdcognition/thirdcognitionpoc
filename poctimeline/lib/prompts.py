@@ -593,6 +593,16 @@ hyde = PromptFormatter(
     user=textwrap.dedent("""{question}"""),
 )
 
+hyde_document = PromptFormatter(
+    system=textwrap.dedent(
+        f"""
+        Given the title and the subject generate a short description for a document defined by
+        the title. Use maximum of five sentences.
+        """
+    ),
+    user=textwrap.dedent("""{question}"""),
+)
+
 summary = PromptFormatter(
     system=textwrap.dedent(
         f"""

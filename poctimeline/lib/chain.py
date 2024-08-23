@@ -31,7 +31,8 @@ from langchain_core.runnables import (
 )
 # from langchain_core.prompts.prompt import PromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain.output_parsers.retry import RetryWithErrorOutputParser, NAIVE_COMPLETION_RETRY_WITH_ERROR
+from langchain.output_parsers.retry import RetryWithErrorOutputParser
+from pydantic import BaseModel
 
 from lib.load_env import (
     CHAT_CONTEXT_SIZE,
@@ -49,7 +50,11 @@ from lib.load_env import (
     RATE_LIMIT_INTEVAL,
     RATE_LIMIT_PER_SECOND,
     STRUCTURED_CONTEXT_SIZE,
+    STRUCTURED_DETAILED_LLM,
     STRUCTURED_LLM,
+    TESTER_APIKEY,
+    TESTER_LLM,
+    TESTER_LLM_MODEL,
     TOOL_CONTEXT_SIZE,
     TOOL_LLM,
     USE_AZURE,
@@ -77,6 +82,7 @@ from lib.prompts import (
     question,
     grader,
     hyde,
+    hyde_document,
     summary,
     summary_guided,
     journey_steps,
@@ -90,6 +96,11 @@ from lib.prompts import (
 from langchain_core.rate_limiters import InMemoryRateLimiter
 
 RATE_LIMITER = InMemoryRateLimiter(
+    requests_per_second=RATE_LIMIT_PER_SECOND,  # 0.1 <-- Super slow! We can only make a request once every 10 seconds!!
+    check_every_n_seconds=RATE_LIMIT_INTEVAL,  # 0.1 <-- Wake up every 100 ms to check whether allowed to make a request,
+    max_bucket_size=1,  # Controls the maximum burst size.
+)
+RATE_LIMITER_DETAILED = InMemoryRateLimiter(
     requests_per_second=RATE_LIMIT_PER_SECOND,  # 0.1 <-- Super slow! We can only make a request once every 10 seconds!!
     check_every_n_seconds=RATE_LIMIT_INTEVAL,  # 0.1 <-- Wake up every 100 ms to check whether allowed to make a request,
     max_bucket_size=1,  # Controls the maximum burst size.
@@ -117,6 +128,45 @@ def format_chain_params(params):
 def log_chain(params):
     print_params("Log chain", params)
     return params
+
+import heapq
+
+class HeapItem(BaseModel):
+    id: int
+    data: dict
+
+class MinHeap:
+    def __init__(self):
+        self.heap = []
+        self.next_id = 0
+
+    def push(self, data: dict) -> HeapItem:
+        item = HeapItem(id=self.next_id, data=data)
+        heapq.heappush(self.heap, item)
+        self.next_id += 1
+        return item
+
+    def pop(self) -> HeapItem:
+        item = heapq.heappop(self.heap)
+        self.next_id -= 1
+        return item
+
+    def get_by_id(self, id: int = None) -> HeapItem:
+        if id is None:
+            id = self.next_id - 1
+        for item in self.heap:
+            if item.id == id:
+                return item
+        return None
+
+    def get_last_id(self) -> int:
+        return self.next_id - 1
+
+    def get_value_by_key(self, key: str):
+        for item in self.heap:
+            if key in item.data:
+                return item.data[key]
+        raise KeyError(f"Key '{key}' not found in heap")
 
 class Chain:
     def __init__(
@@ -156,26 +206,37 @@ class Chain:
                 )
 
         if self.chain is None or custom_prompt is not None:
-            response = None
-            check_params = None
-            store_params:Dict = None
-            prompt_value = None
+            heap = MinHeap()
+            # response = None
+            # check_params = None
+            # store_params:Dict = None
+            # prompt_value = None
+            def init_heap(params):
+                heap.push({"params": params})
+                return params
+
+            def clear_heap(val):
+                heap.pop()
+                return val
+
             def retry_setup(params):
                 print_params("Retry setup", params)
-                nonlocal check_params
+                # check_params = heap.get_value_by_key("check_params")
+                # nonlocal check_params
                 return {
-                    "completion": check_params["output"],
+                    "completion": ((params["completion"].content if isinstance(params["completion"], BaseMessage) else params["completion"]) or '').strip(),
+                        #check_params["output"],
                     "prompt": params["prompt"],  #hallucination_check_params["input"],
-                    "error": params["completion"]
+                    "error": ((params["error"].content if isinstance(params["error"], BaseMessage) else params["error"]) or '').strip(),
                 }
 
             def store_params(params):
                 print_params("Store params", params)
-                nonlocal store_params
-                store_params = params
+                heap.get_by_id().data["params"] = params
                 return params
 
             def param_restore(result):
+                response = heap.get_value_by_key("response")
                 print_params("Param restore", {
                     "result": result, "response": response
                 })
@@ -184,18 +245,18 @@ class Chain:
                 else:
                     return result[1]
 
-            def param_reset(params):
-                print_params("Param reset", params)
-                nonlocal check_params
-                nonlocal response
-                nonlocal store_params
-                nonlocal prompt_value
+            # def param_reset(params):
+            #     print_params("Param reset", params)
+            #     nonlocal check_params
+            #     nonlocal response
+            #     nonlocal store_params
+            #     nonlocal prompt_value
 
-                check_params = None
-                response = None
-                store_params = None
-                prompt_value = None
-                return params
+            #     check_params = None
+            #     response = None
+            #     store_params = None
+            #     prompt_value = None
+            #     return params
 
 
             self.chain = self.prompt_template | llms[self.llm_id]
@@ -219,12 +280,12 @@ class Chain:
 
             if self.check_for_hallucinations:
                 def param_check(params):
-                    nonlocal store_params
-                    nonlocal check_params
-                    nonlocal response
-                    nonlocal prompt_value
+                    # nonlocal store_params
+                    # nonlocal check_params
+                    # nonlocal response
+                    # nonlocal prompt_value
                     print_params("Param check", params)
-                    response = params["completion"]
+                    heap.get_by_id().data["response"] = params["completion"]
                     system_message:SystemMessage = params["prompt_value"].messages[0]
                     human_message:HumanMessage = params["prompt_value"].messages[1]
                     history:List[BaseMessage] = params["params"]["chat_history"] if "chat_history" in params["params"].keys() else []
@@ -238,8 +299,8 @@ class Chain:
                             (f"Chat history:\n {"\n".join([(f"{item.__class__.__name__}: {item.content}" if isinstance(item, BaseMessage) else item) for item in history]) if len(history) > 0 else ""}\n") if len(history) > 0 else "",
                         "output": params["completion"].content.strip(),
                     }
-                    prompt_value = params["prompt_value"]
-                    check_params = new_params
+                    heap.get_by_id().data["prompt_value"] = params["prompt_value"]
+                    # heap.get_by_id().data["check_params"] = new_params
                     print_params(f"New params", new_params)
                     return new_params
                 # Store params and prepare verification chain values
@@ -254,13 +315,13 @@ class Chain:
                     | RunnableLambda(param_check)
                     # Run against param_check params
                     | self.hallucination_prompt.get_chat_prompt_template()
-                    | get_llm("structured_0")
+                    | get_llm("tester")
                 )
 
                 def set_retry_prompt(params):
                     print_params("Set retry prompt", params)
-                    nonlocal prompt_value
-                    return prompt_value
+                    # nonlocal prompt_value
+                    return heap.get_value_by_key("prompt_value")
 
                 # Retry chain if 1st chain fails
                 hallucination_chain_retry = (
@@ -269,7 +330,7 @@ class Chain:
                         completion=(
                             RunnableLambda(retry_setup) |
                             self.error_prompt.get_agent_prompt_template() |
-                            get_llm("structured_0")
+                            (llms[self.llm_id] if self.llm_id == "json" else get_llm("instruct_detailed"))
                         ),
                         prompt_value=RunnableLambda(set_retry_prompt),
                         params=RunnablePassthrough()
@@ -277,7 +338,7 @@ class Chain:
                     # Reset the 1st chain params with the new output from the retry chain
                     | RunnableLambda(param_check)
                     | self.hallucination_prompt.get_chat_prompt_template()
-                    | get_llm("structured_0")
+                    | get_llm("tester")
                 )
 
                 hallucination_parser = RetryWithErrorOutputParser(
@@ -304,28 +365,30 @@ class Chain:
                     RunnableLambda(store_params) |
                     RunnableBranch(
                         (lambda x: (
-                            ("context" in store_params.keys() and len(str(store_params["context"]))>100)) or
-                            ("chat_history" in store_params.keys() and len(store_params["chat_history"])>0),
+                            ("context" in heap.get_by_id().data["params"].keys() and len(str(heap.get_by_id().data["params"]["context"]))>100)) or
+                            ("chat_history" in heap.get_by_id().data["params"].keys() and len(heap.get_by_id().data["params"]["chat_history"])>0),
                             hallucination_chain
                         ),
                         self.chain
                     )
-                    | RunnableLambda(param_reset)
+                    # | RunnableLambda(param_reset)
                 )
                 # self.chain = RunnableLambda(store_params) | hallucination_chain
 
             if self.prompt.parser is not None:
                 def param_check(params):
-                    nonlocal store_params
-                    nonlocal check_params
-                    nonlocal response
+                    # nonlocal store_params
+                    # nonlocal check_params
+                    # nonlocal response
                     print_params("Param check", params)
-                    response = params["completion"]
-                    new_params = {
-                        "output": params["completion"].content.strip(),
-                    }
-                    check_params = new_params
+
+                    heap.get_by_id().data["response"] = params["completion"]
+                    # new_params = {
+                    #     "output": params["completion"].content.strip(),
+                    # }
+                    # heap.get_by_id().data["check_params"] = new_params
                     return params
+
                 parser_chain = (RunnableParallel(
                         completion=self.chain,
                         prompt_value=self.prompt_template,
@@ -337,7 +400,7 @@ class Chain:
                 parser_retry_chain = (
                     RunnableLambda(retry_setup) |
                     self.error_prompt.get_agent_prompt_template() |
-                    llms[self.llm_id] #get_llm("structured_0")
+                    (llms[self.llm_id] if self.llm_id == "json" else get_llm("instruct_detailed"))
                 )
                 retry_parser = RetryWithErrorOutputParser(
                     parser=self.prompt.parser,
@@ -369,6 +432,8 @@ class Chain:
                 self.chain = parser_chain | RunnableLambda(rerun_parser)
             else:
                 self.chain = self.chain | StrOutputParser()
+
+            self.chain = RunnableLambda(init_heap) | self.chain | RunnableLambda(clear_heap)
 
 
         fallback_chain = RunnableLambda(lambda x: AIMessage(content=f"I seem to be having some trouble answering, please try again a bit later."))
@@ -416,7 +481,8 @@ def init_llm(
     verbose=DEBUGMODE,
     Type=DEFAULT_LLM_MODEL,
     ctx_size=CHAT_CONTEXT_SIZE,
-    rate_limiter=RATE_LIMITER
+    rate_limiter=RATE_LIMITER,
+    structured=False
 ):
     if f"{id}" not in llms:
         print(f"Initialize llm {id}: {model=} with {ctx_size=} and {temperature=}...")
@@ -445,6 +511,7 @@ def init_llm(
                 api_version=AZURE_API_VERSION,
                 verbose=verbose,
                 temperature=temperature,
+                model_kwargs={"response_format": {"type": "json_object"}} if structured else {},
                 # num_ctx=ctx_size,
                 # num_predict=ctx_size,
                 # repeat_penalty=2,
@@ -456,12 +523,14 @@ def init_llm(
                     else None
                 ),
             )
+
         if USE_OLLAMA:
             llms[f"{id}"] = Type(
                 base_url=OLLAMA_URL,
                 model=model,
                 verbose=verbose,
                 temperature=temperature,
+                model_kwargs={"response_format": {"type": "json_object"}} if structured else {},
                 num_ctx=ctx_size,
                 num_predict=ctx_size,
                 repeat_penalty=2,
@@ -478,6 +547,7 @@ def init_llm(
                 streaming=verbose,
                 api_key=GROQ_API_KEY,
                 model=model,
+                model_kwargs={"response_format": {"type": "json_object"}} if structured else {},
                 verbose=verbose,
                 temperature=temperature,
                 timeout=10000,
@@ -517,18 +587,21 @@ def init_llms():
         temperature=0.2,
         model=INSTRUCT_DETAILED_LLM,
         ctx_size=INSTRUCT_DETAILED_CONTEXT_SIZE,
+        rate_limiter=RATE_LIMITER_DETAILED
     )
     init_llm(
         "instruct_detailed_0",
         temperature=0,
         model=INSTRUCT_DETAILED_LLM,
         ctx_size=INSTRUCT_DETAILED_CONTEXT_SIZE,
+        rate_limiter=RATE_LIMITER_DETAILED
     )
     init_llm(
         "instruct_detailed_warm",
         temperature=0.5,
         model=INSTRUCT_DETAILED_LLM,
         ctx_size=INSTRUCT_DETAILED_CONTEXT_SIZE,
+        rate_limiter=RATE_LIMITER_DETAILED
     )
     init_llm(
         "structured", temperature=0.2, model=STRUCTURED_LLM, ctx_size=STRUCTURED_CONTEXT_SIZE
@@ -537,73 +610,40 @@ def init_llms():
         "structured_0", temperature=0, model=STRUCTURED_LLM, ctx_size=STRUCTURED_CONTEXT_SIZE
     )
 
-    if "json" not in llms:
-        if USE_BEDROCK:
-            from lib.load_env import BEDROCK_REGION
-            llms["json"] = DEFAULT_LLM_MODEL(
-                model_id=STRUCTURED_LLM,
-                region_name=BEDROCK_REGION,
-                model_kwargs={"temperature": 0.1},
-                # num_ctx=STRUCTURED_CONTEXT_SIZE,
-                # num_predict=STRUCTURED_CONTEXT_SIZE,
-                verbose=DEBUGMODE,
-                rate_limiter=RATE_LIMITER,
-                callback_manager=(
-                    CallbackManager([StreamingStdOutCallbackHandler()])
-                    if DEBUGMODE
-                    else None
-                ),
-            )
+    init_llm(
+        "structured_detailed", temperature=0.2, model=STRUCTURED_DETAILED_LLM, ctx_size=STRUCTURED_CONTEXT_SIZE,
+            rate_limiter=RATE_LIMITER_DETAILED
+    )
+    init_llm(
+        "structured_detailed_0", temperature=0, model=STRUCTURED_DETAILED_LLM, ctx_size=STRUCTURED_CONTEXT_SIZE,
+            rate_limiter=RATE_LIMITER_DETAILED
+    )
+
+    init_llm(
+        "json", temperature=0, model=STRUCTURED_LLM, ctx_size=STRUCTURED_CONTEXT_SIZE, structured=True
+    )
+
+    init_llm(
+        "json_detailed", temperature=0, model=STRUCTURED_DETAILED_LLM, ctx_size=STRUCTURED_CONTEXT_SIZE, structured=True,
+            rate_limiter=RATE_LIMITER_DETAILED
+    )
+
+    if "tester" not in llms:
         if USE_AZURE:
-            from lib.load_env import AZURE_API_VERSION
-            llms["json"] = DEFAULT_LLM_MODEL(
-                azure_deployment=STRUCTURED_LLM,
-                api_version=AZURE_API_VERSION,
-                verbose=DEBUGMODE,
-                temperature=0.1,
-                model_kwargs={"response_format": {"type": "json_object"}},
-                # num_ctx=ctx_size,
-                # num_predict=ctx_size,
-                # repeat_penalty=2,
-                # timeout=10000,
-                rate_limiter=RATE_LIMITER,
-                callback_manager=(
-                    CallbackManager([StreamingStdOutCallbackHandler()])
-                    if DEBUGMODE
-                    else None
-                ),
+            from langchain_community.chat_models.azureml_endpoint import (
+                AzureMLEndpointApiType,
+                CustomOpenAIChatContentFormatter,
             )
-        if USE_OLLAMA:
-            llms["json"] = DEFAULT_LLM_MODEL(
-                base_url=OLLAMA_URL,
-                model=STRUCTURED_LLM,
-                model_kwargs={"response_format": {"type": "json_object"}},
-                temperature=0.1,
-                num_ctx=STRUCTURED_CONTEXT_SIZE,
-                num_predict=STRUCTURED_CONTEXT_SIZE,
-                verbose=DEBUGMODE,
-                rate_limiter=RATE_LIMITER,
-                callback_manager=(
-                    CallbackManager([StreamingStdOutCallbackHandler()])
-                    if DEBUGMODE
-                    else None
-                ),
+            tester = TESTER_LLM_MODEL(
+                endpoint_url=TESTER_LLM,
+                endpoint_api_type=AzureMLEndpointApiType.serverless,
+                endpoint_api_key=TESTER_APIKEY,
+                content_formatter=CustomOpenAIChatContentFormatter(),
+                model_kwargs={"temperature": 0.2},
             )
-        if USE_GROQ:
-            llms["json"] = DEFAULT_LLM_MODEL(
-                api_key=GROQ_API_KEY,
-                model=STRUCTURED_LLM,
-                model_kwargs={"response_format": {"type": "json_object"}},
-                temperature=0.1,
-                timeout=30000,
-                verbose=DEBUGMODE,
-                rate_limiter=RATE_LIMITER,
-                callback_manager=(
-                    CallbackManager([StreamingStdOutCallbackHandler()])
-                    if DEBUGMODE
-                    else None
-                ),
-            )
+            llms["tester"] = tester
+        else:
+            llms["tester"] = llms["structured_0"]
 
     init_llm("tool", temperature=0, model=TOOL_LLM, ctx_size=TOOL_CONTEXT_SIZE)
     init_llm("chat", temperature=0.5, model=CHAT_LLM, ctx_size=CHAT_CONTEXT_SIZE, rate_limiter=CHAT_RATE_LIMITER)
@@ -626,14 +666,14 @@ def init_llms():
     chains["md_formatter"] = Chain("instruct_detailed", md_formatter, check_for_hallucinations=True)
     chains["md_formatter_guided"] = Chain("instruct_detailed_0", md_formatter_guided, check_for_hallucinations=True)
     chains["journey_structured"] = Chain("json", journey_structured)
-    chains["journey_steps"] = Chain("json", journey_steps, check_for_hallucinations=True)
-    chains["journey_step_details"] = Chain("instruct_detailed", journey_step_details, check_for_hallucinations=True)
+    chains["journey_steps"] = Chain("json_detailed", journey_steps, check_for_hallucinations=True)
+    chains["journey_step_details"] = Chain("instruct_warm", journey_step_details, check_for_hallucinations=True)
     chains["journey_step_intro"] = Chain("instruct_warm", journey_step_intro, check_for_hallucinations=True)
     chains["journey_step_actions"] = Chain(
-        "instruct", journey_step_actions, check_for_hallucinations=True
+        "instruct_detailed", journey_step_actions, check_for_hallucinations=True
     )
     chains["journey_step_action_details"] = Chain(
-        "instruct_detailed", journey_step_action_details, check_for_hallucinations=True
+        "instruct_warm", journey_step_action_details, check_for_hallucinations=True
     )
     chains["question"] = Chain("chat", question, check_for_hallucinations=True)
     chains["helper"] = Chain("chat", helper)
@@ -661,9 +701,16 @@ def init_llms():
 
     if "hyde" not in embeddings:
         embeddings["hyde"] = HypotheticalDocumentEmbedder.from_llm(
-            llms["default"],
+            llms["tester"],
             embeddings["base"],
             custom_prompt=hyde.get_chat_prompt_template(),  # prompts["hyde"]
+        )
+
+    if "hyde_document" not in embeddings:
+        embeddings["hyde_document"] = HypotheticalDocumentEmbedder.from_llm(
+            llms["tester"],
+            embeddings["base"],
+            custom_prompt=hyde_document.get_chat_prompt_template(),  # prompts["hyde"]
         )
 
     if "summary_documents" not in chains:

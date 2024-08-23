@@ -3,6 +3,7 @@ import sys
 import time
 import streamlit as st
 from streamlit.delta_generator import DeltaGenerator
+from langchain_core.messages import BaseMessage
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
@@ -296,7 +297,7 @@ def journey_subject_step_actions_ui(
                     args=(journey_name, journey, subject_index, step_index),
                 )
     if edit_mode:
-        doc_chain = rag_chain(journey.chroma_collection[0], "hyde")
+        doc_chain = rag_chain(journey.chroma_collection[0], "hyde_document")
         with container1:
             with st.popover(":sparkle: Generate new actions", use_container_width=True):
                 generate_action_resources = st.checkbox(
@@ -329,6 +330,8 @@ def journey_subject_step_actions_ui(
                     )
                     if isinstance(new_actions, tuple) and len(new_actions) == 2:
                         new_actions, _ = new_actions
+                    if isinstance(new_actions, BaseMessage):
+                        new_actions = new_actions.content
 
                     # print(f"{new_actions=}")
                     # step =step
@@ -467,7 +470,7 @@ def edit_action_ui(
             action_index,
         ),
     )
-    doc_chain = rag_chain(journey.chroma_collection[0], "hyde")
+    doc_chain = rag_chain(journey.chroma_collection[0], "hyde_document")
     for resource_index, resource in enumerate(action.resources):
         resource = action.resources[resource_index]
         resource.title = st.text_input(

@@ -741,11 +741,16 @@ def init_llms():
             custom_prompt=hyde_document.get_chat_prompt_template(),  # prompts["hyde"]
         )
 
+    def compress_doc(params):
+        resp = chains["text_formatter_compress"]().invoke(params)
+        if isinstance(resp, tuple):
+            return resp[0]
+        return resp
+
     if "summary_documents" not in chains:
+
         chain = create_stuff_documents_chain(
-            RunnableLambda(
-                lambda params: chains["text_formatter_compress"]().invoke(params)[0]
-            ),
+            RunnableLambda(compress_doc),
             chains[
                 "text_formatter_compress"
             ].prompt.get_chat_prompt_template(),  # prompts["text_formatter_compress"],
@@ -758,9 +763,7 @@ def init_llms():
 
     if "reduce_journey_documents" not in chains:
         chains["reduce_journey_documents"] = lambda: create_stuff_documents_chain(
-            RunnableLambda(
-                lambda params: chains["text_formatter_compress"]().invoke(params)[0]
-            ),
+            RunnableLambda(compress_doc),
             chains[
                 "text_formatter_compress"
             ].prompt.get_chat_prompt_template(),  # prompts["text_formatter_compress"],

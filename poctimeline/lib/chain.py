@@ -131,9 +131,37 @@ def log_chain(params):
 
 import heapq
 
-class HeapItem(BaseModel):
-    id: int
-    data: dict
+class HeapItem:
+    def __init__(self, id, data):
+        self.id = id
+        self.data = data
+
+    def __lt__(self, other:"HeapItem") -> bool:
+        return self.id < other.id
+
+    def __gt__(self, other:"HeapItem") -> bool:
+        return self.id > other.id
+
+    def __eq__(self, other:"HeapItem") -> bool:
+        return self.id == other.id
+
+    def __le__(self, other:"HeapItem") -> bool:
+        return self.id <= other.id
+
+    def __ge__(self, other:"HeapItem") -> bool:
+        return self.id >= other.id
+
+    def __ne__(self, other:"HeapItem") -> bool:
+        return self.id != other.id
+
+    def __repr__(self) -> str:
+        return f"HeapItem({self.id}, {self.data})"
+
+    def get_data(self):
+        return self.data
+
+    def set_data(self, data):
+        self.data = data
 
 class MinHeap:
     def __init__(self):

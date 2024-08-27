@@ -14,7 +14,7 @@ from lib.db_tools import (
     get_vectorstore,
     init_db,
 )
-from lib.chain import (
+from chains.chain import (
     EMBEDDING_CHAR_LIMIT,
     EMBEDDING_OVERLAP,
     INSTRUCT_CHAR_LIMIT,
@@ -24,7 +24,7 @@ from lib.chain import (
     get_llm,
     # get_vectorstore,
 )
-from lib.prompts import JourneyStructure
+from chains.prompts import JourneyStructure
 
 # main loop
 # 1. Send the introduction message which is optimized to user specific details

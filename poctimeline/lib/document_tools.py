@@ -26,8 +26,8 @@ from langchain_core.messages import AIMessage
 from langchain_huggingface.llms import HuggingFacePipeline
 from lib.db_tools import get_vectorstore
 from lib.load_env import EMBEDDING_CHAR_LIMIT, INSTRUCT_CHAR_LIMIT
-from lib.prompts import question_classifier
-from lib.chain import  get_chain, get_embeddings, get_llm, init_llms, log_chain, format_chain_params, print_params
+from chains.prompts import question_classifier
+from chains.chain import  get_chain, get_embeddings, get_llm, init_llms, print_params
 
 @cache
 def get_text_splitter(chunk_size, chunk_overlap):
@@ -166,10 +166,17 @@ def rag_chain(store_id:str, embedding_id="hyde", chain_id = "question", reset=Fa
         RunnableLambda(lambda x: {"question": x["question"]}) |
         question_classifier.get_chat_prompt_template() |
         get_llm("tester") |
-        log_chain |
+        # log_chain |
         RunnableLambda(lambda x: "yes" in str(x.content).lower())
     )
-
+    def format_chain_params(params):
+        print_params("Format chain", params)
+        if "__params" in params.keys() and isinstance(params["__params"], Dict):
+            set_params = params["__params"]
+            for key in set_params.keys():
+                params[key] = set_params[key]
+            params.pop("__params", None)
+        return params
     def skip_search(params):
         return {
             "question": params["question"],
@@ -185,8 +192,8 @@ def rag_chain(store_id:str, embedding_id="hyde", chain_id = "question", reset=Fa
                     RunnableLambda(lambda x: True)
                 ),
             "__params": RunnablePassthrough()
-        })
-        | log_chain |
+        }) |
+        # | log_chain |
         RunnableBranch(
             (lambda x: x["is_question"], format_chain_params | RunnableParallel(
                 {

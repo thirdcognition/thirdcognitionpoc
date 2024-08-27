@@ -227,32 +227,6 @@ class TagsParser(BaseOutputParser[bool]):
     def _type(self) -> str:
         return "tag_output_parser"
 
-class HallucinationParser(BaseOutputParser[bool]):
-    """Custom parser to clean specified tag from results."""
-
-    def parse(self, text: Union[str, BaseMessage]) -> tuple[bool, BaseMessage]:
-        # print(f"Parsing tags: {text}")
-        if isinstance(text, BaseMessage):
-            text = text.content
-
-        # Extract all floats from the text using regular expressions
-        floats = [float(n) for n in re.findall(r"[-+]?(?:\d*\.*\d+)", text)]
-
-        if len(floats) == 0:
-            excpect_msg = f"""Unable to verify if the content is based on context."""
-            raise OutputParserException(excpect_msg)
-        if floats[0] == 0.0:
-            excpect_msg = f"""The generated text is not based on the context. Please rewrite the text so that it matches provided context."""
-            raise OutputParserException(excpect_msg)
-
-        # raise OutputParserException(f"Unexpected error: Testing errors.")
-
-        return True, text
-
-    @property
-    def _type(self) -> str:
-        return "hallucination_parser"
-
 text_formatter = PromptFormatter(
     system=textwrap.dedent(
         f"""
@@ -443,28 +417,6 @@ check = PromptFormatter(
     ),
 )
 
-error_retry = PromptFormatter(
-    system=textwrap.dedent(
-        f"""
-        Act as a error fixer. You are given a prompt, a completion and an error message.
-        The completion did not satisfy the constraints given in the prompt. Fix the completion
-        based on the error.
-        """
-    ),
-    user=textwrap.dedent(
-        """
-        Prompt:
-        {prompt}
-        Completion:
-        {completion}
-
-        Above, the Completion did not satisfy the constraints given in the Prompt.
-        Details: {error}
-        Please try again:
-        """
-    ),
-)
-
 question_classifier = PromptFormatter(
     system=textwrap.dedent(
         f"""
@@ -483,42 +435,7 @@ question_classifier = PromptFormatter(
     ),
 )
 
-hallucination = PromptFormatter(
-    system=textwrap.dedent(
-        f"""
-        You are a grader assessing whether an LLM generation is grounded in / supported by a set of retrieved facts.
 
-        Give a binary score 1 or 0, where 1 means that the answer is grounded in / supported by the set of facts or history and answers the question.
-
-        After the score write a short explanation if the answer does not pass test. Always return the score of 0 or 1 regardless.
-
-        Example 1:
-        1
-
-        Generated content is grounded in facts
-
-        Example 2:
-        0
-
-        Generated content is built on information which is not in scope
-
-        Example 3:
-        0
-
-        Generated content is guessing
-        """
-    ),
-    user=textwrap.dedent(
-        """
-        {input}
-
-        LLM generation: {output}
-
-        Return 1 or 0 score and explanation regardless.
-        """
-    ),
-)
-hallucination.parser = HallucinationParser()
 
         # Facts: {{context}}
         # History: {{chat_history}}

@@ -10,9 +10,9 @@ from langchain_chroma import Chroma
 from chromadb.utils.embedding_functions import create_langchain_embedding
 from chromadb.config import Settings as ChromaSettings
 import streamlit as st
-from lib.chain import get_embeddings, init_llms
+from chains.chain import get_embeddings, init_llms
 from lib.load_env import CHROMA_PATH, FILE_TABLENAME, JOURNEY_TABLENAME, SQLITE_DB
-from lib.prompts import (
+from chains.prompts import (
     JourneyStructure,
     journey_steps,
     journey_step_details,

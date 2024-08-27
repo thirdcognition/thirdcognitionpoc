@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, List, Union
 from langchain_core.runnables.base import RunnableSequence
 from langchain_core.messages import BaseMessage, AIMessage
 
-from lib.chain import get_chain
+from chains.chain import get_chain
 from lib.db_tools import (
     CustomPrompt,
     JourneyDataTable,
@@ -22,7 +22,7 @@ from lib.db_tools import (
 from lib.document_parse import markdown_to_text
 from lib.document_tools import create_document_lists, rag_chain
 from lib.load_env import INSTRUCT_CHAR_LIMIT
-from lib.prompts import ActionStructure, JourneyStep, JourneyStepList, JourneyStructure, ResourceStructure
+from chains.prompts import ActionStructure, JourneyStep, JourneyStepList, JourneyStructure, ResourceStructure
 from lib.streamlit_tools import llm_edit
 
 def save_journey(journey_name, journey:JourneyModel) -> bool:

@@ -8,7 +8,7 @@ from langchain_core.messages import BaseMessage
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
-from lib.chain import get_chain
+from chains.chain import get_chain
 from lib.journey_shared import (
     create_subject_prompt_editor,
     delete_journey,
@@ -31,7 +31,7 @@ from lib.load_env import (
     CLIENT_HOST,
 )
 
-from lib.prompts import ActionStructure, JourneyStructure
+from chains.prompts import ActionStructure, JourneyStructure
 
 from lib.streamlit_tools import check_auth
 

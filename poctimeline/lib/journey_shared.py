@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, List, Union
 from langchain_core.runnables.base import RunnableSequence
 from langchain_core.messages import BaseMessage, AIMessage
 
-from chains.chain import get_chain
+from chains.init_chains import get_chain
 from lib.db_tools import (
     CustomPrompt,
     JourneyDataTable,
@@ -130,7 +130,7 @@ def llm_gen_step(content, journey:JourneyModel, subject:SubjectModel, step:Union
     doc_chain = rag_chain(journey.chroma_collection[0], "hyde_document", amount_of_documents=10)
     retry_lambda = lambda: get_chain("journey_step_details")((subject.prompts.step_detail.system, subject.prompts.step_detail.user)).invoke(
             {
-                "context": doc_chain.invoke({"question": subject_string, "context": content}),
+                "context": doc_chain.invoke({"question": subject_string, "context": content})["answer"],
                 "journey_instructions": journey.instructions,
                 "instructions": subject.instructions,
                 "subject": subject_string,
@@ -284,7 +284,7 @@ def llm_gen_resource(journey:JourneyModel, subject: SubjectModel, step:StepModel
 
     class_action_details = get_chain("journey_step_action_details")((subject.prompts.step_action_details.system, subject.prompts.step_action_details.user)).invoke(
         {
-            "context": doc_chain.invoke({"question": resource_text, "context": step.content}),
+            "context": doc_chain.invoke({"question": resource_text, "context": step.content})["answer"],
             "journey_instructions": journey.instructions,
             "instructions": subject.instructions,
             "resource": resource_text,

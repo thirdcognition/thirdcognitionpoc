@@ -1,9 +1,26 @@
+from typing import Dict
 from langchain_core.runnables import (
     RunnableSequence,
 )
 from langchain_core.output_parsers import StrOutputParser
 
 from chains.prompts import PromptFormatter
+# from lib.helpers import print_params
+
+from lib.helpers import print_params
+def keep_chain_params(params:Dict):
+    print_params(params)
+    if "orig_params" in params.keys() and isinstance(params["orig_params"], Dict):
+        set_params = params["orig_params"]
+        for key in set_params.keys():
+            params[key] = set_params[key]
+        # params.pop("orig_params", None)
+    params["orig_params"] = params.copy()
+    return params
+
+def log_chain_params(params):
+    print_params("Log params", params)
+    return params
 
 class BaseChain:
     def __init__(

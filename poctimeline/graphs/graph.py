@@ -14,7 +14,7 @@ from lib.db_tools import (
     get_vectorstore,
     init_db,
 )
-from chains.chain import (
+from chains.init_chains import (
     EMBEDDING_CHAR_LIMIT,
     EMBEDDING_OVERLAP,
     INSTRUCT_CHAR_LIMIT,

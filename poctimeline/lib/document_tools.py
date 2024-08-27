@@ -24,10 +24,11 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.messages import AIMessage
 from langchain_huggingface.llms import HuggingFacePipeline
-from lib.db_tools import get_vectorstore
+from chains.rag_chain import RagChain
+from lib.db_tools import get_vectorstore, get_vectorstore_as_retriever
 from lib.load_env import EMBEDDING_CHAR_LIMIT, INSTRUCT_CHAR_LIMIT
 from chains.prompts import question_classifier
-from chains.chain import  get_chain, get_embeddings, get_llm, init_llms, print_params
+from chains.init_chains import  get_chain, get_embeddings, get_llm, init_llms, print_params
 
 @cache
 def get_text_splitter(chunk_size, chunk_overlap):
@@ -65,102 +66,20 @@ def get_chain_with_history(chain_id: str, chain:RunnableSequence):
 
 compressor = None
 
-def rerank_documents(list_of_documents: list[Document], query: str, amount=5):
-    global compressor
-
-    # print("\n\n\nReranking documents")
-    # print(f"Amount of documents: {len(list_of_documents)}")
-    # print(f"Query: {query}\n\n\n")
-
-    if len(list_of_documents) > 5:
-        if compressor is None:
-            compressor = FlashrankRerank(top_n=amount)
-
-        ranked_documents = compressor.compress_documents(
-            documents=list_of_documents, query=query
-        )
-        return ranked_documents
-
-    return list_of_documents
-
-def rerank_rag(params: Dict):
-    query = params["question"]
-    new_content = []
-    new_content_strs = []
-    def sort_by_references(document: Document):
-        return len(document.metadata)
-
-    documents: list[Document] = params["documents"]
-
-    documents.sort(reverse=True, key=sort_by_references)
-    for document in documents:
-        if document.page_content not in new_content_strs:
-            new_content.append(document)
-            new_content_strs.append(document.page_content)
-
-    new_content = rerank_documents(new_content, query, 10)
-
-    return new_content
-
 rag_chains = {}
 
-def rag_chain(store_id:str, embedding_id="hyde", chain_id = "question", reset=False, with_history=False, with_chat=False, amount_of_documents=5) -> RunnableSequence:
+def rag_chain(store_id:str, embedding_id="hyde", reset=False, with_history=False, with_chat=False, amount_of_documents=5) -> RunnableSequence:
     global rag_chains
-    chain = get_chain(chain_id)
-    chat_chain = get_chain("chat")
+    chat_chain = get_chain("chat")() | RunnableLambda(lambda x: x["answer"])
 
-    chain_id = f"{store_id}-{embedding_id}-{chain_id}-{chain.llm_id}-{"history" if with_history else "nohistory"}-{"chat" if with_chat else "nochat"}-#{amount_of_documents}"
+    chain_id = f"{store_id}-{embedding_id}-{"history" if with_history else "nohistory"}-{"chat" if with_chat else "nochat"}-#{amount_of_documents}"
     if chain_id in rag_chains and not reset:
         return rag_chains[chain_id]
 
     print(f"Initializing RAG chain: {chain_id} with {with_history=} and {with_chat=}")
 
-    vectorstore = get_vectorstore(store_id, embedding_id)
-    retriever = vectorstore.as_retriever(
-        search_type="similarity_score_threshold",
-        search_kwargs={"k": amount_of_documents, "score_threshold": 0.3},
-    )
-
-    executable = chain()
-    # llm = get_llm(chain.llm_id)
-    # prompt = chain.prompt_template or chain.prompt.get_chat_prompt_template()
-
-    # llm = get_llm(llm_id)
-    # prompt = get_prompt(chain_id)
-
-    documents:List = None
-    def store_documents(params):
-        nonlocal documents
-        if isinstance(params, Dict) and "documents" in params.keys():
-            documents = params["documents"]
-        elif isinstance(params, List) and len(params) > 0 and isinstance(params[0], Document):
-            documents = params
-        return params
-
-    def set_metadata(params):
-        print_params("metadata", params)
-
-        if isinstance(params, AIMessage) or isinstance(params, str):
-            params = {
-                "answer": params
-            }
-
-        if isinstance(params, tuple):
-            params = {
-                "answer": params[0]
-            }
-
-        if documents is None or len(documents) == 0:
-            return params
-
-        if "metadata" not in params:
-            params["metadata"] = {
-                "references": documents
-            }
-        else:
-            params["metadata"]["references"] = documents
-
-        return params
+    retriever = get_vectorstore_as_retriever(store_id, embedding_id, amount_of_documents)
+    rag_chain = RagChain(retriever, llm=get_llm("chat"))()
 
     classification_chain = (
         RunnableLambda(lambda x: {"question": x["question"]}) |
@@ -169,14 +88,7 @@ def rag_chain(store_id:str, embedding_id="hyde", chain_id = "question", reset=Fa
         # log_chain |
         RunnableLambda(lambda x: "yes" in str(x.content).lower())
     )
-    def format_chain_params(params):
-        print_params("Format chain", params)
-        if "__params" in params.keys() and isinstance(params["__params"], Dict):
-            set_params = params["__params"]
-            for key in set_params.keys():
-                params[key] = set_params[key]
-            params.pop("__params", None)
-        return params
+
     def skip_search(params):
         return {
             "question": params["question"],
@@ -191,26 +103,12 @@ def rag_chain(store_id:str, embedding_id="hyde", chain_id = "question", reset=Fa
                     (lambda x: with_chat, classification_chain),
                     RunnableLambda(lambda x: True)
                 ),
-            "__params": RunnablePassthrough()
+            "orig_params": RunnablePassthrough()
         }) |
-        # | log_chain |
         RunnableBranch(
-            (lambda x: x["is_question"], format_chain_params | RunnableParallel(
-                {
-                    "context": RunnableParallel({
-                        "documents":  retriever,  # add_context | retriever | log_chain,
-                        "__params": RunnablePassthrough(),
-                    }) | format_chain_params | rerank_rag | store_documents,
-                    "question": RunnableLambda(lambda x: x["question"]),
-                    "chat_history": RunnableLambda(lambda x: x["chat_history"] if "chat_history" in x.keys() else []),
-                }) | executable
-             ),
-            format_chain_params | RunnableLambda(skip_search) | chat_chain()
-        ) #| logchain_
-        | set_metadata
-        # | prompt
-        # | llm
-        # | StrOutputParser()
+            (lambda x: x["is_question"], rag_chain),
+            RunnableLambda(skip_search) | chat_chain
+        )
     )
 
     if with_history:

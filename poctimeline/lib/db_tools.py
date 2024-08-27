@@ -10,7 +10,7 @@ from langchain_chroma import Chroma
 from chromadb.utils.embedding_functions import create_langchain_embedding
 from chromadb.config import Settings as ChromaSettings
 import streamlit as st
-from chains.chain import get_embeddings, init_llms
+from chains.init_chains import get_embeddings, init_llms
 from lib.load_env import CHROMA_PATH, FILE_TABLENAME, JOURNEY_TABLENAME, SQLITE_DB
 from chains.prompts import (
     JourneyStructure,
@@ -254,3 +254,10 @@ def get_vectorstore(
 
     vectorstores[id] = vectorstore
     return vectorstore
+
+def get_vectorstore_as_retriever(store_id, embedding_id="base", amount_of_documents = 5):
+    vectorstore = get_vectorstore(store_id, embedding_id)
+    return vectorstore.as_retriever(
+        search_type="similarity_score_threshold",
+        search_kwargs={"k": amount_of_documents, "score_threshold": 0.3},
+    )

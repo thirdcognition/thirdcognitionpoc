@@ -477,24 +477,6 @@ chat = PromptFormatter(
 )
 # chat.parser = TagsParser(min_len=10)
 
-question = PromptFormatter(
-    system=textwrap.dedent(
-        f"""
-        You are an assistant for question-answering tasks.
-        Use the following pieces of retrieved context and conversation history to answer the question.
-        If you don't know the answer, say that you don't know. Limit your response to three sentences maximum
-        and keep the answer concise. Don't reveal that the context is empty, just say you don't know.
-        """
-    ),
-    user=textwrap.dedent(
-        """
-        Context start
-        {context}
-        Context end
-        Question: {question}
-        """
-    ),
-)
 
 hyde = PromptFormatter(
     system=textwrap.dedent(

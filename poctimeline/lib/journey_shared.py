@@ -8,7 +8,8 @@ from typing import Any, Callable, Dict, List, Union
 from langchain_core.runnables.base import RunnableSequence
 from langchain_core.messages import BaseMessage, AIMessage
 
-from chains.init_chains import get_chain
+from chains.init import get_base_chain, get_chain
+from chains.rag_chain import get_rag_search
 from lib.db_tools import (
     CustomPrompt,
     JourneyDataTable,
@@ -20,7 +21,7 @@ from lib.db_tools import (
     SubjectModel,
 )
 from lib.document_parse import markdown_to_text
-from lib.document_tools import create_document_lists, rag_chain
+from lib.document_tools import create_document_lists
 from lib.load_env import INSTRUCT_CHAR_LIMIT
 from chains.prompts import ActionStructure, JourneyStep, JourneyStepList, JourneyStructure, ResourceStructure
 from lib.streamlit_tools import llm_edit
@@ -83,7 +84,7 @@ def llm_gen_title_summary(steps: List[Union[StepModel, SubjectModel]]) -> tuple[
         context = "\n".join([f"Title: {subject.title}\n Summary:\n{subject.summary}\n" for subject in steps])
     else:
         context = "\n".join([f"Title: {step.title}\n Subject:\n{step.subject}\nIntroduction:\n{step.intro or ""}" for step in steps])
-    result = get_chain("action")().invoke(
+    result = get_chain("action").invoke(
             {
                 "context": context,
                 "action": "Summarize context with 10 words or less to a title",
@@ -127,8 +128,8 @@ def llm_gen_step(content, journey:JourneyModel, subject:SubjectModel, step:Union
 
     if progress_cb is not None:
         progress_cb(0, "Generating subsection `"+step.title+"` content - ")
-    doc_chain = rag_chain(journey.chroma_collection[0], "hyde_document", amount_of_documents=10)
-    retry_lambda = lambda: get_chain("journey_step_details")((subject.prompts.step_detail.system, subject.prompts.step_detail.user)).invoke(
+    doc_chain = get_rag_search(journey.chroma_collection[0], "hyde_document", amount_of_documents=10)
+    retry_lambda = lambda: get_base_chain("journey_step_details")((subject.prompts.step_detail.system, subject.prompts.step_detail.user)).invoke(
             {
                 "context": doc_chain.invoke({"question": subject_string, "context": content})["answer"],
                 "journey_instructions": journey.instructions,
@@ -155,7 +156,7 @@ def llm_gen_step(content, journey:JourneyModel, subject:SubjectModel, step:Union
     if progress_cb is not None:
         progress_cb(0.1, "Generating subsection `"+step.title+"` intro - ")
 
-    class_intro = get_chain("journey_step_intro")((subject.prompts.step_intro.system, subject.prompts.step_intro.user)).invoke(
+    class_intro = get_base_chain("journey_step_intro")((subject.prompts.step_intro.system, subject.prompts.step_intro.user)).invoke(
         {
             "context": class_content,
             "journey_instructions": journey.instructions,
@@ -170,7 +171,7 @@ def llm_gen_step(content, journey:JourneyModel, subject:SubjectModel, step:Union
     if progress_cb is not None:
         progress_cb(0.2, "Generating subsection `"+step.title+"` modules - ")
 
-    class_actions = get_chain("journey_step_actions")((subject.prompts.step_actions.system, subject.prompts.step_actions.user)).invoke(
+    class_actions = get_base_chain("journey_step_actions")((subject.prompts.step_actions.system, subject.prompts.step_actions.user)).invoke(
         {
             "context": class_content,
             "journey_instructions": journey.instructions,
@@ -226,7 +227,7 @@ def get_action_details_str(index:int, action:ActionStructure) -> str:
         """)
 
 def llm_gen_json_step(step: StepModel, instructions="") -> Union[JourneyStructure, None]:
-    retry_lambda = lambda: get_chain("journey_structured")().invoke({
+    retry_lambda = lambda: get_chain("journey_structured").invoke({
         "context": f"""
             Title:
             {step.title}
@@ -280,9 +281,9 @@ def llm_gen_update_actions(journey:JourneyModel, subject: SubjectModel, gen_step
 
 def llm_gen_resource(journey:JourneyModel, subject: SubjectModel, step:StepModel, action:ActionStructure, resource:ResourceStructure) -> str:
     resource_text = f"{resource.title} (from: {resource.reference}) - {resource.summary.replace('\n', '')} for {action.title} in {step.title} of {subject.title} in {journey.title}"
-    doc_chain = rag_chain(journey.chroma_collection[0], "hyde_document", amount_of_documents=5)
+    doc_chain = get_rag_search(journey.chroma_collection[0], "hyde_document", amount_of_documents=5)
 
-    class_action_details = get_chain("journey_step_action_details")((subject.prompts.step_action_details.system, subject.prompts.step_action_details.user)).invoke(
+    class_action_details = get_base_chain("journey_step_action_details")((subject.prompts.step_action_details.system, subject.prompts.step_action_details.user)).invoke(
         {
             "context": doc_chain.invoke({"question": resource_text, "context": step.content})["answer"],
             "journey_instructions": journey.instructions,
@@ -314,14 +315,14 @@ def llm_gen_journey_doc(list_of_strings = []) -> tuple[str, str]:
     if reduce:
         list_of_docs = create_document_lists(list_of_strings)
 
-        chain = get_chain("reduce_journey_documents")
+        chain = get_chain("stuff_documents")
 
         list_of_strings = []
         list_of_thoughts = []
         total = len(list_of_docs)
         for i, document in enumerate(list_of_docs):
             # bar.progress(i / total, text=f"Compressing page {i+1}/{total}")
-            result = chain().invoke({"context": [document]})
+            result = chain.invoke({"context": [document]})
             if isinstance(result, tuple):
                 list_of_strings.append(result[0])
                 list_of_thoughts.append(result[1])
@@ -336,7 +337,7 @@ def llm_gen_journey_doc(list_of_strings = []) -> tuple[str, str]:
         if reduce:
             # bar.progress(1 - 1/total, text="Result too long, 2nd pass")
             list_of_docs = create_document_lists(list_of_strings, list_of_thoughts)
-            result = chain().invoke(
+            result = chain.invoke(
                     {
                         "context": list_of_docs,
                     }

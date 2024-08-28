@@ -12,7 +12,7 @@ from langchain_core.messages import BaseMessage
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
-from chains.init_chains import get_chain
+from chains.init import get_chain
 from lib.db_tools import (
     FileDataTable,
     # JourneyDataTable,
@@ -208,7 +208,7 @@ def process_file_data(filename, category):
                     list_of_docs = create_document_lists(summary_texts, source=filename)
                     # print(f"{ list_of_docs = }")
 
-                    results = get_chain("summary_documents")().invoke(
+                    results = get_chain("summary_documents").invoke(
                         {"context": list_of_docs}
                     )
 

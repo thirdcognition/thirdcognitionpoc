@@ -1,3 +1,4 @@
+import asyncio
 import re
 import textwrap
 from typing import Callable, List, Union
@@ -122,6 +123,9 @@ class BaseValidationChain(BaseChain):
         self.validation_prompt = validation_prompt
         self.validation_setup = validation_setup or validation_param_set
         self.max_retries = max_retries
+        self.validation_chain:RunnableSequence = None
+        self.retry_chain:RunnableSequence = None
+        self.verify_chain:RunnableSequence = None
 
     def __call__(
         self, custom_prompt: tuple[str, str] | None = None, **kwargs
@@ -133,79 +137,24 @@ class BaseValidationChain(BaseChain):
 
         self.chain = super().__call__(custom_prompt)
 
-        validation_chain:RunnableSequence = (
+        self.validation_chain:RunnableSequence = (
             self.validation_setup
             | self.validation_prompt.get_chat_prompt_template()
             | self.validation_llm
         )
+        self.validation_chain.name=f"{self.name}-validation-initial"
 
-        retry_chain:RunnableSequence = (
+        self.retry_chain:RunnableSequence = (
             self.error_prompt.get_chat_prompt_template()
             | self.retry_llm
         )
+        self.retry_chain.name=f"{self.name}-validation-retry"
 
-        validation_parser = self.validation_prompt.parser
-        max_retries = self.max_retries
-        def validation(params):
-            nonlocal validation_parser
-            nonlocal max_retries
-            retries_left = max_retries
-            completion = params["completion"].content.strip() if isinstance(params["completion"], BaseMessage) else params["completion"].strip()
-            prompt_value:PromptValue = params["prompt_value"]
-            while retries_left > 0:
-                retries_left -= 1
-                try:
-                    validation = validation_chain.invoke(dict(
-                        completion=completion,
-                        prompt_value=prompt_value,
-                        params=params["params"],
-                    ))
-                    validation = validation_parser.parse(validation)
-                    if validation[0]:
-                        break
-                except OutputParserException as e:
-                    print(f"{e=}")
-                    if retries_left == 0:
-                        raise e
-                    completion = retry_chain.invoke(
-                        dict(
-                            prompt=prompt_value.to_string(),
-                            completion=completion,
-                            error=repr(validation)
-                        )
-                    )
+        instance = self
+        validation = RunnableLambda(lambda x: instance._validate(x) )
+        avalidation = RunnableLambda(lambda x: asyncio.create_task(instance._avalidate(x)))
 
-            return completion[1] if isinstance(completion, tuple) else completion,
-
-        async def avalidation(params):
-            nonlocal validation_parser
-            nonlocal max_retries
-            retries_left = max_retries
-            completion = params["completion"].content.strip() if isinstance(params["completion"], BaseMessage) else params["completion"].strip()
-            prompt_value:PromptValue = params["prompt_value"]
-            while retries_left > 0:
-                retries_left -= 1
-                try:
-                    validation = await validation_chain.ainvoke(dict(
-                        completion=completion,
-                        prompt_value=prompt_value,
-                        params=params["params"],
-                    ))
-                    validation = await validation_parser.aparse(validation)
-                except OutputParserException as e:
-                    if retries_left == 0:
-                        raise e
-                    completion = await retry_chain.ainvoke(
-                        dict(
-                            prompt=prompt_value.to_string(),
-                            completion=completion,
-                            error=repr(validation)
-                        )
-                    )
-
-            return  completion[1] if isinstance(completion, tuple) else completion,
-
-        verify_chain = (
+        self.verify_chain = (
             RunnableParallel(
                 completion=self.chain,
                 prompt_value=self.prompt_template,
@@ -213,13 +162,14 @@ class BaseValidationChain(BaseChain):
             )
             | RunnableLambda(avalidation if self.async_mode else validation)
         )
+        self.verify_chain.name=f"{self.name}-validation-verify"
 
         self.chain = (
             RunnableBranch(
                 (lambda x: (
                     ("context" in x.keys() and len(str(x["context"]))>100)) or
                     ("chat_history" in x.keys() and len(x["chat_history"])>0),
-                    verify_chain
+                    self.verify_chain
                 ),
                 self.chain
             )
@@ -227,6 +177,61 @@ class BaseValidationChain(BaseChain):
 
         fallback_chain = RunnableLambda(lambda x: AIMessage(content=f"I seem to be having some trouble answering, please try again a bit later."))
         self.chain = self.chain.with_fallbacks([fallback_chain])
+        self.chain.name = f"{self.name}-validation"
 
         return self.chain
 
+    def _validate(self, params):
+        retries_left = self.max_retries
+        completion = params["completion"].content.strip() if isinstance(params["completion"], BaseMessage) else params["completion"].strip()
+        prompt_value:PromptValue = params["prompt_value"]
+        while retries_left > 0:
+            retries_left -= 1
+            try:
+                validation = self.validation_chain.invoke(dict(
+                    completion=completion,
+                    prompt_value=prompt_value,
+                    params=params["params"],
+                ))
+                validation = self.validation_prompt.parser.parse(validation)
+                if validation[0]:
+                    break
+            except OutputParserException as e:
+                print(f"{e=}")
+                if retries_left == 0:
+                    raise e
+                completion = self.retry_chain.invoke(
+                    dict(
+                        prompt=prompt_value.to_string(),
+                        completion=completion,
+                        error=repr(validation)
+                    )
+                )
+
+        return AIMessage(content=completion[1] if isinstance(completion, tuple) else completion),
+
+    async def _avalidate(self, params):
+        retries_left = self.max_retries
+        completion = params["completion"].content.strip() if isinstance(params["completion"], BaseMessage) else params["completion"].strip()
+        prompt_value:PromptValue = params["prompt_value"]
+        while retries_left > 0:
+            retries_left -= 1
+            try:
+                validation = await self.validation_chain.ainvoke(dict(
+                    completion=completion,
+                    prompt_value=prompt_value,
+                    params=params["params"],
+                ))
+                validation = await self.validation_prompt.parser.aparse(validation)
+            except OutputParserException as e:
+                if retries_left == 0:
+                    raise e
+                completion = await self.retry_chain.ainvoke(
+                    dict(
+                        prompt=prompt_value.to_string(),
+                        completion=completion,
+                        error=repr(validation)
+                    )
+                )
+
+        return AIMessage(content=completion[1] if isinstance(completion, tuple) else completion),

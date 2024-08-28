@@ -4,9 +4,8 @@ from langchain_core.runnables import RunnableSequence
 from chains.base_validation import BaseValidationChain
 
 class Chain(BaseParserChain):
-    def __init__(self, llm_id: str = "default", validation_llm: RunnableSequence = None, **kwargs):
+    def __init__(self, validation_llm: RunnableSequence = None, **kwargs):
         super().__init__(**kwargs)
-        self.llm_id = llm_id
         self.validation_llm = validation_llm
 
     def __call__(

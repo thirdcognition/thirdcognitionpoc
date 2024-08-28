@@ -4,7 +4,7 @@ import streamlit_authenticator as stauth
 import yaml
 from yaml.loader import SafeLoader
 
-from chains.init_chains import get_chain
+from chains.init import get_chain
 from lib.db_tools import FileDataTable, init_db
 from lib.document_parse import markdown_to_text
 from langchain_core.messages import BaseMessage
@@ -93,7 +93,7 @@ def llm_edit(chain, texts, guidance=None, force=False) -> tuple[str, str]:
 
             inputs.append(input)
 
-            result = get_chain(chain + guided_llm)().invoke(input)
+            result = get_chain(chain + guided_llm).invoke(input)
 
             if isinstance(result, tuple) and len(result) == 2:
                 mid_results, mid_thoughts = result
@@ -124,7 +124,7 @@ def llm_edit(chain, texts, guidance=None, force=False) -> tuple[str, str]:
             guided_llm = "_guided"
             input["question"] = guidance
 
-        result = get_chain(chain + guided_llm)().invoke(input)
+        result = get_chain(chain + guided_llm).invoke(input)
 
         if isinstance(result, tuple) and len(result) == 2:
             text, thoughts = result

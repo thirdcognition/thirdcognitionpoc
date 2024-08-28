@@ -5,8 +5,9 @@ from langchain_core.callbacks import StreamingStdOutCallbackHandler
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.documents.base import Document
 
+from chains.rag_chain import get_rag_chat
 from lib.db_tools import JourneyModel, get_db_files, get_db_journey, init_db
-from lib.document_tools import get_session_history, rag_chain
+from lib.helpers import get_session_history
 
 DELIMITER = "±~"
 
@@ -60,12 +61,12 @@ def init_journey_chat(journey_name: str = None, rag_collection: str = None):
             if len(collections) > 0:
                 for collection in collections:
                     if collection not in collection_keys:
-                        chains[collection] = rag_chain(collection, with_history=True, with_chat=True)
+                        chains[collection] = get_rag_chat(collection, with_history=True)
         else:
             collection = (
                 "rag_ThirdCognition" if rag_collection is None else rag_collection
             )
-            chains[collection] = rag_chain(collection, with_history=True, with_chat=True)
+            chains[collection] = get_rag_chat(collection, with_history=True)
 
         st.session_state.journey_chain_ids = journey_chain_ids
         st.session_state.chains = chains

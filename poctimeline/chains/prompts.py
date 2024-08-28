@@ -417,6 +417,47 @@ check = PromptFormatter(
     ),
 )
 
+question = PromptFormatter(
+    system=textwrap.dedent(
+        f"""
+        You are an assistant for question-answering tasks.
+        Use the following pieces of retrieved context and conversation history to answer the question.
+        If you don't know the answer, say that you don't know. Limit your response to three sentences maximum
+        and keep the answer concise. Don't reveal that the context is empty, just say you don't know.
+        """
+    ),
+    user=textwrap.dedent(
+        """
+        Context start
+        {context}
+        Context end
+        Question: {question}
+        """
+    ),
+)
+
+class QuestionClassifierParser(BaseOutputParser[tuple[bool, BaseMessage]]):
+    """Custom parser to clean specified tag from results."""
+
+    def parse(self, text: Union[str, BaseMessage]) -> tuple[bool, BaseMessage]:
+        # print(f"Parsing tags: {text}")
+        if isinstance(text, BaseMessage):
+            text = text.content
+
+        # Extract all floats from the text using regular expressions
+        # Check if 'yes' exists on the first line of text
+        first_line = text.split('\n')[0].strip().lower()
+        if 'yes' in first_line:
+            return True, text
+        elif 'no' in first_line:
+            return False, text
+        else:
+            raise OutputParserException(f"Unexpected response: Expected 'yes' or 'no', but got '{first_line}'.")
+
+    @property
+    def _type(self) -> str:
+        return "question_classifier_parser"
+
 question_classifier = PromptFormatter(
     system=textwrap.dedent(
         f"""
@@ -434,11 +475,7 @@ question_classifier = PromptFormatter(
         """
     ),
 )
-
-
-
-        # Facts: {{context}}
-        # History: {{chat_history}}
+question_classifier.parser = QuestionClassifierParser()
 
 helper = PromptFormatter(
     system=textwrap.dedent(

@@ -10,7 +10,7 @@ from langchain_chroma import Chroma
 from chromadb.utils.embedding_functions import create_langchain_embedding
 from chromadb.config import Settings as ChromaSettings
 import streamlit as st
-from chains.init_chains import get_embeddings, init_llms
+from chains.init import get_embeddings
 from lib.load_env import CHROMA_PATH, FILE_TABLENAME, JOURNEY_TABLENAME, SQLITE_DB
 from chains.prompts import (
     JourneyStructure,
@@ -214,8 +214,6 @@ def get_chroma_collection(
     if update:
         chroma_client.delete_collection(name=name)
 
-    init_llms()
-
     embedding_function = None
     if embedding_id is not None:
         embedding_function = create_langchain_embedding(get_embeddings(embedding_id))
@@ -235,7 +233,6 @@ vectorstores = {}
 def get_vectorstore(
     id, embedding_id="base", update_vectorstores=False, path=CHROMA_PATH
 ) -> Chroma:
-    init_llms()
     global chroma_client
     chroma_client = chroma_client or chromadb.PersistentClient(path=path, settings=ChromaSettings(anonymized_telemetry=False))
 

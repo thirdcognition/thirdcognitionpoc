@@ -1,12 +1,7 @@
-from typing import Dict, Union
+from typing import Dict, Literal, Union
 from langchain.chains.hyde.base import HypotheticalDocumentEmbedder
 
-from langchain_core.embeddings import Embeddings
-from langchain_huggingface import (
-    HuggingFaceEmbeddings,
-)
-from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
-from langchain_community.embeddings.ollama import OllamaEmbeddings
+
 from langchain.callbacks.manager import CallbackManager
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from langchain_core.language_models.llms import BaseLLM
@@ -15,39 +10,22 @@ from langchain_core.runnables import (
     RunnableSequence,
 )
 from langchain.chains.combine_documents.stuff import create_stuff_documents_chain
+from langchain_core.rate_limiters import InMemoryRateLimiter
+from langchain_community.chat_models.azureml_endpoint import (
+    AzureMLEndpointApiType,
+    CustomOpenAIChatContentFormatter,
+)
+from langchain_core.embeddings import Embeddings
 from chains.base import BaseChain
 from chains.base import drop_thoughts
 from chains.chain import Chain
 from lib.load_env import (
-    CHAT_CONTEXT_SIZE,
-    CHAT_LLM,
     DEBUGMODE,
-    DEFAULT_LLM_MODEL,
-    EMBEDDING_MODEL,
-    GROQ_API_KEY,
-    HF_API_KEY,
-    INSTRUCT_CONTEXT_SIZE,
-    INSTRUCT_DETAILED_CONTEXT_SIZE,
-    INSTRUCT_DETAILED_LLM,
-    INSTRUCT_LLM,
-    OLLAMA_URL,
-    RATE_LIMIT_INTEVAL,
-    RATE_LIMIT_PER_SECOND,
-    STRUCTURED_CONTEXT_SIZE,
-    STRUCTURED_DETAILED_LLM,
-    STRUCTURED_LLM,
-    TESTER_APIKEY,
-    TESTER_LLM,
-    TESTER_LLM_MODEL,
-    TOOL_CONTEXT_SIZE,
-    TOOL_LLM,
-    USE_AZURE,
-    USE_BEDROCK,
-    USE_GROQ,
-    USE_HF_EMBEDDINGS,
-    USE_LOCAL_EMBEDDINGS,
-    USE_OLLAMA,
-    USE_OLLAMA_EMBEDDINGS,
+    SETTINGS,
+    EmbeddingModelSettings,
+    EmbeddingProviderSettings,
+    ProviderModelSettings,
+    ProviderSettings,
 )
 from chains.prompts import (
     PromptFormatter,
@@ -75,175 +53,282 @@ from chains.prompts import (
     journey_structured,
 )
 
-from langchain_core.rate_limiters import InMemoryRateLimiter
 
-RATE_LIMITER = InMemoryRateLimiter(
-    requests_per_second=RATE_LIMIT_PER_SECOND,  # 0.1 <-- Super slow! We can only make a request once every 10 seconds!!
-    check_every_n_seconds=RATE_LIMIT_INTEVAL,  # 0.1 <-- Wake up every 100 ms to check whether allowed to make a request,
-    max_bucket_size=1,  # Controls the maximum burst size.
-)
-RATE_LIMITER_DETAILED = InMemoryRateLimiter(
-    requests_per_second=RATE_LIMIT_PER_SECOND,  # 0.1 <-- Super slow! We can only make a request once every 10 seconds!!
-    check_every_n_seconds=RATE_LIMIT_INTEVAL,  # 0.1 <-- Wake up every 100 ms to check whether allowed to make a request,
-    max_bucket_size=1,  # Controls the maximum burst size.
-)
+# RATE_LIMITER = InMemoryRateLimiter(
+#     requests_per_second=RATE_LIMIT_PER_SECOND,  # 0.1 <-- Super slow! We can only make a request once every 10 seconds!!
+#     check_every_n_seconds=RATE_LIMIT_INTEVAL,  # 0.1 <-- Wake up every 100 ms to check whether allowed to make a request,
+#     max_bucket_size=1,  # Controls the maximum burst size.
+# )
+# RATE_LIMITER_DETAILED = InMemoryRateLimiter(
+#     requests_per_second=RATE_LIMIT_PER_SECOND,  # 0.1 <-- Super slow! We can only make a request once every 10 seconds!!
+#     check_every_n_seconds=RATE_LIMIT_INTEVAL,  # 0.1 <-- Wake up every 100 ms to check whether allowed to make a request,
+#     max_bucket_size=1,  # Controls the maximum burst size.
+# )
 CHAT_RATE_LIMITER = None
 
+limiters: Dict[str, BaseRateLimiter] = {}
 llms: Dict[str, BaseLLM] = {}
 
-def init_llm(llm_model:str=CHAT_LLM, llm_ctx_size:int=CHAT_CONTEXT_SIZE, llm_temperature:float=0.5, llm_structured:bool = False, llm_type:BaseLLM=DEFAULT_LLM_MODEL, llm_ratelimiter:BaseRateLimiter = RATE_LIMITER, debug_mode:bool=DEBUGMODE) -> BaseLLM:
-    print(f"Initializing llm: {llm_model=} with {llm_ctx_size=} and {llm_temperature=}...")
+
+def get_limiter(model_config: ProviderModelSettings) -> Union[BaseRateLimiter, None]:
+    id = f"{model_config.provider}_{model_config.type}"
+    if id in limiters.keys():
+        return limiters[id]
+
+    # llm_config: ProviderSettings = next(
+    #     (config for config in SETTINGS.llms if config.type == llm), None
+    # )
+    # model_config: ProviderModelSettings = (
+    #     next((config for config in llm_config.models if config.type == llm_model), None)
+    #     if llm_config
+    #     else None
+    # )
+
+    limiter = (
+        InMemoryRateLimiter(
+            requests_per_second=model_config.ratelimit_per_sec,
+            check_every_n_seconds=model_config.ratelimit_interval,
+            max_bucket_size=model_config.ratelimit_bucket,
+        )
+        if model_config
+        else None
+    )
+
+    limiters[id] = limiter
+
+    return limiter
+
+
+def init_llm(
+    # llm_model: str = SETTINGS.default_llms.chat.llm,
+    # llm_ctx_size: int = SETTINGS.default_llms.chat.context_size,
+    # temperature: float = 0.5,
+    # llm_structured: bool = False,
+    # llm_type: BaseLLM = SETTINGS.default_provider.class_model,
+    # llm_ratelimiter: BaseRateLimiter = get_limiter(SETTINGS.default_provider.type, SETTINGS.default_llms.chat.type),
+    provider: ProviderSettings = SETTINGS.default_provider,
+    model: ProviderModelSettings = SETTINGS.default_llms.default,
+    temperature=0.5,
+    debug_mode: bool = DEBUGMODE,
+) -> BaseLLM:
+    print(
+        f"Initializing llm: {model.model=} with {model.context_size=} and {temperature=}..."
+    )
 
     common_kwargs = {
         "verbose": debug_mode,
-        "temperature": llm_temperature,
-        "rate_limiter": llm_ratelimiter,
-        "callback_manager": CallbackManager([StreamingStdOutCallbackHandler()]) if debug_mode else None
+        "temperature": temperature,
+        "rate_limiter": get_limiter(model),
+        "callback_manager": (
+            CallbackManager([StreamingStdOutCallbackHandler()]) if debug_mode else None
+        ),
     }
 
-    if USE_BEDROCK:
-        from lib.load_env import BEDROCK_REGION
-        llm = llm_type(
-            model_id=llm_model,
-            region_name=BEDROCK_REGION,
-            model_kwargs={"temperature": llm_temperature},
-            **common_kwargs
+    if provider.type == "BEDROCK":
+        llm = model.class_model(
+            model_id=model.model,
+            region_name=provider.region,
+            model_kwargs={"temperature": temperature},
+            **common_kwargs,
         )
 
-    if USE_AZURE:
-        from lib.load_env import AZURE_API_VERSION
-        llm = llm_type(
-            azure_deployment=llm_model,
-            api_version=AZURE_API_VERSION,
-            model_kwargs={"response_format": {"type": "json_object"}} if llm_structured else {},
-            **common_kwargs
+    if provider.type == "AZURE":
+        llm = model.class_model(
+            azure_deployment=model.model,
+            api_version=provider.api_version,
+            model_kwargs=(
+                {"response_format": {"type": "json_object"}}
+                if "structured" in model.type
+                else {}
+            ),
+            **common_kwargs,
         )
 
-    if USE_OLLAMA:
-        llm = llm_type(
-            base_url=OLLAMA_URL,
-            model=llm_model,
-            model_kwargs={"response_format": {"type": "json_object"}} if llm_structured else {},
-            num_ctx=llm_ctx_size,
-            num_predict=llm_ctx_size,
+    if provider.type == "AZURE_ML":
+        llm = model.class_model(
+            endpoint_url=model.endpoint,
+            endpoint_api_type=AzureMLEndpointApiType.serverless,
+            endpoint_api_key=model.api_key,
+            content_formatter=CustomOpenAIChatContentFormatter(),
+            model_kwargs={"temperature": temperature},
+            **common_kwargs,
+        )
+
+    if provider.type == "OLLAMA":
+        llm = model.class_model(
+            base_url=model.url,
+            model=model.model,
+            model_kwargs=(
+                {"response_format": {"type": "json_object"}}
+                if "structured" in model.type
+                else {}
+            ),
+            num_ctx=model.context_size,
+            num_predict=model.context_size,
             repeat_penalty=2,
             timeout=10000,
-            **common_kwargs
+            **common_kwargs,
         )
 
-    if USE_GROQ:
-        llm = llm_type(
+    if provider.type == "GROQ":
+        llm = model.class_model(
             streaming=debug_mode,
-            api_key=GROQ_API_KEY,
-            model=llm_model,
-            model_kwargs={"response_format": {"type": "json_object"}} if llm_structured else {},
-            verbose=debug_mode,
+            api_key=model.api_key,
+            model=model.model,
+            model_kwargs=(
+                {"response_format": {"type": "json_object"}}
+                if "structured" in model.type
+                else {}
+            ),
             timeout=10000,
             max_retries=5,
-            **common_kwargs
+            **common_kwargs,
         )
 
     return llm
 
-LLM_CONFIGS = {
-    "instruct": {
-        "temperature": 0.2,
-        "model": INSTRUCT_LLM,
-        "ctx_size": INSTRUCT_CONTEXT_SIZE,
-    },
-    "instruct_detailed_0": {
-        "temperature": 0,
-        "model": INSTRUCT_DETAILED_LLM,
-        "ctx_size": INSTRUCT_DETAILED_CONTEXT_SIZE,
-        "rate_limiter": RATE_LIMITER_DETAILED,
-    },
-    "instruct_detailed_warm": {
-        "temperature": 0.5,
-        "model": INSTRUCT_DETAILED_LLM,
-        "ctx_size": INSTRUCT_DETAILED_CONTEXT_SIZE,
-        "rate_limiter": RATE_LIMITER_DETAILED,
-    },
-    "structured": {
-        "temperature": 0.2,
-        "model": STRUCTURED_LLM,
-        "ctx_size": STRUCTURED_CONTEXT_SIZE,
-    },
-    "structured_0": {
-        "temperature": 0,
-        "model": STRUCTURED_LLM,
-        "ctx_size": STRUCTURED_CONTEXT_SIZE,
-    },
-    "structured_detailed": {
-        "temperature": 0.2,
-        "model": STRUCTURED_DETAILED_LLM,
-        "ctx_size": STRUCTURED_CONTEXT_SIZE,
-        "rate_limiter": RATE_LIMITER_DETAILED,
-    },
-    "structured_detailed_0": {
-        "temperature": 0,
-        "model": STRUCTURED_DETAILED_LLM,
-        "ctx_size": STRUCTURED_CONTEXT_SIZE,
-        "rate_limiter": RATE_LIMITER_DETAILED,
-    },
-    "json": {
-        "temperature": 0,
-        "model": STRUCTURED_LLM,
-        "ctx_size": STRUCTURED_CONTEXT_SIZE,
-        "structured": True,
-    },
-    "json_detailed": {
-        "temperature": 0,
-        "model": STRUCTURED_DETAILED_LLM,
-        "ctx_size": STRUCTURED_CONTEXT_SIZE,
-        "structured": True,
-        "rate_limiter": RATE_LIMITER_DETAILED,
-    },
-}
 
-def get_llm(id) -> BaseLLM:
+# LLM_CONFIGS = {
+#     "instruct": {
+#         "temperature": 0.2,
+#         "model": INSTRUCT_LLM,
+#         "ctx_size": INSTRUCT_CONTEXT_SIZE,
+#     },
+#     "instruct_detailed_0": {
+#         "temperature": 0,
+#         "model": INSTRUCT_DETAILED_LLM,
+#         "ctx_size": INSTRUCT_DETAILED_CONTEXT_SIZE,
+#         "rate_limiter": RATE_LIMITER_DETAILED,
+#     },
+#     "instruct_detailed_warm": {
+#         "temperature": 0.5,
+#         "model": INSTRUCT_DETAILED_LLM,
+#         "ctx_size": INSTRUCT_DETAILED_CONTEXT_SIZE,
+#         "rate_limiter": RATE_LIMITER_DETAILED,
+#     },
+#     "structured": {
+#         "temperature": 0.2,
+#         "model": STRUCTURED_LLM,
+#         "ctx_size": STRUCTURED_CONTEXT_SIZE,
+#     },
+#     "structured_0": {
+#         "temperature": 0,
+#         "model": STRUCTURED_LLM,
+#         "ctx_size": STRUCTURED_CONTEXT_SIZE,
+#     },
+#     "structured_detailed": {
+#         "temperature": 0.2,
+#         "model": STRUCTURED_DETAILED_LLM,
+#         "ctx_size": STRUCTURED_CONTEXT_SIZE,
+#         "rate_limiter": RATE_LIMITER_DETAILED,
+#     },
+#     "structured_detailed_0": {
+#         "temperature": 0,
+#         "model": STRUCTURED_DETAILED_LLM,
+#         "ctx_size": STRUCTURED_CONTEXT_SIZE,
+#         "rate_limiter": RATE_LIMITER_DETAILED,
+#     },
+#     "json": {
+#         "temperature": 0,
+#         "model": STRUCTURED_LLM,
+#         "ctx_size": STRUCTURED_CONTEXT_SIZE,
+#         "structured": True,
+#     },
+#     "json_detailed": {
+#         "temperature": 0,
+#         "model": STRUCTURED_DETAILED_LLM,
+#         "ctx_size": STRUCTURED_CONTEXT_SIZE,
+#         "structured": True,
+#         "rate_limiter": RATE_LIMITER_DETAILED,
+#     },
+# }
+
+temperature_map = {"default": 0.2, "zero": 0, "warm": 0.5}
+
+
+def get_llm(
+    id: str = "default",
+    provider: Literal[
+        "OLLAMA", "GROQ", "BEDROCK", "OPENAI", "ANTHROPIC", "AZURE", "AZURE_ML", None
+    ] = None,
+    temperature: Literal["default", "zero", "warm", None] = None,
+) -> BaseLLM:
     global llms
-    global LLM_CONFIGS
+    global SETTINGS
+
     if id in llms:
         return llms[id]
 
-    if id in LLM_CONFIGS:
-        llms[id] = init_llm(**LLM_CONFIGS[id])
-    if "tester" == id:
-        if USE_AZURE:
-            from langchain_community.chat_models.azureml_endpoint import (
-                AzureMLEndpointApiType,
-                CustomOpenAIChatContentFormatter,
-            )
+    llm_type = id
 
-            tester = TESTER_LLM_MODEL(
-                endpoint_url=TESTER_LLM,
-                endpoint_api_type=AzureMLEndpointApiType.serverless,
-                endpoint_api_key=TESTER_APIKEY,
-                content_formatter=CustomOpenAIChatContentFormatter(),
-                model_kwargs={"temperature": 0.2},
-            )
-            llms[id] = tester
+    if temperature is None:
+        if "_0" in id:
+            temperature = "zero"
+            llm_type.replace("_0", "")
+        elif "_warm" in id:
+            temperature = "warm"
+            llm_type.replace("_warm", "")
         else:
-            llms[id] = get_llm("structured_0")
-    else:
-        llms[id] = init_llm()
+            temperature = "default"
+
+    temperature_value = temperature_map[temperature]
+
+    llm_config = None
+    provider_config = SETTINGS.default_provider
+    if provider is not None:
+        provider_config = (
+            next((config for config in SETTINGS.llms if config.type == provider), None)
+            or provider_config
+        )
+
+    if provider_config is not None:
+        llm_config = (
+            next(
+                (
+                    config
+                    for config in provider_config.models
+                    if config.type == llm_type
+                ),
+                None,
+            )
+            if provider_config
+            else None
+        )
+
+    if llm_config is None:
+        llm_config = (
+            SETTINGS.default_llms.__getattribute__(llm_type)
+            if hasattr(SETTINGS.default_llms, llm_type)
+            else None
+        )
+        if llm_config is None:
+            llm_config = SETTINGS.default_llms.default
+
+    llms[id] = init_llm(
+        provider=provider_config, model=llm_config, temperature=temperature_value
+    )
 
     return llms[id]
+
 
 def init_chain(
     id,
     prompt: PromptFormatter,
     retry_id: str = None,
-    validate_id: str = 'instruct_detailed',
+    validate_id: str = "instruct_detailed",
     check_for_hallucinations=False,
     ChainType: BaseChain = Chain,
 ) -> BaseChain:
+    if retry_id is None:
+        retry_id = "json" if id == "json" else "instruct_detailed"
+
     return ChainType(
         llm=get_llm(id),
-        retry_llm=get_llm(retry_id if retry_id is not None else id if id == "json" else "instruct_detailed"),
+        retry_llm=get_llm(retry_id),
         prompt=prompt,
         validation_llm=get_llm(validate_id) if check_for_hallucinations else None,
     )
+
 
 CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
     "summary": ("instruct_detailed", summary, True),
@@ -270,6 +355,7 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
 
 chains: Dict[str, Union[BaseChain, RunnableSequence]] = {}
 
+
 def get_base_chain(chain) -> Union[BaseChain, RunnableSequence]:
     global chains
     if chain in chains:
@@ -277,13 +363,11 @@ def get_base_chain(chain) -> Union[BaseChain, RunnableSequence]:
 
     if chain in CHAIN_CONFIG:
         llm_id, prompt, check_for_hallucinations = CHAIN_CONFIG[chain]
-        chains[chain] = init_chain(llm_id, prompt, check_for_hallucinations)
+        chains[chain] = init_chain(llm_id, prompt, check_for_hallucinations=check_for_hallucinations)
         return chains[chain]
 
     if "stuff_documents" == chain:
-        base_chain = get_base_chain(
-            "text_formatter_compress"
-        )
+        base_chain = get_base_chain("text_formatter_compress")
 
         chains[chain] = create_stuff_documents_chain(
             base_chain() | drop_thoughts,
@@ -298,28 +382,39 @@ def get_base_chain(chain) -> Union[BaseChain, RunnableSequence]:
 
     raise ValueError(f"Unknown chain: {chain}")
 
-def get_chain(chain, custom_prompt: tuple[str, str] | None = None) -> RunnableSequence:
-    return get_base_chain(chain)(custom_prompt) if isinstance(get_base_chain(chain), BaseChain) else get_base_chain(chain)
 
-def init_embeddings(model:str=EMBEDDING_MODEL) -> Embeddings:
-    if USE_LOCAL_EMBEDDINGS:
+def get_chain(chain, custom_prompt: tuple[str, str] | None = None) -> RunnableSequence:
+    return (
+        get_base_chain(chain)(custom_prompt)
+        if isinstance(get_base_chain(chain), BaseChain)
+        else get_base_chain(chain)
+    )
+
+
+def init_embeddings(
+    embedding_provider: EmbeddingProviderSettings = SETTINGS.default_embedding_provider,
+    embedding_model: EmbeddingModelSettings = SETTINGS.default_embeddings.default,
+) -> Embeddings:
+    if embedding_provider.type == "LOCAL":
         model_kwargs = {"device": "cpu"}
         encode_kwargs = {"normalize_embeddings": True}
-        return HuggingFaceEmbeddings(
-            model_name=model,
+        return embedding_provider.class_model(
+            model_name=embedding_model.model,
             model_kwargs=model_kwargs,
             encode_kwargs=encode_kwargs,
         )
-    elif USE_OLLAMA_EMBEDDINGS:
-        return OllamaEmbeddings(
-            model=model, base_url=OLLAMA_URL
+    elif embedding_provider.type == "OLLAMA":
+        return embedding_provider.class_model(
+            model=embedding_model.model, base_url=embedding_provider.url
         )
-    elif USE_HF_EMBEDDINGS:
-        return HuggingFaceInferenceAPIEmbeddings(
-            api_key=HF_API_KEY, model_name=model
+    elif embedding_provider.type == "HUGGINGFACE":
+        return embedding_provider.class_model(
+            api_key=embedding_provider.api_key, model_name=embedding_model.model
         )
 
-embeddings:Dict[str, Embeddings] = {}
+
+embeddings: Dict[str, Embeddings] = {}
+
 
 def get_embeddings(embedding_id):
     global embeddings

@@ -22,7 +22,7 @@ from lib.db_tools import (
 )
 from lib.document_parse import markdown_to_text
 from lib.document_tools import create_document_lists
-from lib.load_env import INSTRUCT_CHAR_LIMIT
+from lib.load_env import SETTINGS
 from chains.prompts import ActionStructure, JourneyStep, JourneyStepList, JourneyStructure, ResourceStructure
 from lib.streamlit_tools import llm_edit
 
@@ -308,7 +308,7 @@ def llm_gen_journey_doc(list_of_strings = []) -> tuple[str, str]:
 
     reduce = False
 
-    reduce = len(text) > INSTRUCT_CHAR_LIMIT
+    reduce = len(text) > SETTINGS.default_llms.instruct.char_limit
 
     # print(f"{reduce = } ({len(text)})")
 
@@ -333,7 +333,7 @@ def llm_gen_journey_doc(list_of_strings = []) -> tuple[str, str]:
         text = "\n".join(list_of_strings)
         thoughts = "\n".join(list_of_thoughts)
 
-        reduce = len(text) > INSTRUCT_CHAR_LIMIT
+        reduce = len(text) > SETTINGS.default_llms.instruct.char_limit
         if reduce:
             # bar.progress(1 - 1/total, text="Result too long, 2nd pass")
             list_of_docs = create_document_lists(list_of_strings, list_of_thoughts)

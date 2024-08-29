@@ -27,9 +27,7 @@ from lib.db_tools import (
     init_db,
 )
 
-from lib.load_env import (
-    CLIENT_HOST,
-)
+from lib.load_env import SETTINGS
 
 from chains.prompts import ActionStructure, JourneyStructure
 
@@ -664,7 +662,7 @@ def main():
         col2.subheader(f"&nbsp;{journey_name}", divider=True)
         col3.link_button(
             ":paperclip:&nbsp;&nbsp;Link",
-            f"{CLIENT_HOST}?journey={journey_name}",
+            f"{SETTINGS.client_host}?journey={journey_name}",
             use_container_width=True,
         )
 

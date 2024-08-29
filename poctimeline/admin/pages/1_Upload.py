@@ -23,7 +23,7 @@ from lib.db_tools import (
 
 from lib.document_parse import load_pymupdf, markdown_to_text
 from lib.document_tools import create_document_lists, split_markdown, split_text
-from lib.load_env import EMBEDDING_CHAR_LIMIT, EMBEDDING_OVERLAP, INSTRUCT_CHAR_LIMIT
+from lib.load_env import SETTINGS
 from lib.streamlit_tools import check_auth, get_all_categories, llm_edit
 
 st.set_page_config(
@@ -114,7 +114,7 @@ def process_file_contents(
 
         split_texts = []
         for text in texts:
-            if len(text) > INSTRUCT_CHAR_LIMIT:
+            if len(text) > SETTINGS.default_llms.instruct.char_limit:
                 st.write("Splitting to fit context...")
                 split_texts = split_texts + split_text(text)
             else:
@@ -194,7 +194,7 @@ def process_file_data(filename, category):
             shorter_thoughts = None
             summary_texts = texts
             if formatted_text is not None and formatted_text != "":
-                summary_texts = split_text(formatted_text, INSTRUCT_CHAR_LIMIT, 128)
+                summary_texts = split_text(formatted_text, SETTINGS.default_llms.instruct.char_limit, 128)
 
             if summary_texts is not None:
                 # split_texts = split_text("\n".join(texts), CHAR_LIMIT)
@@ -239,9 +239,9 @@ def process_file_data(filename, category):
         rag_documents = []
         with st.spinner("Creating RAG"):
             if texts is not None and filetype != "md":
-                rag_split = split_text("\n".join(texts), EMBEDDING_CHAR_LIMIT, EMBEDDING_OVERLAP)
+                rag_split = split_text("\n".join(texts), SETTINGS.default_embeddings.default.char_limit, SETTINGS.default_embeddings.default.overlap)
             elif filetype == "md":
-                rag_split = split_text(markdown_to_text("\n".join(texts)), EMBEDDING_CHAR_LIMIT, EMBEDDING_OVERLAP)
+                rag_split = split_text(markdown_to_text("\n".join(texts)), SETTINGS.default_embeddings.default.char_limit, SETTINGS.default_embeddings.default.overlap)
 
             rag_ids = [filename + "_" + str(i) for i in range(len(rag_split))]
             rag_metadatas = [
@@ -255,8 +255,8 @@ def process_file_data(filename, category):
             ]
 
             if formatted_text is not None and formatted_text:
-                if len(formatted_text) > EMBEDDING_CHAR_LIMIT:
-                    formatted_split = split_text(formatted_text, EMBEDDING_CHAR_LIMIT, EMBEDDING_OVERLAP)
+                if len(formatted_text) > SETTINGS.default_embeddings.default.char_limit:
+                    formatted_split = split_text(formatted_text, SETTINGS.default_embeddings.default.char_limit, SETTINGS.default_embeddings.default.overlap)
                 else:
                     formatted_split = [formatted_text]
 

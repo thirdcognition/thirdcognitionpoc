@@ -10,7 +10,7 @@ from langchain_text_splitters import (
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain.schema.document import Document
 
-from lib.load_env import EMBEDDING_CHAR_LIMIT, INSTRUCT_CHAR_LIMIT
+from lib.load_env import SETTINGS
 from chains.init import  get_embeddings
 
 @cache
@@ -22,7 +22,7 @@ def get_text_splitter(chunk_size, chunk_overlap):
         chunk_size=chunk_size, chunk_overlap=chunk_overlap
     )
 
-def split_text(text, split=INSTRUCT_CHAR_LIMIT, overlap=100):
+def split_text(text, split=SETTINGS.default_llms.instruct.char_limit, overlap=100):
     text_len = len(text)
     split = text_len // (text_len / split)
     if (text_len - split) > overlap:
@@ -32,7 +32,7 @@ def split_text(text, split=INSTRUCT_CHAR_LIMIT, overlap=100):
         return [text]
 
 
-def join_documents(texts, split=INSTRUCT_CHAR_LIMIT):
+def join_documents(texts, split=SETTINGS.default_llms.instruct.char_limit):
     joins = []
     text_join = ""
 
@@ -67,9 +67,9 @@ def join_documents(texts, split=INSTRUCT_CHAR_LIMIT):
     return joins
 
 
-def semantic_splitter(text, split=INSTRUCT_CHAR_LIMIT, progress_cb=None):
+def semantic_splitter(text, split=SETTINGS.default_llms.instruct.char_limit, progress_cb=None):
     if len(text) > 1000:
-        less_text = split_text(text, EMBEDDING_CHAR_LIMIT, 0)
+        less_text = split_text(text, SETTINGS.default_embeddings.default.char_limit, 0)
     else:
         less_text = [text]
 
@@ -86,7 +86,7 @@ def semantic_splitter(text, split=INSTRUCT_CHAR_LIMIT, progress_cb=None):
     return join_documents(texts, split)
 
 
-def split_markdown(text, split=INSTRUCT_CHAR_LIMIT):
+def split_markdown(text, split=SETTINGS.default_llms.instruct.char_limit):
     headers_to_split_on = [
         ("#", "Header 1"),
         ("##", "Header 2"),

@@ -11,7 +11,7 @@ from chromadb.utils.embedding_functions import create_langchain_embedding
 from chromadb.config import Settings as ChromaSettings
 import streamlit as st
 from chains.init import get_embeddings
-from lib.load_env import CHROMA_PATH, FILE_TABLENAME, JOURNEY_TABLENAME, SQLITE_DB
+from lib.load_env import SETTINGS
 from chains.prompts import (
     JourneyStructure,
     journey_steps,
@@ -96,7 +96,7 @@ class JourneyModel(BaseModel):
 
 # Define a new class for FileDataTable with filename as primary key
 class FileDataTable(Base):
-    __tablename__ = FILE_TABLENAME
+    __tablename__ = SETTINGS.file_tablename
 
     # id = Column(Integer, primary_key=True)
     filename = sqla.Column(sqla.String, primary_key=True)
@@ -115,7 +115,7 @@ class FileDataTable(Base):
 
 # Define a new class for JourneyDataTable with list_name as primary key
 class JourneyDataTable(Base):
-    __tablename__ = JOURNEY_TABLENAME
+    __tablename__ = SETTINGS.journey_tablename
 
     # id = Column(Integer, primary_key=True)
     journeyname = sqla.Column(sqla.String, primary_key=True)
@@ -135,7 +135,7 @@ database_session = None
 def init_db():
     global database_session
     if database_session is None:
-        engine = sqla.create_engine("sqlite:///{}".format(SQLITE_DB))
+        engine = sqla.create_engine("sqlite:///{}".format(SETTINGS.sqlite_db))
         Base.metadata.create_all(engine)
         DatabaseSession = sessionmaker(bind=engine)
         database_session = DatabaseSession()
@@ -201,7 +201,7 @@ collections = {}
 
 
 def get_chroma_collection(
-    name, update=False, path=CHROMA_PATH, embedding_id=None
+    name, update=False, path=SETTINGS.chroma_path, embedding_id=None
 ) -> chromadb.Collection:
     global collections
 
@@ -231,7 +231,7 @@ vectorstores = {}
 
 
 def get_vectorstore(
-    id, embedding_id="base", update_vectorstores=False, path=CHROMA_PATH
+    id, embedding_id="base", update_vectorstores=False, path=SETTINGS.chroma_path
 ) -> Chroma:
     global chroma_client
     chroma_client = chroma_client or chromadb.PersistentClient(path=path, settings=ChromaSettings(anonymized_telemetry=False))

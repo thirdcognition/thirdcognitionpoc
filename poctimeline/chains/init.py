@@ -124,7 +124,7 @@ def init_llm(
         ),
     }
 
-    if provider.type == "BEDROCK":
+    if model.provider == "BEDROCK":
         llm = model.class_model(
             model_id=model.model,
             region_name=provider.region,
@@ -132,7 +132,7 @@ def init_llm(
             **common_kwargs,
         )
 
-    if provider.type == "AZURE":
+    if model.provider == "AZURE":
         llm = model.class_model(
             azure_deployment=model.model,
             api_version=provider.api_version,
@@ -144,7 +144,7 @@ def init_llm(
             **common_kwargs,
         )
 
-    if provider.type == "AZURE_ML":
+    if model.provider == "AZURE_ML":
         llm = model.class_model(
             endpoint_url=model.endpoint,
             endpoint_api_type=AzureMLEndpointApiType.serverless,
@@ -154,7 +154,7 @@ def init_llm(
             **common_kwargs,
         )
 
-    if provider.type == "OLLAMA":
+    if model.provider == "OLLAMA":
         llm = model.class_model(
             base_url=model.url,
             model=model.model,
@@ -170,7 +170,7 @@ def init_llm(
             **common_kwargs,
         )
 
-    if provider.type == "GROQ":
+    if model.provider == "GROQ":
         llm = model.class_model(
             streaming=debug_mode,
             api_key=model.api_key,

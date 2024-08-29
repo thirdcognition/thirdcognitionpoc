@@ -14,6 +14,8 @@ DEBUGMODE = os.getenv("LLM_DEBUG", "True") == "True" or False
 
 LANGCHAIN_TRACING_V2 = os.getenv("LANGCHAIN_TRACING_V2", "False") == "True" or False
 LANGCHAIN_API_KEY = os.getenv("LANGCHAIN_API_KEY", "")
+LANGCHAIN_PROJECT = os.getenv("LANGCHAIN_PROJECT", "")
+LANGCHAIN_ENDPOINT = os.getenv("LANGCHAIN_ENDPOINT", "")
 
 set_debug(DEBUGMODE)
 set_verbose(DEBUGMODE)
@@ -28,7 +30,7 @@ from langchain_community.chat_models.azureml_endpoint import AzureMLChatOnlineEn
 
 LLM_PROVIDERS = os.getenv("LLM_PROVIDERS", "OLLAMA").upper().split(",")
 
-LLM_MODEL_MAP:dict[str, BaseLLM] = {
+LLM_MODEL_MAP: dict[str, BaseLLM] = {
     "OLLAMA": ChatOllama,
     "GROQ": ChatGroq,
     "BEDROCK": ChatBedrock,
@@ -45,7 +47,8 @@ from langchain_huggingface import (
 )
 from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
 from langchain_community.embeddings.ollama import OllamaEmbeddings
-EMBEDDING_MODEL_MAP:dict[str, Embeddings] = {
+
+EMBEDDING_MODEL_MAP: dict[str, Embeddings] = {
     "LOCAL": HuggingFaceEmbeddings,
     "OLLAMA": OllamaEmbeddings,
     "HUGGINGFACE": HuggingFaceInferenceAPIEmbeddings,
@@ -64,6 +67,7 @@ LLM_MODELS = [
 
 from pydantic import BaseModel
 from typing import Any, Literal, Optional, List, Union
+
 
 class ProviderModelSettings(BaseModel):
     type: Literal[
@@ -87,15 +91,17 @@ class ProviderModelSettings(BaseModel):
     ratelimit_interval: Optional[float] = None
     ratelimit_bucket: Optional[float] = None
 
+
 class ModelDefaults(BaseModel):
     default: Optional[ProviderModelSettings] = None
     chat: Optional[ProviderModelSettings] = None
-    instruct:Optional[ProviderModelSettings] = None
-    instruct_detailed:Optional[ProviderModelSettings] = None
-    structured:Optional[ProviderModelSettings] = None
-    structured_detailed:Optional[ProviderModelSettings] = None
-    tool:Optional[ProviderModelSettings] = None
-    tester:Optional[ProviderModelSettings] = None
+    instruct: Optional[ProviderModelSettings] = None
+    instruct_detailed: Optional[ProviderModelSettings] = None
+    structured: Optional[ProviderModelSettings] = None
+    structured_detailed: Optional[ProviderModelSettings] = None
+    tool: Optional[ProviderModelSettings] = None
+    tester: Optional[ProviderModelSettings] = None
+
 
 class ProviderSettings(BaseModel):
     type: Literal[
@@ -119,15 +125,19 @@ class EmbeddingModelSettings(BaseModel):
     char_limit: Optional[int] = None
     overlap: Optional[int] = None
 
+
 class EmbeddingDefaults(BaseModel):
     default: Optional[EmbeddingModelSettings] = None
     large: Optional[EmbeddingModelSettings] = None
     medium: Optional[EmbeddingModelSettings] = None
     small: Optional[EmbeddingModelSettings] = None
 
+
 class EmbeddingProviderSettings(BaseModel):
     type: Literal["LOCAL", "HUGGINGFACE", "OPENAI", "OLLAMA", "BEDROCK", "AZURE"]
-    class_model: Any = None #Union[HuggingFaceEmbeddings, OllamaEmbeddings, HuggingFaceInferenceAPIEmbeddings, None] = None
+    class_model: Any = (
+        None  # Union[HuggingFaceEmbeddings, OllamaEmbeddings, HuggingFaceInferenceAPIEmbeddings, None] = None
+    )
     url: Optional[str] = None
     api_key: Optional[str] = None
     region: Optional[str] = None
@@ -188,26 +198,39 @@ for provider in LLM_PROVIDERS:
         provider_settings.api_base = os.getenv("AZURE_OPENAI_ENDPOINT", "")
         provider_settings.api_version = os.getenv("AZURE_OPENAI_API_VERSION", "")
     elif provider == "AZURE_ML":
-        provider_settings.api_key = os.getenv("AZURE_ML_APIKEY", "")
+        provider_settings.api_key = os.getenv("AZUREML_APIKEY", "")
 
     for type in LLM_MODELS:
         type_model = os.getenv(f"{provider}_{type.upper()}_MODEL", "")
-        if type_model != "":
+        endpoint = os.getenv(f"{provider}_{type.upper()}_ENDPOINT", None)
+        if type_model != "" or endpoint is not None:
             type_settings = ProviderModelSettings(
                 type=type,
                 provider=provider,
                 url=os.getenv(f"{provider}_{type}_URL", provider_settings.url),
                 model=type_model,
-                class_model=LLM_MODEL_MAP.get(f"{provider}_{type}", provider_settings.class_model),
-                context_size=int(os.getenv(f"{provider}_{type.upper()}_CTX_SIZE", 8192)),
-                char_limit=int(os.getenv(f"{provider}_{type.upper()}_CHAR_LIMIT", 12000)),
-                api_key=os.getenv(
-                    f"{provider}_{type}_API_KEY", provider_settings.api_key
+                class_model=LLM_MODEL_MAP.get(
+                    f"{provider}_{type}", provider_settings.class_model
                 ),
-                endpoint=os.getenv(f"{provider}_{type}_ENDPOINT", None),
-                ratelimit_per_sec=float(os.getenv(f"{provider}_{type.upper()}_PER_SEC", 2)),
-                ratelimit_interval=float(os.getenv(f"{provider}_{type.upper()}_INTERVAL", 0.5)),
-                ratelimit_bucket=float(os.getenv(f"{provider}_{type.upper()}_BUCKET", 1)),
+                context_size=int(
+                    os.getenv(f"{provider}_{type.upper()}_CTX_SIZE", 8192)
+                ),
+                char_limit=int(
+                    os.getenv(f"{provider}_{type.upper()}_CHAR_LIMIT", 12000)
+                ),
+                api_key=os.getenv(
+                    f"{provider}_{type.upper()}_API_KEY", provider_settings.api_key
+                ),
+                endpoint=endpoint,
+                ratelimit_per_sec=float(
+                    os.getenv(f"{provider}_{type.upper()}_PER_SEC", 2)
+                ),
+                ratelimit_interval=float(
+                    os.getenv(f"{provider}_{type.upper()}_INTERVAL", 0.5)
+                ),
+                ratelimit_bucket=float(
+                    os.getenv(f"{provider}_{type.upper()}_BUCKET", 1)
+                ),
             )
             if SETTINGS.default_llms.__getattribute__("default") is None:
                 SETTINGS.default_llms.default = type_settings
@@ -225,7 +248,9 @@ EMBEDDING_MODEL_TYPES = ["large", "medium", "small"]
 
 SETTINGS.default_embeddings = EmbeddingDefaults()
 for provider in EMBEDDING_PROVIDERS:
-    provider_settings = EmbeddingProviderSettings(type=provider, class_model=EMBEDDING_MODEL_MAP.get(provider))
+    provider_settings = EmbeddingProviderSettings(
+        type=provider, class_model=EMBEDDING_MODEL_MAP.get(provider)
+    )
 
     if provider == "OLLAMA":
         provider_settings.url = os.getenv(f"{provider}_EMBEDDING_URL", "")
@@ -249,9 +274,13 @@ for provider in EMBEDDING_PROVIDERS:
                 type=model_type,
                 model=model,
                 char_limit=int(
-                    os.getenv(f"{provider}_EMBEDDING_{model_type.upper()}_CHAR_LIMIT", 1000)
+                    os.getenv(
+                        f"{provider}_EMBEDDING_{model_type.upper()}_CHAR_LIMIT", 1000
+                    )
                 ),
-                overlap=int(os.getenv(f"{provider}_EMBEDDING_{model_type.upper()}_OVERLAP", 100)),
+                overlap=int(
+                    os.getenv(f"{provider}_EMBEDDING_{model_type.upper()}_OVERLAP", 100)
+                ),
             )
             if SETTINGS.default_embeddings.__getattribute__("default") is None:
                 SETTINGS.default_embeddings.default = model_settings

@@ -14,6 +14,7 @@ from langchain_core.runnables import (
     RunnablePassthrough,
     RunnableLambda,
 )
+from pydantic import BaseModel
 from chains.base import BaseChain
 from chains.prompts import PromptFormatter
 from lib.helpers import print_params
@@ -74,6 +75,23 @@ error_retry = PromptFormatter(
     ),
 )
 
+def get_text_from_completion(completion):
+    completion_content = repr(completion)
+    if isinstance(completion, BaseModel):
+        completion_content = completion.model_dump_json()
+    elif isinstance(completion, BaseMessage):
+        completion_content = completion.content.strip()
+    elif isinstance(completion, tuple) and len(completion) == 2:
+        if isinstance(completion[0], bool):
+            completion_content = completion[1].strip()
+        else:
+            completion_content = f"[thinking_start] {completion[0].strip()} [thinking_end] {completion[1].strip()}"
+    elif isinstance(completion, tuple):
+        completion_content = completion[1].strip()
+    elif isinstance(completion, str):
+        completion_content = completion.strip()
+
+    return completion_content
 
 class BaseParserChain(BaseChain):
     def __init__(
@@ -130,20 +148,12 @@ class BaseParserChain(BaseChain):
 
         def rerun_parser(x):
             print_params("Rerun format parser", x)
-            x["completion"] = (
-                x["completion"].content.strip()
-                if isinstance(x["completion"], BaseMessage)
-                else x["completion"].strip()
-            )
+            x["completion"] = get_text_from_completion(x["completion"])
             return retry_parser.parse_with_prompt(x["completion"], x["prompt_value"])
 
         async def arerun_parser(x):
             print_params("Rerun format parser", x)
-            x["completion"] = (
-                x["completion"].content.strip()
-                if isinstance(x["completion"], BaseMessage)
-                else x["completion"].strip()
-            )
+            x["completion"] = get_text_from_completion(x["completion"])
             return await retry_parser.aparse_with_prompt(
                 x["completion"], x["prompt_value"]
             )

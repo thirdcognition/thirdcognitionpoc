@@ -20,6 +20,7 @@ from chains.init import get_chain, get_llm
 from chains.prompts import PromptFormatter, question
 from lib.helpers import get_chain_with_history, print_params
 
+compressor = None
 def rerank_documents(list_of_documents: list[Document], query: str, amount=5):
     global compressor
 
@@ -171,7 +172,7 @@ class RagChatChain(RagChain):
 
 rag_chains = {}
 
-def get_rag_chain(store_ids:List[str], embedding_id="hyde", reset=False, amount_of_documents=5, chat=True) -> RunnableSequence:
+def get_rag_chain(store_ids:List[str], embedding_id="hyde", reset=False, amount_of_documents=5, chat=False) -> RunnableSequence:
     global rag_chains
 
     chain_type = "chat" if chat else "search"

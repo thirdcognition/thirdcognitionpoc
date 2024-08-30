@@ -80,7 +80,7 @@ def llm_edit(chain, texts, guidance=None, force=False) -> tuple[str, str]:
     if total > 1:
         inputs = []
         for sub_text in texts:
-            bar.progress(i / total, "Processing...")
+            bar.progress(i / total, f"Processing {i+1} / {total}...")
             i += 1
             _text = re.sub(r"[pP]age [0-9]+:", "", sub_text)
             _text = re.sub(r"[iI]mage [0-9]+:", "", _text)
@@ -95,11 +95,14 @@ def llm_edit(chain, texts, guidance=None, force=False) -> tuple[str, str]:
 
             result = get_chain(chain + guided_llm).invoke(input)
 
+            if isinstance(result, tuple) and len(result) == 1:
+                result = result[0]
+
+            mid_thoughts = ''
             if isinstance(result, tuple) and len(result) == 2:
                 mid_results, mid_thoughts = result
             else:
                 mid_results = result
-                mid_thoughts = ''
 
             mid_results = mid_results.content if isinstance(mid_results, BaseMessage) else mid_results
 
@@ -111,7 +114,7 @@ def llm_edit(chain, texts, guidance=None, force=False) -> tuple[str, str]:
         _text = re.sub(r"[iI]mage [0-9]+", "", _text)
         text = _text
 
-    bar.progress((total - 1) / total, text="Processing...")
+    bar.progress((total - 1) / total, text="Summarizing...")
 
     if chain == "summary":
         text = markdown_to_text(text)
@@ -125,18 +128,21 @@ def llm_edit(chain, texts, guidance=None, force=False) -> tuple[str, str]:
             input["question"] = guidance
 
         result = get_chain(chain + guided_llm).invoke(input)
+        thoughts = ''
+
+        if isinstance(result, tuple) and len(result) == 1:
+            result = result[0]
 
         if isinstance(result, tuple) and len(result) == 2:
             text, thoughts = result
         else:
             text = result
-            thoughts = ''
 
         text = text.content if isinstance(text, BaseMessage) else text
 
     bar.empty()
 
-    return text, thoughts
+    return text.strip(), thoughts.strip()
 
 def nav_to(url):
     nav_script = """

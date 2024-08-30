@@ -9,7 +9,7 @@ from langchain_core.runnables.base import RunnableSequence
 from langchain_core.messages import BaseMessage, AIMessage
 
 from chains.init import get_base_chain, get_chain
-from chains.rag_chain import get_rag_search
+from chains.rag_chain import get_rag_chain
 from lib.db_tools import (
     CustomPrompt,
     JourneyDataTable,
@@ -40,6 +40,8 @@ def save_journey(journey_name, journey:JourneyModel) -> bool:
     if journey_db is not None:
         print("Remove old Journey")
         database_session.delete(journey_db)
+
+
 
     print("Create journey")
     journey_db = JourneyDataTable(
@@ -102,7 +104,7 @@ def llm_gen_title_summary(steps: List[Union[StepModel, SubjectModel]]) -> tuple[
     return title.strip(), summary.strip()
 
 def llm_gen_steps(content, journey:JourneyModel, subject:SubjectModel) -> JourneyStepList:
-    return get_chain("journey_steps")((subject.prompts.steps.system, subject.prompts.steps.user)).invoke(
+    return get_base_chain("journey_steps")((subject.prompts.steps.system, subject.prompts.steps.user)).invoke(
         {
             "context": content,
             "amount": subject.step_amount,
@@ -128,7 +130,7 @@ def llm_gen_step(content, journey:JourneyModel, subject:SubjectModel, step:Union
 
     if progress_cb is not None:
         progress_cb(0, "Generating subsection `"+step.title+"` content - ")
-    doc_chain = get_rag_search(journey.chroma_collection[0], "hyde_document", amount_of_documents=10)
+    doc_chain = get_rag_chain(journey.chroma_collection, "hyde_document", amount_of_documents=10)
     retry_lambda = lambda: get_base_chain("journey_step_details")((subject.prompts.step_detail.system, subject.prompts.step_detail.user)).invoke(
             {
                 "context": doc_chain.invoke({"question": subject_string, "context": content})["answer"],
@@ -205,7 +207,9 @@ def llm_gen_step(content, journey:JourneyModel, subject:SubjectModel, step:Union
     if progress_cb is not None:
         progress_cb(0.3, "Generating subsection `"+step.title+"` structured format - ")
 
+    print("Start json step gen")
     json_step = llm_gen_json_step(gen_step)
+    print(f"{json_step=}")
 
     gen_step = llm_gen_update_actions(journey, subject, gen_step, json_step, generate_resources=generate_action_resources, progress_cb=progress_cb, progress_start=0.4, progress_end=1)
 
@@ -227,7 +231,7 @@ def get_action_details_str(index:int, action:ActionStructure) -> str:
         """)
 
 def llm_gen_json_step(step: StepModel, instructions="") -> Union[SubjectStructure, None]:
-    retry_lambda = lambda: get_chain("journey_structured").invoke({
+    structured = get_chain("journey_structured").invoke({
         "context": f"""
             Title:
             {step.title}
@@ -242,14 +246,6 @@ def llm_gen_json_step(step: StepModel, instructions="") -> Union[SubjectStructur
             {instructions}
         """ if instructions else ""),
     })
-    structured: SubjectStructure = None
-    try:
-        structured = retry_lambda()
-    except Exception as e:
-        try:
-            structured = retry_lambda()
-        except Exception as e:
-            print(e)
 
     return structured
 
@@ -281,7 +277,7 @@ def llm_gen_update_actions(journey:JourneyModel, subject: SubjectModel, gen_step
 
 def llm_gen_resource(journey:JourneyModel, subject: SubjectModel, step:StepModel, action:ActionStructure, resource:ResourceStructure) -> str:
     resource_text = f"{resource.title} (from: {resource.reference}) - {resource.summary.replace('\n', '')} for {action.title} in {step.title} of {subject.title} in {journey.title}"
-    doc_chain = get_rag_search(journey.chroma_collection[0], "hyde_document", amount_of_documents=5)
+    doc_chain = get_rag_chain(journey.chroma_collection, "hyde_document", amount_of_documents=5)
 
     class_action_details = get_base_chain("journey_step_action_details")((subject.prompts.step_action_details.system, subject.prompts.step_action_details.user)).invoke(
         {

@@ -177,15 +177,17 @@ def process_file_data(filename, category):
             elif filetype == "md":
                 if len(texts) > 1 or len(texts[0]) > 1000:
                     formatted_text, format_thoughts = llm_edit(
-                        "text_formatter", [markdown_to_text("\n".join(texts))]
+                        "text_formatter_compress", split_text(markdown_to_text("\n".join(texts)))
                     )
                 else:
                     formatted_text = None
-            st.write("### Formatted text:")
-            if format_thoughts is not None and format_thoughts != "":
-                st.write("#### Thoughts")
-                st.caption(format_thoughts)
-            st.write(formatted_text)
+            with st.container(height=400):
+                st.write("### Formatted text:")
+                if format_thoughts is not None and format_thoughts != "":
+                    print(f"{format_thoughts=}")
+                    st.write("#### Thoughts")
+                    st.caption(format_thoughts)
+                st.write(formatted_text)
 
         st.success("Rewrite complete")
 
@@ -227,11 +229,12 @@ def process_file_data(filename, category):
 
         st.success("Summary complete")
 
-        st.write(f"### Summary")
-        if shorter_thoughts is not None and shorter_thoughts != "":
-            st.write("#### Thoughts")
-            st.caption(shorter_thoughts)
-        st.write(summary_text)
+        with st.container(height=400):
+            st.write(f"### Summary")
+            if shorter_thoughts is not None and shorter_thoughts != "":
+                st.write("#### Thoughts")
+                st.caption(shorter_thoughts)
+            st.write(summary_text)
 
         rag_split = []
         rag_ids = []

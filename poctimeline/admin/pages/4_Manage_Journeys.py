@@ -641,7 +641,7 @@ def main():
     if "edit_mode" not in st.session_state or len(st.session_state.edit_mode) == 0:
         st.session_state.edit_mode = [False for _ in db_journey.keys()]
     for journey_index, journey_name in enumerate(db_journey.keys()):
-        # st.write(db_journey[journey_name])
+
         journey: JourneyModel = db_journey[journey_name]
         col_edit, col_delete, col2, col3 = st.columns(
             [2, 2, 12, 3], vertical_alignment="center"

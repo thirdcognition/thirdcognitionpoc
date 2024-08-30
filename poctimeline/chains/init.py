@@ -179,7 +179,6 @@ def get_llm(
         return llms[id]
 
     llm_type = id
-
     if temperature is None:
         if "_0" in id:
             temperature = "zero"
@@ -194,6 +193,7 @@ def get_llm(
 
     llm_config = None
     provider_config = SETTINGS.default_provider
+
     if provider is not None:
         provider_config = (
             next((config for config in SETTINGS.llms if config.type == provider), None)
@@ -215,12 +215,9 @@ def get_llm(
         )
 
     if llm_config is None:
-        llm_config = (
-            SETTINGS.default_llms.__getattribute__(llm_type)
-            if hasattr(SETTINGS.default_llms, llm_type)
-            else None
-        )
-        if llm_config is None:
+        if hasattr(SETTINGS.default_llms, llm_type):
+            llm_config = SETTINGS.default_llms.__getattribute__(llm_type)
+        else:
             llm_config = SETTINGS.default_llms.default
 
     llms[id] = init_llm(
@@ -239,7 +236,7 @@ def init_chain(
     ChainType: BaseChain = Chain,
 ) -> BaseChain:
     if retry_id is None:
-        retry_id = "json" if id == "json" else "instruct_detailed"
+        retry_id = id if "structured" in id else "instruct_detailed"
 
     return ChainType(
         llm=get_llm(id),
@@ -253,15 +250,15 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
     "summary": ("instruct_detailed", summary, True),
     "summary_guided": ("instruct_detailed", summary_guided, True),
     "action": ("instruct_0", action, False),
-    "grader": ("json", grader, False),
+    "grader": ("structured", grader, False),
     "check": ("instruct_0", check, False),
     "text_formatter": ("instruct_detailed", text_formatter, True),
     "text_formatter_compress": ("instruct_detailed", text_formatter_compress, True),
     "text_formatter_guided_0": ("instruct_detailed", text_formatter_guided, True),
     "md_formatter": ("instruct_detailed", md_formatter, True),
     "md_formatter_guided": ("instruct_detailed_0", md_formatter_guided, True),
-    "journey_structured": ("json", journey_structured, False),
-    "journey_steps": ("json_detailed", journey_steps, True),
+    "journey_structured": ("structured", journey_structured, False),
+    "journey_steps": ("structured_detailed", journey_steps, True),
     "journey_step_details": ("instruct_detailed_warm", journey_step_details, True),
     "journey_step_intro": ("instruct_warm", journey_step_intro, True),
     "journey_step_actions": ("instruct_detailed", journey_step_actions, True),
@@ -282,7 +279,9 @@ def get_base_chain(chain) -> Union[BaseChain, RunnableSequence]:
 
     if chain in CHAIN_CONFIG:
         llm_id, prompt, check_for_hallucinations = CHAIN_CONFIG[chain]
-        chains[chain] = init_chain(llm_id, prompt, check_for_hallucinations=check_for_hallucinations)
+        chains[chain] = init_chain(
+            llm_id, prompt, check_for_hallucinations=check_for_hallucinations
+        )
         return chains[chain]
 
     if "stuff_documents" == chain:
@@ -293,11 +292,13 @@ def get_base_chain(chain) -> Union[BaseChain, RunnableSequence]:
             base_chain.prompt.get_chat_prompt_template(),
             output_parser=base_chain.prompt.parser,
         )
+        return chains[chain]
 
     if "summary_documents" == chain:
         chains[chain] = (
             get_chain("stuff_documents") | drop_thoughts | get_chain("summary")
         )
+        return chains[chain]
 
     raise ValueError(f"Unknown chain: {chain}")
 

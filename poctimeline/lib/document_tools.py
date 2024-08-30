@@ -1,4 +1,5 @@
 from functools import cache
+import sys
 from typing import Dict, List
 # from langchain_chroma import Chroma
 from langchain_text_splitters import (
@@ -56,7 +57,7 @@ def join_documents(texts, split=SETTINGS.default_llms.instruct.char_limit):
         else:
             _text = text.page_content
 
-        if len(text_join) > 100 and (len(text_join) + len(_text)) > chunk_length:
+        if len(_text) > 100 and (len(text_join) + len(_text)) > chunk_length and len(text_join) > 100:
             joins.append(text_join)
             text_join = _text
         else:
@@ -99,7 +100,13 @@ def split_markdown(text, split=SETTINGS.default_llms.instruct.char_limit):
         headers_to_split_on=headers_to_split_on, strip_headers=False
     )
 
-    texts = markdown_splitter.split_text(text)
+    md_texts = markdown_splitter.split_text(text)
+    texts = [text for md_text in md_texts for text in split_text(md_text.page_content, split)]
+    # avg_len = sum(len(text) for text in texts) / len(texts)
+    # min_len = min(len(text) for text in texts)
+    # max_len = max(len(text) for text in texts)
+
+    # print(f"Average length of each string in texts: {avg_len}, Min length: {min_len}, Max length: {max_len}, Total amount of strings: {len(texts)}")
 
     return join_documents(texts, split)
 

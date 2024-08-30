@@ -255,7 +255,7 @@ for provider in EMBEDDING_PROVIDERS:
     if provider == "OLLAMA":
         provider_settings.url = os.getenv(f"{provider}_EMBEDDING_URL", "")
     if provider == "HUGGINGFACE":
-        provider_settings.api_key = os.getenv(f"{provider}_EMBEDDDING_API_KEY", "")
+        provider_settings.api_key = os.getenv(f"{provider}_EMBEDDING_API_KEY", "")
     # if provider == "OPENAI":
     #     provider_settings.api_key = os.getenv(f"{provider}_API_KEY", "")
     # elif provider == "BEDROCK":
@@ -310,4 +310,3 @@ for embedding_provider_settings in SETTINGS.embeddings:
 print(f"+++ DEFAULTS +++")
 print(f"\tLLM: {SETTINGS.default_provider.type} {SETTINGS.default_llms.default.model}")
 print(f"\tEMBEDDING: {SETTINGS.default_embedding_provider.type} {SETTINGS.default_embeddings.default.model}")
-# print(f"\tMODEL: {SETTINGS.default_llms.instruct=}")

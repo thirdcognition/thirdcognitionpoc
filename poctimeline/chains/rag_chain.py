@@ -56,14 +56,24 @@ def rerank_rag(params: Dict):
 
     return new_content
 
+def extract_documents(params) -> list:
+    if isinstance(params, list):
+        return params
+    elif "documents" in params.keys():
+        return params["documents"]
+    elif isinstance(params["context"], list):
+        return params["context"]
+    elif "context" in params.keys() and "documents" in params["context"].keys():
+        return params["context"]["documents"]
+    else:
+        return []
 
 def set_metadata(params):
     print_params("metadata", params)
-    return params["documents"] if "documents" in params.keys() else params["context"]["documents"] if "documents" in params["context"].keys() else []
-
+    return extract_documents(params)
 
 def store_documents(params):
-    if isinstance(params, List) and len(params) > 0 and isinstance(params[0], Document):
+    if isinstance(params, List):
         return {"documents": params}
 
     return params
@@ -77,6 +87,8 @@ def remove_duplicates(documents: Dict[Any, Document]) -> List[str]:
         return list(set(documents.values()))
 
     return documents
+
+
 
 class RagChain(BaseChain):
     def __init__(self, retrievers: List[BaseRetriever], prompt:PromptFormatter=question, **kwargs):
@@ -128,7 +140,7 @@ class RagChain(BaseChain):
             )
             | RunnableParallel({
                 "answer": self.chain,
-                "documents": RunnableLambda(lambda x: x["documents"] if "documents" in x.keys() else x["context"]["documents"] if "documents" in x["context"].keys() else []),
+                "documents": RunnableLambda(extract_documents),
                 "question": RunnableLambda(lambda x: x["question"]),
                 "metadata": RunnableLambda(set_metadata)
             })

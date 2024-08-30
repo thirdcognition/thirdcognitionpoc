@@ -13,7 +13,7 @@ import streamlit as st
 from chains.init import get_embeddings
 from lib.load_env import SETTINGS
 from chains.prompts import (
-    JourneyStructure,
+    SubjectStructure,
     journey_steps,
     journey_step_details,
     journey_step_intro,
@@ -33,8 +33,8 @@ class StepModel(BaseModel):
     content: str = Field(default=None)
     intro: str = Field(default=None)
     actions: str = Field(default=None)
-    structured: JourneyStructure = Field(
-        default=JourneyStructure(title="", subject="", intro="", content="", actions=[])
+    structured: SubjectStructure = Field(
+        default=SubjectStructure(title="", subject="", intro="", content="", actions=[])
     )
 
 
@@ -175,7 +175,7 @@ def get_db_files(reset=False, filename=None):
     return db_files
 
 
-def get_db_journey(journey_name: str = None, reset=False):
+def get_db_journey(journey_name: str = None, reset=False) -> Dict[str, JourneyModel]:
     if "db_journey" not in st.session_state or reset:
         if journey_name is None:
             journey = database_session.query(JourneyDataTable).all()

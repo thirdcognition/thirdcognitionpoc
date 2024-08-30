@@ -53,17 +53,6 @@ from chains.prompts import (
     journey_structured,
 )
 
-
-# RATE_LIMITER = InMemoryRateLimiter(
-#     requests_per_second=RATE_LIMIT_PER_SECOND,  # 0.1 <-- Super slow! We can only make a request once every 10 seconds!!
-#     check_every_n_seconds=RATE_LIMIT_INTEVAL,  # 0.1 <-- Wake up every 100 ms to check whether allowed to make a request,
-#     max_bucket_size=1,  # Controls the maximum burst size.
-# )
-# RATE_LIMITER_DETAILED = InMemoryRateLimiter(
-#     requests_per_second=RATE_LIMIT_PER_SECOND,  # 0.1 <-- Super slow! We can only make a request once every 10 seconds!!
-#     check_every_n_seconds=RATE_LIMIT_INTEVAL,  # 0.1 <-- Wake up every 100 ms to check whether allowed to make a request,
-#     max_bucket_size=1,  # Controls the maximum burst size.
-# )
 CHAT_RATE_LIMITER = None
 
 limiters: Dict[str, BaseRateLimiter] = {}
@@ -74,15 +63,6 @@ def get_limiter(model_config: ProviderModelSettings) -> Union[BaseRateLimiter, N
     id = f"{model_config.provider}_{model_config.type}"
     if id in limiters.keys():
         return limiters[id]
-
-    # llm_config: ProviderSettings = next(
-    #     (config for config in SETTINGS.llms if config.type == llm), None
-    # )
-    # model_config: ProviderModelSettings = (
-    #     next((config for config in llm_config.models if config.type == llm_model), None)
-    #     if llm_config
-    #     else None
-    # )
 
     limiter = (
         InMemoryRateLimiter(
@@ -100,12 +80,6 @@ def get_limiter(model_config: ProviderModelSettings) -> Union[BaseRateLimiter, N
 
 
 def init_llm(
-    # llm_model: str = SETTINGS.default_llms.chat.llm,
-    # llm_ctx_size: int = SETTINGS.default_llms.chat.context_size,
-    # temperature: float = 0.5,
-    # llm_structured: bool = False,
-    # llm_type: BaseLLM = SETTINGS.default_provider.class_model,
-    # llm_ratelimiter: BaseRateLimiter = get_limiter(SETTINGS.default_provider.type, SETTINGS.default_llms.chat.type),
     provider: ProviderSettings = SETTINGS.default_provider,
     model: ProviderModelSettings = SETTINGS.default_llms.default,
     temperature=0.5,
@@ -187,61 +161,6 @@ def init_llm(
 
     return llm
 
-
-# LLM_CONFIGS = {
-#     "instruct": {
-#         "temperature": 0.2,
-#         "model": INSTRUCT_LLM,
-#         "ctx_size": INSTRUCT_CONTEXT_SIZE,
-#     },
-#     "instruct_detailed_0": {
-#         "temperature": 0,
-#         "model": INSTRUCT_DETAILED_LLM,
-#         "ctx_size": INSTRUCT_DETAILED_CONTEXT_SIZE,
-#         "rate_limiter": RATE_LIMITER_DETAILED,
-#     },
-#     "instruct_detailed_warm": {
-#         "temperature": 0.5,
-#         "model": INSTRUCT_DETAILED_LLM,
-#         "ctx_size": INSTRUCT_DETAILED_CONTEXT_SIZE,
-#         "rate_limiter": RATE_LIMITER_DETAILED,
-#     },
-#     "structured": {
-#         "temperature": 0.2,
-#         "model": STRUCTURED_LLM,
-#         "ctx_size": STRUCTURED_CONTEXT_SIZE,
-#     },
-#     "structured_0": {
-#         "temperature": 0,
-#         "model": STRUCTURED_LLM,
-#         "ctx_size": STRUCTURED_CONTEXT_SIZE,
-#     },
-#     "structured_detailed": {
-#         "temperature": 0.2,
-#         "model": STRUCTURED_DETAILED_LLM,
-#         "ctx_size": STRUCTURED_CONTEXT_SIZE,
-#         "rate_limiter": RATE_LIMITER_DETAILED,
-#     },
-#     "structured_detailed_0": {
-#         "temperature": 0,
-#         "model": STRUCTURED_DETAILED_LLM,
-#         "ctx_size": STRUCTURED_CONTEXT_SIZE,
-#         "rate_limiter": RATE_LIMITER_DETAILED,
-#     },
-#     "json": {
-#         "temperature": 0,
-#         "model": STRUCTURED_LLM,
-#         "ctx_size": STRUCTURED_CONTEXT_SIZE,
-#         "structured": True,
-#     },
-#     "json_detailed": {
-#         "temperature": 0,
-#         "model": STRUCTURED_DETAILED_LLM,
-#         "ctx_size": STRUCTURED_CONTEXT_SIZE,
-#         "structured": True,
-#         "rate_limiter": RATE_LIMITER_DETAILED,
-#     },
-# }
 
 temperature_map = {"default": 0.2, "zero": 0, "warm": 0.5}
 

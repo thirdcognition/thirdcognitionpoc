@@ -1,5 +1,5 @@
 import textwrap
-from typing import Dict, List
+from typing import Any, Dict, List
 from langchain.schema.document import Document
 from langchain_community.document_compressors import FlashrankRerank
 from langchain_core.retrievers import BaseRetriever
@@ -67,10 +67,19 @@ def store_documents(params):
 
     return params
 
+def remove_duplicates(documents: Dict[Any, Document]) -> List[str]:
+    if isinstance(documents, Dict):
+        if all(isinstance(document, Document) for document in documents.values()):
+            doc_dict = {val.page_content: val for val in documents.values()}
+            # Return the documents as a list
+            return list(doc_dict.values())
+        return list(set(documents.values()))
+
+    return documents
 
 class RagChain(BaseChain):
-    def __init__(self, retriever: BaseRetriever, prompt:PromptFormatter=question, **kwargs):
-        self.retriever = retriever
+    def __init__(self, retrievers: List[BaseRetriever], prompt:PromptFormatter=question, **kwargs):
+        self.retrievers = retrievers
         super().__init__(prompt=prompt, **kwargs)
 
     def __call__(
@@ -85,6 +94,14 @@ class RagChain(BaseChain):
 
         self.chain = super().__call__(custom_prompt)
 
+        retriever = self.retrievers[0]
+        if len(self.retrievers) > 1:
+            retrievers = {i: retriever for i, retriever in enumerate(self.retrievers)}
+            retriever = (
+                RunnableParallel(retrievers) |
+                remove_duplicates
+            )
+
         self.chain = (
             keep_chain_params
             | RunnableParallel(
@@ -92,7 +109,7 @@ class RagChain(BaseChain):
                     "context": (
                         RunnableParallel(
                             {
-                                "documents": self.retriever,
+                                "documents": retriever,
                                 "orig_params": RunnablePassthrough(),
                             }
                         )
@@ -137,11 +154,6 @@ class RagChatChain(RagChain):
         self.chain = super().__call__(custom_prompt)
 
         chat_chain = get_chain("chat")
-        # def revert_params(params):
-        #     return {
-        #         "question": params["orig_params"]["question"],
-        #         "chat_history": params["orig_params"]["chat_history"] if "chat_history" in params["orig_params"].keys() else []
-        #     }
 
         self.chain = (
             RunnableParallel({
@@ -159,35 +171,24 @@ class RagChatChain(RagChain):
 
 rag_chains = {}
 
-def get_rag_chat(store_id:str, embedding_id="hyde", reset=False, with_history=False, amount_of_documents=5) -> RunnableSequence:
+def get_rag_chain(store_ids:List[str], embedding_id="hyde", reset=False, amount_of_documents=5, chat=True) -> RunnableSequence:
     global rag_chains
 
-    chain_id = f"{store_id}-{embedding_id}-{"history" if with_history else "nohistory"}-chat-#{amount_of_documents}"
+    chain_type = "chat" if chat else "search"
+    chain_id = f"{"+".join(store_ids)}-{embedding_id}-{chain_type}-#{amount_of_documents}"
+
     if chain_id in rag_chains and not reset:
         return rag_chains[chain_id]
 
-    print(f"Initializing RAG chat chain: {chain_id} with {with_history=}")
+    print(f"Initializing RAG {chain_type} chain: {chain_id}")
 
-    retriever = get_vectorstore_as_retriever(store_id, embedding_id, amount_of_documents)
-    rag_chat_chain = RagChatChain(retriever, llm=get_llm("chat"))()
+    retrievers = [get_vectorstore_as_retriever(store_id, embedding_id, amount_of_documents) for store_id in store_ids]
 
-    if with_history:
-        rag_chat_chain = get_chain_with_history(chain_id, rag_chat_chain)
+    if chat:
+        rag_chain = RagChatChain(retrievers, llm=get_llm("chat"))()
+    else:
+        rag_chain = RagChain(retrievers, llm=get_llm("chat"))()
 
-    rag_chains[chain_id] = rag_chat_chain
+    rag_chains[chain_id] = rag_chain
 
-    return rag_chat_chain
-
-def get_rag_search(store_id:str, embedding_id="hyde", reset=False, with_history=False, amount_of_documents=5) -> RunnableSequence:
-    global rag_chains
-
-    chain_id = f"{store_id}-{embedding_id}-{"history" if with_history else "nohistory"}-#{amount_of_documents}"
-    if chain_id in rag_chains and not reset:
-        return rag_chains[chain_id]
-
-    print(f"Initializing RAG chain: {chain_id} with {with_history=}")
-
-    retriever = get_vectorstore_as_retriever(store_id, embedding_id, amount_of_documents)
-    rag_chains[chain_id] = RagChain(retriever, llm=get_llm("chat"))()
-
-    return rag_chains[chain_id]
+    return rag_chain

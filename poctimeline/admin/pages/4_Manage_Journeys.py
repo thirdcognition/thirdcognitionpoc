@@ -29,7 +29,7 @@ from lib.db_tools import (
 
 from lib.load_env import SETTINGS
 
-from chains.prompts import ActionStructure, JourneyStructure
+from chains.prompts import ActionStructure, SubjectStructure
 
 from lib.streamlit_tools import check_auth
 
@@ -178,7 +178,7 @@ def journey_subject_step_ui(
     container1: DeltaGenerator = None,
 ):
     step: StepModel = journey.subjects[subject_index].steps[step_index]
-    step_structured: JourneyStructure = step.structured
+    step_structured: SubjectStructure = step.structured
     if container1 is None:
         container1 = st.container()
 

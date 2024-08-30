@@ -23,7 +23,7 @@ from lib.db_tools import (
 from lib.document_parse import markdown_to_text
 from lib.document_tools import create_document_lists
 from lib.load_env import SETTINGS
-from chains.prompts import ActionStructure, JourneyStep, JourneyStepList, JourneyStructure, ResourceStructure
+from chains.prompts import ActionStructure, JourneyStep, JourneyStepList, SubjectStructure, ResourceStructure
 from lib.streamlit_tools import llm_edit
 
 def save_journey(journey_name, journey:JourneyModel) -> bool:
@@ -226,7 +226,7 @@ def get_action_details_str(index:int, action:ActionStructure) -> str:
         ---
         """)
 
-def llm_gen_json_step(step: StepModel, instructions="") -> Union[JourneyStructure, None]:
+def llm_gen_json_step(step: StepModel, instructions="") -> Union[SubjectStructure, None]:
     retry_lambda = lambda: get_chain("journey_structured").invoke({
         "context": f"""
             Title:
@@ -242,7 +242,7 @@ def llm_gen_json_step(step: StepModel, instructions="") -> Union[JourneyStructur
             {instructions}
         """ if instructions else ""),
     })
-    structured: JourneyStructure = None
+    structured: SubjectStructure = None
     try:
         structured = retry_lambda()
     except Exception as e:
@@ -253,8 +253,8 @@ def llm_gen_json_step(step: StepModel, instructions="") -> Union[JourneyStructur
 
     return structured
 
-def llm_gen_update_actions(journey:JourneyModel, subject: SubjectModel, gen_step:StepModel, json_step: JourneyStructure, generate_resources=False, progress_cb:Callable[[float, str], None]=None, progress_start: float=0, progress_end:float=1) -> StepModel:
-    if json_step is not None and isinstance(json_step, JourneyStructure):
+def llm_gen_update_actions(journey:JourneyModel, subject: SubjectModel, gen_step:StepModel, json_step: SubjectStructure, generate_resources=False, progress_cb:Callable[[float, str], None]=None, progress_start: float=0, progress_end:float=1) -> StepModel:
+    if json_step is not None and isinstance(json_step, SubjectStructure):
         gen_step.structured = json_step
         json_step.title = gen_step.title
         json_step.subject = gen_step.subject

@@ -815,7 +815,7 @@ class ResourceStructure(BaseModel):
 class ActionStructure(BaseModel):
     title: str = Field(description="Title for the step", title="Title")
     description: str = Field(
-        description="Description for the teacher for what to do", title="Description"
+        description="Objective, task, or target for what to do on the step", title="Description"
     )
     resources: List[ResourceStructure] = Field(
         description="List of content to help the Teacher to perform the step.",
@@ -827,7 +827,7 @@ class ActionStructure(BaseModel):
     )
 
 
-class JourneyStructure(BaseModel):
+class SubjectStructure(BaseModel):
     title: str = Field(description="Title of the class", title="Title")
     subject: str = Field(description="Subject of the class", title="Subject")
     intro: str = Field(description="Introduction to the class", title="Intro")
@@ -844,6 +844,7 @@ journey_structured = PromptFormatter(
     to format the context data. Return only the JSON object with the formatted data.
     """),
     user=textwrap.dedent("""
+
     context start
     {context}
     context end
@@ -856,7 +857,7 @@ journey_structured = PromptFormatter(
     Return only the properly formatted JSON object with the formatted data.
     """),
 )
-journey_structured.parser = PydanticOutputParser(pydantic_object=JourneyStructure)
+journey_structured.parser = PydanticOutputParser(pydantic_object=SubjectStructure)
 
 DEFAULT_PROMPT_FORMATTER = chat
 

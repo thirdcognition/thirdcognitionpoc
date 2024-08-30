@@ -80,6 +80,7 @@ class BaseParserChain(BaseChain):
         self,
         retry_llm: RunnableSequence | None = None,
         error_prompt: PromptFormatter = error_retry,
+        output_parser: BaseOutputParser | None = None,
         max_retries: int = 5,
         **kwargs,
     ):
@@ -87,6 +88,7 @@ class BaseParserChain(BaseChain):
         self.retry_llm = retry_llm or self.llm
         self.error_prompt = error_prompt
         self.max_retries = max_retries
+        self.output_parser = output_parser
 
     def __call__(
         self, custom_prompt: tuple[str, str] | None = None
@@ -100,7 +102,9 @@ class BaseParserChain(BaseChain):
 
         self.chain = super().__call__(custom_prompt)
 
-        if self.prompt.parser is None:
+        parser = self.output_parser or self.prompt.parser
+
+        if parser is None:
             self.chain = self.chain | StrOutputParser()
             return self.chain
 
@@ -119,7 +123,7 @@ class BaseParserChain(BaseChain):
         parser_retry_chain.name = f"{self.name}-parser-retry"
 
         retry_parser = RetryWithErrorOutputParser(
-            parser=self.prompt.parser,
+            parser=parser,
             retry_chain=parser_retry_chain,
             max_retries=self.max_retries,
         )
@@ -145,10 +149,10 @@ class BaseParserChain(BaseChain):
             )
 
         if (
-            isinstance(self.prompt.parser, PydanticOutputParser)
+            isinstance(parser, PydanticOutputParser)
             and "format_instructions" in self.prompt_template.input_variables
         ):
-            parser_chain = add_format_instructions(self.prompt.parser) | parser_chain
+            parser_chain = add_format_instructions(parser) | parser_chain
 
         self.chain = parser_chain | RunnableLambda(
             arerun_parser if self.async_mode else rerun_parser

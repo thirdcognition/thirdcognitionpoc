@@ -8,7 +8,7 @@ from langchain_core.messages import BaseMessage
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
-from lib.chain import get_chain
+from chains.init import get_chain
 from lib.journey_shared import (
     create_subject_prompt_editor,
     delete_journey,
@@ -27,11 +27,9 @@ from lib.db_tools import (
     init_db,
 )
 
-from lib.load_env import (
-    CLIENT_HOST,
-)
+from lib.load_env import SETTINGS
 
-from lib.prompts import ActionStructure, JourneyStructure
+from chains.prompts import ActionStructure, SubjectStructure
 
 from lib.streamlit_tools import check_auth
 
@@ -180,7 +178,7 @@ def journey_subject_step_ui(
     container1: DeltaGenerator = None,
 ):
     step: StepModel = journey.subjects[subject_index].steps[step_index]
-    step_structured: JourneyStructure = step.structured
+    step_structured: SubjectStructure = step.structured
     if container1 is None:
         container1 = st.container()
 
@@ -643,7 +641,7 @@ def main():
     if "edit_mode" not in st.session_state or len(st.session_state.edit_mode) == 0:
         st.session_state.edit_mode = [False for _ in db_journey.keys()]
     for journey_index, journey_name in enumerate(db_journey.keys()):
-        # st.write(db_journey[journey_name])
+
         journey: JourneyModel = db_journey[journey_name]
         col_edit, col_delete, col2, col3 = st.columns(
             [2, 2, 12, 3], vertical_alignment="center"
@@ -664,7 +662,7 @@ def main():
         col2.subheader(f"&nbsp;{journey_name}", divider=True)
         col3.link_button(
             ":paperclip:&nbsp;&nbsp;Link",
-            f"{CLIENT_HOST}?journey={journey_name}",
+            f"{SETTINGS.client_host}?journey={journey_name}",
             use_container_width=True,
         )
 

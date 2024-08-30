@@ -5,17 +5,18 @@ from langchain_core.callbacks import StreamingStdOutCallbackHandler
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.documents.base import Document
 
+from chains.rag_chain import get_rag_chain
 from lib.db_tools import JourneyModel, get_db_files, get_db_journey, init_db
-from lib.document_tools import get_session_history, rag_chain
+from lib.helpers import get_chain_with_history, get_session_history
 
 DELIMITER = "±~"
 
 def send_message(message, journey_name, chat_state):
     if journey_name:
-        chain_id = st.session_state.journey_chain_ids[journey_name]
-        chain = st.session_state.chains[chain_id]
+        # chain_id = st.session_state.journey_chain_ids[journey_name]
+        chain = st.session_state.chains[journey_name]
     else:
-        chain = st.session_state.chains["rag_ThirdCognition"]
+        chain = st.session_state.chains["ThirdCognition"]
     st.session_state["exec_query"] = message
     chain.invoke(
         {"question": message},
@@ -39,8 +40,12 @@ def get_stream_data(message: str, chat_state: str):
 
     return stream_data
 
+def get_journey_chat(journey_name: str = "ThirdCognition", rag_collection: str = None):
+    if "chains" not in st.session_state:
+        init_journey_chat(journey_name, rag_collection)
+    return st.session_state.chains[journey_name]
 
-def init_journey_chat(journey_name: str = None, rag_collection: str = None):
+def init_journey_chat(journey_name: str = "ThirdCognition", rag_collection: str = None):
     init_db()
 
     if "journey_list" not in st.session_state:
@@ -49,32 +54,25 @@ def init_journey_chat(journey_name: str = None, rag_collection: str = None):
     if "chat_state" not in st.session_state:
         st.session_state.chat_state = "default"
 
-    if "chroma_collections" not in st.session_state:
-        journey_chain_ids = {}
+    if "chains" not in st.session_state:
+        # journey_chain_ids = {}
         chains = {}
         if journey_name and journey_name in st.session_state.journey_list.keys():
             collections = st.session_state.journey_list[journey_name].chroma_collection
-            collection_keys = list(chains.keys())
-
-            journey_chain_ids[journey_name] = collections[0]
-            if len(collections) > 0:
-                for collection in collections:
-                    if collection not in collection_keys:
-                        chains[collection] = rag_chain(collection, with_history=True, with_chat=True)
+            chains[journey_name] = get_chain_with_history(journey_name, get_rag_chain(collections, chat=True))
         else:
             collection = (
                 "rag_ThirdCognition" if rag_collection is None else rag_collection
             )
-            chains[collection] = rag_chain(collection, with_history=True, with_chat=True)
+            chains[journey_name] = get_chain_with_history(journey_name, get_rag_chain([collection], chat=True))
 
-        st.session_state.journey_chain_ids = journey_chain_ids
+        # st.session_state.journey_chain_ids = journey_chain_ids
         st.session_state.chains = chains
 
     if journey_name not in st.session_state.journey_list.keys():
         return False
 
     return True
-
 
 def chat_elements(chat_state, journey_name=None):
     st.session_state.chat_history_seen = (

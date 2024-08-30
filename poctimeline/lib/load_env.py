@@ -5,8 +5,6 @@ from dotenv import load_dotenv
 from langchain.globals import set_debug, set_verbose
 from langchain_core.language_models.llms import BaseLLM
 
-
-
 load_dotenv(os.path.join(os.path.dirname(__file__), "../../../", ".env"))
 print("Loading env: ", os.path.join(os.path.dirname(__file__), "../../../", ".env"))
 # for key, value in os.environ.items():
@@ -14,306 +12,301 @@ print("Loading env: ", os.path.join(os.path.dirname(__file__), "../../../", ".en
 
 DEBUGMODE = os.getenv("LLM_DEBUG", "True") == "True" or False
 
-FILE_TABLENAME = "files"
-JOURNEY_TABLENAME = "journey"
-CHROMA_PATH = os.getenv("CHROMA_PATH", "db/chroma_db")
-SQLITE_DB = os.getenv("SQLITE_DB", "db/files.db")
+LANGCHAIN_TRACING_V2 = os.getenv("LANGCHAIN_TRACING_V2", "False") == "True" or False
+LANGCHAIN_API_KEY = os.getenv("LANGCHAIN_API_KEY", "")
+LANGCHAIN_PROJECT = os.getenv("LANGCHAIN_PROJECT", "")
+LANGCHAIN_ENDPOINT = os.getenv("LANGCHAIN_ENDPOINT", "")
 
 set_debug(DEBUGMODE)
 set_verbose(DEBUGMODE)
 
-USE_OLLAMA = os.getenv("USE_OLLAMA", "True") == "True" or False
-USE_GROQ = os.getenv("USE_GROQ", "True") == "True" or False
-USE_BEDROCK = os.getenv("USE_AWS_BEDROCK", "False") == "True" or False
-USE_ANTHROPIC = os.getenv("USE_ANTHROPIC", "False") == "True" or False
-USE_AZURE = os.getenv("USE_AZURE", "False") == "True" or False
-USE_OPENAI = os.getenv("USE_OPENAI", "False") == "True" or False
+from langchain_community.chat_models.ollama import ChatOllama
+from langchain_groq import ChatGroq
+from langchain_aws import ChatBedrock
+from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
+from langchain_openai import AzureChatOpenAI
+from langchain_community.chat_models.azureml_endpoint import AzureMLChatOnlineEndpoint
 
-DEFAULT_LLM_MODEL: BaseLLM = None
-CHAT_LLM: str = None
-CHAT_CHAR_LIMIT: int = None
-CHAT_CONTEXT_SIZE: int = None
-INSTRUCT_LLM: str = None
-INSTRUCT_CHAR_LIMIT: int = None
-INSTRUCT_CONTEXT_SIZE: int = None
-STRUCTURED_LLM: str = None
-STRUCTURED_CHAR_LIMIT: int = None
-STRUCTURED_CONTEXT_SIZE: int = None
-STRUCTURED_DETAILED_LLM: str = None
-STRUCTURED_DETAILED_CHAR_LIMIT: int = None
-STRUCTURED_DETAILED_CONTEXT_SIZE: int = None
-TOOL_LLM: str = None
-TOOL_CHAR_LIMIT: int = None
-TOOL_CONTEXT_SIZE: int = None
-TESTER_LLM_MODEL: BaseLLM = None
-TESTER_LLM: str = None
-TESTER_CHAR_LIMIT: int = None
-TESTER_CONTEXT_SIZE: int = None
-TESTER_APIKEY: str = None
-EMBEDDING_MODEL: str = None
-EMBEDDING_CHAR_LIMIT: int = 1000
-EMBEDDING_OVERLAP: int = 100
+LLM_PROVIDERS = os.getenv("LLM_PROVIDERS", "OLLAMA").upper().split(",")
 
-CLIENT_HOST = os.getenv("CLIENT_HOST", "http://localhost:3500")
-ADMIN_HOST = os.getenv("ADMIN_HOST", "http://localhost:4000")
+LLM_MODEL_MAP: dict[str, BaseLLM] = {
+    "OLLAMA": ChatOllama,
+    "GROQ": ChatGroq,
+    "BEDROCK": ChatBedrock,
+    "OPENAI": ChatOpenAI,
+    "ANTHROPIC": ChatAnthropic,
+    "AZURE": AzureChatOpenAI,
+    "AZURE_ML": AzureMLChatOnlineEndpoint,
+}
 
-RATE_LIMIT_PER_SECOND = float(os.getenv("RATE_LIMIT_PER_SECOND", 2))
-RATE_LIMIT_INTEVAL = float(os.getenv("RATE_LIMIT_INTEVAL", 0.1))
-
-OLLAMA_URL = None
-if USE_OLLAMA:
-    from langchain_community.chat_models.ollama import ChatOllama
-    DEFAULT_LLM_MODEL = ChatOllama
-    OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
-    CHAT_LLM = os.getenv("OLLAMA_CHAT_LLM", "phi3:mini")
-    CHAT_CONTEXT_SIZE = int(os.getenv("OLLAMA_CHAT_CTX_SIZE", 8192))
-    CHAT_CHAR_LIMIT = int(os.getenv("OLLAMA_CHAT_CHAR_LIMIT", 1024))
-
-    INSTRUCT_LLM = os.getenv("OLLAMA_INSTRUCT_LLM", "phi3:instruct")
-    INSTRUCT_CONTEXT_SIZE = int(os.getenv("OLLAMA_INSTRUCT_CTX_SIZE", 8192))
-    INSTRUCT_CHAR_LIMIT = int(os.getenv("OLLAMA_INSTRUCT_CHAR_LIMIT", 1024))
-
-    INSTRUCT_DETAILED_LLM = os.getenv("OLLAMA_INSTRUCT_DETAILED_LLM", "phi3:instruct")
-    INSTRUCT_DETAILED_CONTEXT_SIZE = int(
-        os.getenv("OLLAMA_INSTRUCT_DETAILED_CTX_SIZE", 8192)
-    )
-    INSTRUCT_DETAILED_CHAR_LIMIT = int(
-        os.getenv("OLLAMA_INSTRUCT_DETAILED_CHAR_LIMIT", 1024)
-    )
-
-    STRUCTURED_LLM = os.getenv("OLLAMA_STRUCTURED_LLM", "phi3:instruct")
-    STRUCTURED_CONTEXT_SIZE = int(os.getenv("OLLAMA_STRUCTURED_CTX_SIZE", 8192))
-    STRUCTURED_CHAR_LIMIT = int(os.getenv("OLLAMA_STRUCTURED_CHAR_LIMIT", 1024))
-
-    STRUCTURED_DETAILED_LLM = os.getenv("OLLAMA_STRUCTURED_DETAILED_LLM", "phi3:instruct")
-    STRUCTURED_DETAILED_CONTEXT_SIZE = int(os.getenv("OLLAMA_STRUCTURED_DETAILED_CTX_SIZE", 8192))
-    STRUCTURED_DETAILED_CHAR_LIMIT = int(os.getenv("OLLAMA_STRUCTURED_DETAILED_CHAR_LIMIT", 1024))
-
-    TOOL_LLM = os.getenv("OLLAMA_TOOL_LLM", "phi3:instruct")
-    TOOL_CONTEXT_SIZE = int(os.getenv("OLLAMA_TOOL_CTX_SIZE", 8192))
-    TOOL_CHAR_LIMIT = int(os.getenv("OLLAMA_TOOL_CHAR_LIMIT", 1024))
-
-    print("+++ OLLAMA +++")
-
-GROQ_API_KEY = None
-if USE_GROQ:
-    from langchain_groq import ChatGroq
-    DEFAULT_LLM_MODEL = ChatGroq
-    GROQ_API_KEY = os.getenv("GROQ_API_KEY", None)
-    CHAT_LLM = os.getenv("GROQ_CHAT_LLM", "llama-3.1-8b-instant")
-    CHAT_CONTEXT_SIZE = int(os.getenv("GROQ_CHAT_CTX_SIZE", 8192))
-    CHAT_CHAR_LIMIT = int(os.getenv("GROQ_CHAT_CHAR_LIMIT", 1024))
-
-    INSTRUCT_LLM = os.getenv("GROQ_INSTRUCT_LLM", "llama-3.1-8b-instant")
-    INSTRUCT_CONTEXT_SIZE = int(os.getenv("GROQ_INSTRUCT_CTX_SIZE", 8192))
-    INSTRUCT_CHAR_LIMIT = int(os.getenv("GROQ_INSTRUCT_CHAR_LIMIT", 1024))
-
-    INSTRUCT_DETAILED_LLM = os.getenv(
-        "GROQ_INSTRUCT_DETAILED_LLM", "llama-3.1-8b-instant"
-    )
-    INSTRUCT_DETAILED_CONTEXT_SIZE = int(
-        os.getenv("GROQ_INSTRUCT_DETAILED_CTX_SIZE", 8192)
-    )
-    INSTRUCT_DETAILED_CHAR_LIMIT = int(os.getenv("GROQ_INSTRUCT_CHAR_LIMIT", 1024))
-
-    STRUCTURED_LLM = os.getenv("GROQ_STRUCTURED_LLM", "llama-3.1-8b-instant")
-    STRUCTURED_CONTEXT_SIZE = int(os.getenv("GROQ_STRUCTURED_CTX_SIZE", 8192))
-    STRUCTURED_CHAR_LIMIT = int(os.getenv("GROQ_STRUCTURED_CHAR_LIMIT", 1024))
-
-    STRUCTURED_DETAILED_LLM = os.getenv("GROQ_STRUCTURED_DETAILED_LLM", "llama-3.1-8b-instant")
-    STRUCTURED_DETAILED_CONTEXT_SIZE = int(os.getenv("GROQ_STRUCTURED_DETAILED_CTX_SIZE", 8192))
-    STRUCTURED_DETAILED_CHAR_LIMIT = int(os.getenv("GROQ_STRUCTURED_DETAILED_CHAR_LIMIT", 1024))
-
-    TOOL_LLM = os.getenv("GROQ_TOOL_LLM", "llama-3.1-8b-instant")
-    TOOL_CONTEXT_SIZE = int(os.getenv("GROQ_TOOL_CTX_SIZE", 8192))
-    TOOL_CHAR_LIMIT = int(os.getenv("GROQ_TOOL_CHAR_LIMIT", 1024))
-
-    print("+++ GROQ +++")
-
-if USE_BEDROCK:
-    from langchain_aws import ChatBedrock
-    BEDROCK_REGION = os.getenv("AWS_BEDROCK_REGION", "us-west-2")
-    DEFAULT_LLM_MODEL = ChatBedrock
-    BEDROCK_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID", "")
-    BEDROCK_SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
-
-    CHAT_LLM = os.getenv("AWS_BEDROCK_CHAT_LLM", "meta.llama3-1-8b-instruct-v1:0")
-    CHAT_CONTEXT_SIZE = int(os.getenv("AWS_BEDROCK_CHAT_CTX_SIZE", 8192))
-    CHAT_CHAR_LIMIT = int(os.getenv("AWS_BEDROCK_CHAT_CHAR_LIMIT", 1024))
-
-    INSTRUCT_LLM = os.getenv("AWS_BEDROCK_INSTRUCT_LLM", "meta.llama3-1-8b-instruct-v1:0")
-    INSTRUCT_CONTEXT_SIZE = int(os.getenv("AWS_BEDROCK_INSTRUCT_CTX_SIZE", 8192))
-    INSTRUCT_CHAR_LIMIT = int(os.getenv("AWS_BEDROCK_INSTRUCT_CHAR_LIMIT", 1024))
-
-    INSTRUCT_DETAILED_LLM = os.getenv(
-        "AWS_BEDROCK_INSTRUCT_DETAILED_LLM", "meta.llama3-1-70b-instruct-v1:0"
-    )
-    INSTRUCT_DETAILED_CONTEXT_SIZE = int(
-        os.getenv("AWS_BEDROCK_INSTRUCT_DETAILED_CTX_SIZE", 8192)
-    )
-    INSTRUCT_DETAILED_CHAR_LIMIT = int(
-        os.getenv("AWS_BEDROCK_INSTRUCT_DETAILED_CHAR_LIMIT", 1024)
-    )
-
-    STRUCTURED_LLM = os.getenv("AWS_BEDROCK_STRUCTURED_LLM", "meta.llama3-1-8b-instruct-v1:0")
-    STRUCTURED_CONTEXT_SIZE = int(os.getenv("AWS_BEDROCK_STRUCTURED_CTX_SIZE", 8192))
-    STRUCTURED_CHAR_LIMIT = int(os.getenv("AWS_BEDROCK_STRUCTURED_CHAR_LIMIT", 1024))
-
-    STRUCTURED_DETAILED_LLM = os.getenv("AWS_BEDROCK_STRUCTURED_DETAILED_LLM", "meta.llama3-1-70b-instruct-v1:0")
-    STRUCTURED_DETAILED_CONTEXT_SIZE = int(os.getenv("AWS_BEDROCK_STRUCTURED_DETAILED_CTX_SIZE", 8192))
-    STRUCTURED_DETAILED_CHAR_LIMIT = int(os.getenv("AWS_BEDROCK_STRUCTURED_DETAILED_CHAR_LIMIT", 1024))
-
-    TOOL_LLM = os.getenv("AWS_BEDROCK_TOOL_LLM", "meta.llama3-1-8b-instruct-v1:0")
-    TOOL_CONTEXT_SIZE = int(os.getenv("AWS_BEDROCK_TOOL_CTX_SIZE", 8192))
-    TOOL_CHAR_LIMIT = int(os.getenv("AWS_BEDROCK_TOOL_CHAR_LIMIT", 1024))
-
-    print("+++ BEDROCK +++")
-
-if USE_OPENAI:
-    from langchain_openai import ChatOpenAI
-    DEFAULT_LLM_MODEL = ChatOpenAI
-    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-
-    CHAT_LLM = os.getenv("OPENAI_CHAT_LLM", "gpt-3.5-turbo")
-    CHAT_CONTEXT_SIZE = int(os.getenv("OPENAI_CHAT_CTX_SIZE", 4096))
-    CHAT_CHAR_LIMIT = int(os.getenv("OPENAI_CHAT_CHAR_LIMIT", 2048))
-
-    INSTRUCT_LLM = os.getenv("OPENAI_INSTRUCT_LLM", "gpt-3.5-turbo-instruct")
-    INSTRUCT_CONTEXT_SIZE = int(os.getenv("OPENAI_INSTRUCT_CTX_SIZE", 4096))
-    INSTRUCT_CHAR_LIMIT = int(os.getenv("OPENAI_INSTRUCT_CHAR_LIMIT", 2048))
-
-    INSTRUCT_DETAILED_LLM = os.getenv("OPENAI_INSTRUCT_DETAILED_LLM", "gpt-4")
-    INSTRUCT_DETAILED_CONTEXT_SIZE = int(os.getenv("OPENAI_INSTRUCT_DETAILED_CTX_SIZE", 8192))
-    INSTRUCT_DETAILED_CHAR_LIMIT = int(os.getenv("OPENAI_INSTRUCT_DETAILED_CHAR_LIMIT", 4096))
-
-    STRUCTURED_LLM = os.getenv("OPENAI_STRUCTURED_LLM", "gpt-3.5-turbo-instruct")
-    STRUCTURED_CONTEXT_SIZE = int(os.getenv("OPENAI_STRUCTURED_CTX_SIZE", 4096))
-    STRUCTURED_CHAR_LIMIT = int(os.getenv("OPENAI_STRUCTURED_CHAR_LIMIT", 2048))
-
-    STRUCTURED_DETAILED_LLM = os.getenv("OPENAI_STRUCTURED_DETAILED_LLM", "gpt-4")
-    STRUCTURED_DETAILED_CONTEXT_SIZE = int(os.getenv("OPENAI_STRUCTURED_DETAILED_CTX_SIZE", 8192))
-    STRUCTURED_DETAILED_CHAR_LIMIT = int(os.getenv("OPENAI_STRUCTURED_DETAILED_CHAR_LIMIT", 4096))
-
-    TOOL_LLM = os.getenv("OPENAI_TOOL_LLM", "gpt-3.5-turbo-instruct")
-    TOOL_CONTEXT_SIZE = int(os.getenv("OPENAI_TOOL_CTX_SIZE", 4096))
-    TOOL_CHAR_LIMIT = int(os.getenv("OPENAI_TOOL_CHAR_LIMIT", 2048))
-
-    print("+++ OPENAI +++")
-
-if USE_ANTHROPIC:
-    from langchain_anthropic import ChatAnthropic
-    DEFAULT_LLM_MODEL = ChatAnthropic
-    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-
-    CHAT_LLM = os.getenv("ANTHROPIC_CHAT_LLM", "claude-2")
-    CHAT_CONTEXT_SIZE = int(os.getenv("ANTHROPIC_CHAT_CTX_SIZE", 8192))
-    CHAT_CHAR_LIMIT = int(os.getenv("ANTHROPIC_CHAT_CHAR_LIMIT", 1024))
-
-    INSTRUCT_LLM = os.getenv("ANTHROPIC_INSTRUCT_LLM", "claude-instant-1")
-    INSTRUCT_CONTEXT_SIZE = int(os.getenv("ANTHROPIC_INSTRUCT_CTX_SIZE", 8192))
-    INSTRUCT_CHAR_LIMIT = int(os.getenv("ANTHROPIC_INSTRUCT_CHAR_LIMIT", 1024))
-
-    INSTRUCT_DETAILED_LLM = os.getenv("ANTHROPIC_INSTRUCT_DETAILED_LLM", "claude-2")
-    INSTRUCT_DETAILED_CONTEXT_SIZE = int(os.getenv("ANTHROPIC_INSTRUCT_DETAILED_CTX_SIZE", 8192))
-    INSTRUCT_DETAILED_CHAR_LIMIT = int(os.getenv("ANTHROPIC_INSTRUCT_DETAILED_CHAR_LIMIT", 1024))
-
-    STRUCTURED_LLM = os.getenv("ANTHROPIC_STRUCTURED_LLM", "claude-instant-1")
-    STRUCTURED_CONTEXT_SIZE = int(os.getenv("ANTHROPIC_STRUCTURED_CTX_SIZE", 8192))
-    STRUCTURED_CHAR_LIMIT = int(os.getenv("ANTHROPIC_STRUCTURED_CHAR_LIMIT", 1024))
-
-    STRUCTURED_DETAILED_LLM = os.getenv("ANTHROPIC_STRUCTURED_DETAILED_LLM", "claude-2")
-    STRUCTURED_DETAILED_CONTEXT_SIZE = int(os.getenv("ANTHROPIC_STRUCTURED_DETAILED_CTX_SIZE", 8192))
-    STRUCTURED_DETAILED_CHAR_LIMIT = int(os.getenv("ANTHROPIC_STRUCTURED_DETAILED_CHAR_LIMIT", 1024))
-
-    TOOL_LLM = os.getenv("ANTHROPIC_TOOL_LLM", "claude-instant-1")
-    TOOL_CONTEXT_SIZE = int(os.getenv("ANTHROPIC_TOOL_CTX_SIZE", 8192))
-    TOOL_CHAR_LIMIT = int(os.getenv("ANTHROPIC_TOOL_CHAR_LIMIT", 1024))
-
-    print("+++ ANTHROPIC +++")
-
-if USE_AZURE:
-    from langchain_openai import AzureChatOpenAI
-    from langchain_community.chat_models.azureml_endpoint import AzureMLChatOnlineEndpoint
-    DEFAULT_LLM_MODEL = AzureChatOpenAI
-    AZURE_API_TYPE = os.getenv("AZURE_API_TYPE", "")
-    AZURE_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "")
-    AZURE_API_BASE = os.getenv("AZURE_OPENAI_ENDPOINT", "")
-    AZURE_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "")
-
-    CHAT_LLM = os.getenv("AZURE_CHAT_LLM", "gpt-3.5-turbo")
-    CHAT_CONTEXT_SIZE = int(os.getenv("AZURE_CHAT_CTX_SIZE", 4096))
-    CHAT_CHAR_LIMIT = int(os.getenv("AZURE_CHAT_CHAR_LIMIT", 2048))
-
-    INSTRUCT_LLM = os.getenv("AZURE_INSTRUCT_LLM", "gpt-3.5-turbo-instruct")
-    INSTRUCT_CONTEXT_SIZE = int(os.getenv("AZURE_INSTRUCT_CTX_SIZE", 4096))
-    INSTRUCT_CHAR_LIMIT = int(os.getenv("AZURE_INSTRUCT_CHAR_LIMIT", 2048))
-
-    INSTRUCT_DETAILED_LLM = os.getenv("AZURE_INSTRUCT_DETAILED_LLM", "gpt-4")
-    INSTRUCT_DETAILED_CONTEXT_SIZE = int(os.getenv("AZURE_INSTRUCT_DETAILED_CTX_SIZE", 8192))
-    INSTRUCT_DETAILED_CHAR_LIMIT = int(os.getenv("AZURE_INSTRUCT_DETAILED_CHAR_LIMIT", 4096))
-
-    STRUCTURED_LLM = os.getenv("AZURE_STRUCTURED_LLM", "gpt-3.5-turbo-instruct")
-    STRUCTURED_CONTEXT_SIZE = int(os.getenv("AZURE_STRUCTURED_CTX_SIZE", 4096))
-    STRUCTURED_CHAR_LIMIT = int(os.getenv("AZURE_STRUCTURED_CHAR_LIMIT", 2048))
-
-    STRUCTURED_DETAILED_LLM = os.getenv("AZURE_STRUCTURED_DETAILED_LLM", "gpt-4")
-    STRUCTURED_DETAILED_CONTEXT_SIZE = int(os.getenv("AZURE_STRUCTURED_DETAILED_CTX_SIZE", 8192))
-    STRUCTURED_DETAILED_CHAR_LIMIT = int(os.getenv("AZURE_STRUCTURED_DETAILED_CHAR_LIMIT", 4096))
-
-    TOOL_LLM = os.getenv("AZURE_TOOL_LLM", "gpt-3.5-turbo-instruct")
-    TOOL_CONTEXT_SIZE = int(os.getenv("AZURE_TOOL_CTX_SIZE", 4096))
-    TOOL_CHAR_LIMIT = int(os.getenv("AZURE_TOOL_CHAR_LIMIT", 2048))
-
-    TESTER_LLM_MODEL = AzureMLChatOnlineEndpoint
-    TESTER_LLM = os.getenv("AZURE_ML_TESTER_ENDPOINT", "")
-    TESTER_APIKEY = os.getenv("AZURE_ML_TESTER_APIKEY", "")
-    TESTER_CONTEXT_SIZE = int(os.getenv("AZURE_ML_TESTER_CTX_SIZE", 8192))
-    TESTER_CHAR_LIMIT = int(os.getenv("AZURE_ML_TESTER_CHAR_LIMIT", 4096))
-
-    print("+++ AZURE +++")
-
-
-print(f"\tLimits: {RATE_LIMIT_INTEVAL=} {RATE_LIMIT_PER_SECOND=}")
-print(f"\tChat: {CHAT_LLM=} {CHAT_CONTEXT_SIZE=} {CHAT_CHAR_LIMIT}")
-print(f"\tInstruct: {INSTRUCT_LLM=} {INSTRUCT_CONTEXT_SIZE=} {INSTRUCT_CHAR_LIMIT}")
-print(
-    f"\tInstruct detailed: {INSTRUCT_DETAILED_LLM=} {INSTRUCT_DETAILED_CONTEXT_SIZE=} {INSTRUCT_DETAILED_CHAR_LIMIT}"
+# from langchain_core.embeddings import Embeddings
+from langchain_core.embeddings import Embeddings
+from langchain_huggingface import (
+    HuggingFaceEmbeddings,
 )
-print(
-    f"\tStructured: {STRUCTURED_LLM=} {STRUCTURED_CONTEXT_SIZE=} {STRUCTURED_CHAR_LIMIT}"
+from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
+from langchain_community.embeddings.ollama import OllamaEmbeddings
+
+EMBEDDING_MODEL_MAP: dict[str, Embeddings] = {
+    "LOCAL": HuggingFaceEmbeddings,
+    "OLLAMA": OllamaEmbeddings,
+    "HUGGINGFACE": HuggingFaceInferenceAPIEmbeddings,
+}
+
+# DEFAULT_LLM_MODEL = LLM_MODEL_MAP.get(LLM_PROVIDERS[0])
+LLM_MODELS = [
+    "chat",
+    "instruct",
+    "instruct_detailed",
+    "structured",
+    "structured_detailed",
+    "tool",
+    "tester",
+]
+
+from pydantic import BaseModel
+from typing import Any, Literal, Optional, List, Union
+
+
+class ProviderModelSettings(BaseModel):
+    type: Literal[
+        "chat",
+        "instruct",
+        "instruct_detailed",
+        "structured",
+        "structured_detailed",
+        "tool",
+        "tester",
+    ]
+    class_model: Optional[Any] = None
+    provider: Optional[str] = None
+    url: Optional[str] = None
+    model: Optional[str] = None
+    context_size: Optional[int] = None
+    char_limit: Optional[int] = None
+    api_key: Optional[str] = None
+    endpoint: Optional[str] = None
+    ratelimit_per_sec: Optional[float] = None
+    ratelimit_interval: Optional[float] = None
+    ratelimit_bucket: Optional[float] = None
+
+
+class ModelDefaults(BaseModel):
+    default: Optional[ProviderModelSettings] = None
+    chat: Optional[ProviderModelSettings] = None
+    instruct: Optional[ProviderModelSettings] = None
+    instruct_detailed: Optional[ProviderModelSettings] = None
+    structured: Optional[ProviderModelSettings] = None
+    structured_detailed: Optional[ProviderModelSettings] = None
+    tool: Optional[ProviderModelSettings] = None
+    tester: Optional[ProviderModelSettings] = None
+
+
+class ProviderSettings(BaseModel):
+    type: Literal[
+        "OLLAMA", "GROQ", "BEDROCK", "OPENAI", "ANTHROPIC", "AZURE", "AZURE_ML"
+    ]
+    class_model: Optional[Any] = None
+    url: Optional[str] = None
+    api_key: Optional[str] = None
+    region: Optional[str] = None
+    access_key: Optional[str] = None
+    secret_key: Optional[str] = None
+    api_type: Optional[str] = None
+    api_base: Optional[str] = None
+    api_version: Optional[str] = None
+    models: List[ProviderModelSettings] = []
+
+
+class EmbeddingModelSettings(BaseModel):
+    type: Literal["large", "medium", "small"]
+    model: Optional[str] = None
+    char_limit: Optional[int] = None
+    overlap: Optional[int] = None
+
+
+class EmbeddingDefaults(BaseModel):
+    default: Optional[EmbeddingModelSettings] = None
+    large: Optional[EmbeddingModelSettings] = None
+    medium: Optional[EmbeddingModelSettings] = None
+    small: Optional[EmbeddingModelSettings] = None
+
+
+class EmbeddingProviderSettings(BaseModel):
+    type: Literal["LOCAL", "HUGGINGFACE", "OPENAI", "OLLAMA", "BEDROCK", "AZURE"]
+    class_model: Any = (
+        None  # Union[HuggingFaceEmbeddings, OllamaEmbeddings, HuggingFaceInferenceAPIEmbeddings, None] = None
+    )
+    url: Optional[str] = None
+    api_key: Optional[str] = None
+    region: Optional[str] = None
+    access_key: Optional[str] = None
+    secret_key: Optional[str] = None
+    api_type: Optional[str] = None
+    api_base: Optional[str] = None
+    api_version: Optional[str] = None
+    models: List[EmbeddingModelSettings] = []
+
+
+class Settings(BaseModel):
+    llms: List[ProviderSettings] = []
+    default_provider: Optional[ProviderSettings] = None
+    default_llms: Optional[ModelDefaults] = None
+    embeddings: List[EmbeddingProviderSettings] = []
+    default_embedding_provider: Optional[EmbeddingProviderSettings] = None
+    default_embeddings: Optional[EmbeddingDefaults] = None
+    client_host: str
+    admin_host: str
+    chroma_path: str
+    sqlite_db: str
+    file_tablename: str
+    journey_tablename: str
+
+
+SETTINGS = Settings(
+    client_host=os.getenv("CLIENT_HOST", "http://localhost:3500"),
+    admin_host=os.getenv("ADMIN_HOST", "http://localhost:4000"),
+    chroma_path=os.getenv("CHROMA_PATH", "db/chroma_db"),
+    sqlite_db=os.getenv("SQLITE_DB", "db/files.db"),
+    file_tablename="files",
+    journey_tablename="journey",
 )
-print(
-    f"\tStructured: {STRUCTURED_DETAILED_LLM=} {STRUCTURED_DETAILED_CONTEXT_SIZE=} {STRUCTURED_DETAILED_CHAR_LIMIT}"
-)
-print(f"\tTool: {TOOL_LLM=} {TOOL_CONTEXT_SIZE=} {TOOL_CHAR_LIMIT}")
-if TESTER_LLM_MODEL is not None:
-    print(f"\tTester: {TESTER_LLM=} {TESTER_CONTEXT_SIZE=} {TESTER_CHAR_LIMIT}")
 
-USE_OLLAMA_EMBEDDINGS = os.getenv("USE_OLLAMA_EMBEDDING", "False") == "True" or False
-USE_HF_EMBEDDINGS = os.getenv("USE_HF_EMBEDDING", "False") == "True" or False
-USE_LOCAL_EMBEDDINGS = os.getenv("USE_LOCAL_EMBEDDING", "True") == "True" or False
+SETTINGS.default_llms = ModelDefaults()
+for provider in LLM_PROVIDERS:
+    print(f"Loading {provider} settings...")
+    provider_settings = ProviderSettings(
+        type=provider, class_model=LLM_MODEL_MAP[provider]
+    )
 
-if USE_LOCAL_EMBEDDINGS:
-    EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en")
-    EMBEDDING_CHAR_LIMIT = int(os.getenv("EMBEDDING_CHAR_LIMIT", 1000))
-    EMBEDDING_OVERLAP = int(os.getenv("EMBEDDING_OVERLAP", 100))
+    if provider == "OLLAMA":
+        provider_settings.url = os.getenv(f"{provider}_URL", "http://127.0.0.1:11434")
+    elif provider == "GROQ":
+        provider_settings.api_key = os.getenv(f"{provider}_API_KEY", None)
+    elif provider == "BEDROCK":
+        provider_settings.region = os.getenv("AWS_BEDROCK_REGION", "us-west-2")
+        provider_settings.access_key = os.getenv("AWS_ACCESS_KEY_ID", "")
+        provider_settings.secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+    elif provider == "OPENAI":
+        provider_settings.api_key = os.getenv(f"{provider}_API_KEY", "")
+    elif provider == "ANTHROPIC":
+        provider_settings.api_key = os.getenv(f"{provider}_API_KEY", "")
+    elif provider == "AZURE":
+        provider_settings.api_type = os.getenv("AZURE_API_TYPE", "")
+        provider_settings.api_key = os.getenv("AZURE_OPENAI_API_KEY", "")
+        provider_settings.api_base = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+        provider_settings.api_version = os.getenv("AZURE_OPENAI_API_VERSION", "")
+    elif provider == "AZURE_ML":
+        provider_settings.api_key = os.getenv("AZUREML_APIKEY", "")
 
-    print("+++ LOCAL EMBEDDING +++")
+    for type in LLM_MODELS:
+        type_model = os.getenv(f"{provider}_{type.upper()}_MODEL", "")
+        endpoint = os.getenv(f"{provider}_{type.upper()}_ENDPOINT", None)
+        if type_model != "" or endpoint is not None:
+            type_settings = ProviderModelSettings(
+                type=type,
+                provider=provider,
+                url=os.getenv(f"{provider}_{type}_URL", provider_settings.url),
+                model=type_model,
+                class_model=LLM_MODEL_MAP.get(
+                    f"{provider}_{type}", provider_settings.class_model
+                ),
+                context_size=int(
+                    os.getenv(f"{provider}_{type.upper()}_CTX_SIZE", 8192)
+                ),
+                char_limit=int(
+                    os.getenv(f"{provider}_{type.upper()}_CHAR_LIMIT", 12000)
+                ),
+                api_key=os.getenv(
+                    f"{provider}_{type.upper()}_API_KEY", provider_settings.api_key
+                ),
+                endpoint=endpoint,
+                ratelimit_per_sec=float(
+                    os.getenv(f"{provider}_{type.upper()}_PER_SEC", 2)
+                ),
+                ratelimit_interval=float(
+                    os.getenv(f"{provider}_{type.upper()}_INTERVAL", 0.5)
+                ),
+                ratelimit_bucket=float(
+                    os.getenv(f"{provider}_{type.upper()}_BUCKET", 1)
+                ),
+            )
+            if SETTINGS.default_llms.__getattribute__("default") is None:
+                SETTINGS.default_llms.default = type_settings
+            if SETTINGS.default_llms.__getattribute__(type) is None:
+                SETTINGS.default_llms.__setattr__(type, type_settings)
+            provider_settings.models.append(type_settings)
 
-if USE_OLLAMA_EMBEDDINGS:
-    EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "bge-small-en")
-    EMBEDDING_CHAR_LIMIT = int(os.getenv("OLLAMA_EMBEDDING_CHAR_LIMIT", 1000))
-    EMBEDDING_OVERLAP = int(os.getenv("OLLAMA_EMBEDDING_OVERLAP", 100))
+    SETTINGS.llms.append(provider_settings)
+    # Set default provider if not already set
+    if SETTINGS.default_provider is None:
+        SETTINGS.default_provider = provider_settings
 
-    print("+++ OLLAMA EMBEDDING +++")
+EMBEDDING_PROVIDERS = os.getenv("EMBEDDING_PROVIDERS", "LOCAL").upper().split(",")
+EMBEDDING_MODEL_TYPES = ["large", "medium", "small"]
 
-HF_API_KEY = None
-if USE_HF_EMBEDDINGS:
-    HF_API_KEY = os.getenv("HF_API_KEY", "")
-    EMBEDDING_MODEL = os.getenv("HF_EMBEDDING_MODEL", "BAAI/bge-small-en")
-    EMBEDDING_CHAR_LIMIT = int(os.getenv("HF_EMBEDDING_CHAR_LIMIT", 1000))
-    EMBEDDING_OVERLAP = int(os.getenv("HF_EMBEDDING_OVERLAP", 100))
+SETTINGS.default_embeddings = EmbeddingDefaults()
+for provider in EMBEDDING_PROVIDERS:
+    provider_settings = EmbeddingProviderSettings(
+        type=provider, class_model=EMBEDDING_MODEL_MAP.get(provider)
+    )
 
-    print("+++ HUGGINGFACE EMBEDDING +++")
+    if provider == "OLLAMA":
+        provider_settings.url = os.getenv(f"{provider}_EMBEDDING_URL", "")
+    if provider == "HUGGINGFACE":
+        provider_settings.api_key = os.getenv(f"{provider}_EMBEDDING_API_KEY", "")
+    # if provider == "OPENAI":
+    #     provider_settings.api_key = os.getenv(f"{provider}_API_KEY", "")
+    # elif provider == "BEDROCK":
+    #     provider_settings.region = os.getenv("AWS_BEDROCK_REGION", "us-west-2")
+    #     provider_settings.access_key = os.getenv("AWS_ACCESS_KEY_ID", "")
+    #     provider_settings.secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+    # elif provider == "AZURE":
+    #     provider_settings.api_type = os.getenv("AZURE_API_TYPE", "")
+    #     provider_settings.api_key = os.getenv("AZURE_OPENAI_API_KEY", "")
+    #     provider_settings.api_base = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+    #     provider_settings.api_version = os.getenv("AZURE_OPENAI_API_VERSION", "")
+    for model_type in EMBEDDING_MODEL_TYPES:
+        model = os.getenv(f"{provider}_EMBEDDING_{model_type.upper()}_MODEL", "")
+        if model != "":
+            model_settings = EmbeddingModelSettings(
+                type=model_type,
+                model=model,
+                char_limit=int(
+                    os.getenv(
+                        f"{provider}_EMBEDDING_{model_type.upper()}_CHAR_LIMIT", 1000
+                    )
+                ),
+                overlap=int(
+                    os.getenv(f"{provider}_EMBEDDING_{model_type.upper()}_OVERLAP", 100)
+                ),
+            )
+            if SETTINGS.default_embeddings.__getattribute__("default") is None:
+                SETTINGS.default_embeddings.default = model_settings
+            if SETTINGS.default_embeddings.__getattribute__(model_type) is None:
+                SETTINGS.default_embeddings.__setattr__(model_type, model_settings)
+            provider_settings.models.append(model_settings)
 
-print(f"\tEmbedding: {EMBEDDING_MODEL=}, {EMBEDDING_CHAR_LIMIT=}, {EMBEDDING_OVERLAP=}")
+    SETTINGS.embeddings.append(provider_settings)
+    if SETTINGS.default_embedding_provider is None:
+        SETTINGS.default_embedding_provider = provider_settings
+
+
+for provider_settings in SETTINGS.llms:
+    print(f"+++ {provider_settings.type} +++")
+    for model_settings in provider_settings.models:
+        print(
+            f"\t{model_settings.type.capitalize()}: {model_settings.model=} {model_settings.context_size=} {model_settings.char_limit=}"
+        )
+
+for embedding_provider_settings in SETTINGS.embeddings:
+    print(f"+++ {embedding_provider_settings.type} EMBEDDINGS +++")
+    for model_settings in embedding_provider_settings.models:
+        print(
+            f"\t{model_settings.type.capitalize()}: {model_settings.model=} {model_settings.char_limit=} {model_settings.overlap=}"
+        )
+
+print(f"+++ DEFAULTS +++")
+print(f"\tLLM: {SETTINGS.default_provider.type} {SETTINGS.default_llms.default.model}")
+print(f"\tEMBEDDING: {SETTINGS.default_embedding_provider.type} {SETTINGS.default_embeddings.default.model}")

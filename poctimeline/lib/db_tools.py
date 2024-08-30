@@ -10,10 +10,10 @@ from langchain_chroma import Chroma
 from chromadb.utils.embedding_functions import create_langchain_embedding
 from chromadb.config import Settings as ChromaSettings
 import streamlit as st
-from lib.chain import get_embeddings, init_llms
-from lib.load_env import CHROMA_PATH, FILE_TABLENAME, JOURNEY_TABLENAME, SQLITE_DB
-from lib.prompts import (
-    JourneyStructure,
+from chains.init import get_embeddings
+from lib.load_env import SETTINGS
+from chains.prompts import (
+    SubjectStructure,
     journey_steps,
     journey_step_details,
     journey_step_intro,
@@ -33,8 +33,8 @@ class StepModel(BaseModel):
     content: str = Field(default=None)
     intro: str = Field(default=None)
     actions: str = Field(default=None)
-    structured: JourneyStructure = Field(
-        default=JourneyStructure(title="", subject="", intro="", content="", actions=[])
+    structured: SubjectStructure = Field(
+        default=SubjectStructure(title="", subject="", intro="", content="", actions=[])
     )
 
 
@@ -96,7 +96,7 @@ class JourneyModel(BaseModel):
 
 # Define a new class for FileDataTable with filename as primary key
 class FileDataTable(Base):
-    __tablename__ = FILE_TABLENAME
+    __tablename__ = SETTINGS.file_tablename
 
     # id = Column(Integer, primary_key=True)
     filename = sqla.Column(sqla.String, primary_key=True)
@@ -115,7 +115,7 @@ class FileDataTable(Base):
 
 # Define a new class for JourneyDataTable with list_name as primary key
 class JourneyDataTable(Base):
-    __tablename__ = JOURNEY_TABLENAME
+    __tablename__ = SETTINGS.journey_tablename
 
     # id = Column(Integer, primary_key=True)
     journeyname = sqla.Column(sqla.String, primary_key=True)
@@ -135,7 +135,7 @@ database_session = None
 def init_db():
     global database_session
     if database_session is None:
-        engine = sqla.create_engine("sqlite:///{}".format(SQLITE_DB))
+        engine = sqla.create_engine("sqlite:///{}".format(SETTINGS.sqlite_db))
         Base.metadata.create_all(engine)
         DatabaseSession = sessionmaker(bind=engine)
         database_session = DatabaseSession()
@@ -175,7 +175,7 @@ def get_db_files(reset=False, filename=None):
     return db_files
 
 
-def get_db_journey(journey_name: str = None, reset=False):
+def get_db_journey(journey_name: str = None, reset=False) -> Dict[str, JourneyModel]:
     if "db_journey" not in st.session_state or reset:
         if journey_name is None:
             journey = database_session.query(JourneyDataTable).all()
@@ -201,7 +201,7 @@ collections = {}
 
 
 def get_chroma_collection(
-    name, update=False, path=CHROMA_PATH, embedding_id=None
+    name, update=False, path=SETTINGS.chroma_path, embedding_id=None
 ) -> chromadb.Collection:
     global collections
 
@@ -213,8 +213,6 @@ def get_chroma_collection(
 
     if update:
         chroma_client.delete_collection(name=name)
-
-    init_llms()
 
     embedding_function = None
     if embedding_id is not None:
@@ -233,9 +231,8 @@ vectorstores = {}
 
 
 def get_vectorstore(
-    id, embedding_id="base", update_vectorstores=False, path=CHROMA_PATH
+    id, embedding_id="base", update_vectorstores=False, path=SETTINGS.chroma_path
 ) -> Chroma:
-    init_llms()
     global chroma_client
     chroma_client = chroma_client or chromadb.PersistentClient(path=path, settings=ChromaSettings(anonymized_telemetry=False))
 
@@ -254,3 +251,10 @@ def get_vectorstore(
 
     vectorstores[id] = vectorstore
     return vectorstore
+
+def get_vectorstore_as_retriever(store_id, embedding_id="base", amount_of_documents = 5):
+    vectorstore = get_vectorstore(store_id, embedding_id)
+    return vectorstore.as_retriever(
+        search_type="similarity_score_threshold",
+        search_kwargs={"k": amount_of_documents, "score_threshold": 0.3},
+    )

@@ -8,7 +8,8 @@ from typing import Any, Callable, Dict, List, Union
 from langchain_core.runnables.base import RunnableSequence
 from langchain_core.messages import BaseMessage, AIMessage
 
-from lib.chain import get_chain
+from chains.init import get_base_chain, get_chain
+from chains.rag_chain import get_rag_chain
 from lib.db_tools import (
     CustomPrompt,
     JourneyDataTable,
@@ -20,9 +21,9 @@ from lib.db_tools import (
     SubjectModel,
 )
 from lib.document_parse import markdown_to_text
-from lib.document_tools import create_document_lists, rag_chain
-from lib.load_env import INSTRUCT_CHAR_LIMIT
-from lib.prompts import ActionStructure, JourneyStep, JourneyStepList, JourneyStructure, ResourceStructure
+from lib.document_tools import create_document_lists
+from lib.load_env import SETTINGS
+from chains.prompts import ActionStructure, JourneyStep, JourneyStepList, SubjectStructure, ResourceStructure
 from lib.streamlit_tools import llm_edit
 
 def save_journey(journey_name, journey:JourneyModel) -> bool:
@@ -39,6 +40,8 @@ def save_journey(journey_name, journey:JourneyModel) -> bool:
     if journey_db is not None:
         print("Remove old Journey")
         database_session.delete(journey_db)
+
+
 
     print("Create journey")
     journey_db = JourneyDataTable(
@@ -83,7 +86,7 @@ def llm_gen_title_summary(steps: List[Union[StepModel, SubjectModel]]) -> tuple[
         context = "\n".join([f"Title: {subject.title}\n Summary:\n{subject.summary}\n" for subject in steps])
     else:
         context = "\n".join([f"Title: {step.title}\n Subject:\n{step.subject}\nIntroduction:\n{step.intro or ""}" for step in steps])
-    result = get_chain("action")().invoke(
+    result = get_chain("action").invoke(
             {
                 "context": context,
                 "action": "Summarize context with 10 words or less to a title",
@@ -101,7 +104,7 @@ def llm_gen_title_summary(steps: List[Union[StepModel, SubjectModel]]) -> tuple[
     return title.strip(), summary.strip()
 
 def llm_gen_steps(content, journey:JourneyModel, subject:SubjectModel) -> JourneyStepList:
-    return get_chain("journey_steps")((subject.prompts.steps.system, subject.prompts.steps.user)).invoke(
+    return get_base_chain("journey_steps")((subject.prompts.steps.system, subject.prompts.steps.user)).invoke(
         {
             "context": content,
             "amount": subject.step_amount,
@@ -127,10 +130,10 @@ def llm_gen_step(content, journey:JourneyModel, subject:SubjectModel, step:Union
 
     if progress_cb is not None:
         progress_cb(0, "Generating subsection `"+step.title+"` content - ")
-    doc_chain = rag_chain(journey.chroma_collection[0], "hyde_document", amount_of_documents=10)
-    retry_lambda = lambda: get_chain("journey_step_details")((subject.prompts.step_detail.system, subject.prompts.step_detail.user)).invoke(
+    doc_chain = get_rag_chain(journey.chroma_collection, "hyde_document", amount_of_documents=10)
+    retry_lambda = lambda: get_base_chain("journey_step_details")((subject.prompts.step_detail.system, subject.prompts.step_detail.user)).invoke(
             {
-                "context": doc_chain.invoke({"question": subject_string, "context": content}),
+                "context": doc_chain.invoke({"question": subject_string, "context": content})["answer"],
                 "journey_instructions": journey.instructions,
                 "instructions": subject.instructions,
                 "subject": subject_string,
@@ -155,7 +158,7 @@ def llm_gen_step(content, journey:JourneyModel, subject:SubjectModel, step:Union
     if progress_cb is not None:
         progress_cb(0.1, "Generating subsection `"+step.title+"` intro - ")
 
-    class_intro = get_chain("journey_step_intro")((subject.prompts.step_intro.system, subject.prompts.step_intro.user)).invoke(
+    class_intro = get_base_chain("journey_step_intro")((subject.prompts.step_intro.system, subject.prompts.step_intro.user)).invoke(
         {
             "context": class_content,
             "journey_instructions": journey.instructions,
@@ -170,7 +173,7 @@ def llm_gen_step(content, journey:JourneyModel, subject:SubjectModel, step:Union
     if progress_cb is not None:
         progress_cb(0.2, "Generating subsection `"+step.title+"` modules - ")
 
-    class_actions = get_chain("journey_step_actions")((subject.prompts.step_actions.system, subject.prompts.step_actions.user)).invoke(
+    class_actions = get_base_chain("journey_step_actions")((subject.prompts.step_actions.system, subject.prompts.step_actions.user)).invoke(
         {
             "context": class_content,
             "journey_instructions": journey.instructions,
@@ -204,7 +207,9 @@ def llm_gen_step(content, journey:JourneyModel, subject:SubjectModel, step:Union
     if progress_cb is not None:
         progress_cb(0.3, "Generating subsection `"+step.title+"` structured format - ")
 
+    print("Start json step gen")
     json_step = llm_gen_json_step(gen_step)
+    print(f"{json_step=}")
 
     gen_step = llm_gen_update_actions(journey, subject, gen_step, json_step, generate_resources=generate_action_resources, progress_cb=progress_cb, progress_start=0.4, progress_end=1)
 
@@ -225,8 +230,8 @@ def get_action_details_str(index:int, action:ActionStructure) -> str:
         ---
         """)
 
-def llm_gen_json_step(step: StepModel, instructions="") -> Union[JourneyStructure, None]:
-    retry_lambda = lambda: get_chain("journey_structured")().invoke({
+def llm_gen_json_step(step: StepModel, instructions="") -> Union[SubjectStructure, None]:
+    structured = get_chain("journey_structured").invoke({
         "context": f"""
             Title:
             {step.title}
@@ -241,19 +246,11 @@ def llm_gen_json_step(step: StepModel, instructions="") -> Union[JourneyStructur
             {instructions}
         """ if instructions else ""),
     })
-    structured: JourneyStructure = None
-    try:
-        structured = retry_lambda()
-    except Exception as e:
-        try:
-            structured = retry_lambda()
-        except Exception as e:
-            print(e)
 
     return structured
 
-def llm_gen_update_actions(journey:JourneyModel, subject: SubjectModel, gen_step:StepModel, json_step: JourneyStructure, generate_resources=False, progress_cb:Callable[[float, str], None]=None, progress_start: float=0, progress_end:float=1) -> StepModel:
-    if json_step is not None and isinstance(json_step, JourneyStructure):
+def llm_gen_update_actions(journey:JourneyModel, subject: SubjectModel, gen_step:StepModel, json_step: SubjectStructure, generate_resources=False, progress_cb:Callable[[float, str], None]=None, progress_start: float=0, progress_end:float=1) -> StepModel:
+    if json_step is not None and isinstance(json_step, SubjectStructure):
         gen_step.structured = json_step
         json_step.title = gen_step.title
         json_step.subject = gen_step.subject
@@ -280,11 +277,11 @@ def llm_gen_update_actions(journey:JourneyModel, subject: SubjectModel, gen_step
 
 def llm_gen_resource(journey:JourneyModel, subject: SubjectModel, step:StepModel, action:ActionStructure, resource:ResourceStructure) -> str:
     resource_text = f"{resource.title} (from: {resource.reference}) - {resource.summary.replace('\n', '')} for {action.title} in {step.title} of {subject.title} in {journey.title}"
-    doc_chain = rag_chain(journey.chroma_collection[0], "hyde_document", amount_of_documents=5)
+    doc_chain = get_rag_chain(journey.chroma_collection, "hyde_document", amount_of_documents=5)
 
-    class_action_details = get_chain("journey_step_action_details")((subject.prompts.step_action_details.system, subject.prompts.step_action_details.user)).invoke(
+    class_action_details = get_base_chain("journey_step_action_details")((subject.prompts.step_action_details.system, subject.prompts.step_action_details.user)).invoke(
         {
-            "context": doc_chain.invoke({"question": resource_text, "context": step.content}),
+            "context": doc_chain.invoke({"question": resource_text, "context": step.content})["answer"],
             "journey_instructions": journey.instructions,
             "instructions": subject.instructions,
             "resource": resource_text,
@@ -307,21 +304,21 @@ def llm_gen_journey_doc(list_of_strings = []) -> tuple[str, str]:
 
     reduce = False
 
-    reduce = len(text) > INSTRUCT_CHAR_LIMIT
+    reduce = len(text) > SETTINGS.default_llms.instruct.char_limit
 
     # print(f"{reduce = } ({len(text)})")
 
     if reduce:
         list_of_docs = create_document_lists(list_of_strings)
 
-        chain = get_chain("reduce_journey_documents")
+        chain = get_chain("stuff_documents")
 
         list_of_strings = []
         list_of_thoughts = []
         total = len(list_of_docs)
         for i, document in enumerate(list_of_docs):
             # bar.progress(i / total, text=f"Compressing page {i+1}/{total}")
-            result = chain().invoke({"context": [document]})
+            result = chain.invoke({"context": [document]})
             if isinstance(result, tuple):
                 list_of_strings.append(result[0])
                 list_of_thoughts.append(result[1])
@@ -332,11 +329,11 @@ def llm_gen_journey_doc(list_of_strings = []) -> tuple[str, str]:
         text = "\n".join(list_of_strings)
         thoughts = "\n".join(list_of_thoughts)
 
-        reduce = len(text) > INSTRUCT_CHAR_LIMIT
+        reduce = len(text) > SETTINGS.default_llms.instruct.char_limit
         if reduce:
             # bar.progress(1 - 1/total, text="Result too long, 2nd pass")
             list_of_docs = create_document_lists(list_of_strings, list_of_thoughts)
-            result = chain().invoke(
+            result = chain.invoke(
                     {
                         "context": list_of_docs,
                     }

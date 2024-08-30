@@ -227,32 +227,6 @@ class TagsParser(BaseOutputParser[bool]):
     def _type(self) -> str:
         return "tag_output_parser"
 
-class HallucinationParser(BaseOutputParser[bool]):
-    """Custom parser to clean specified tag from results."""
-
-    def parse(self, text: Union[str, BaseMessage]) -> tuple[bool, BaseMessage]:
-        # print(f"Parsing tags: {text}")
-        if isinstance(text, BaseMessage):
-            text = text.content
-
-        # Extract all floats from the text using regular expressions
-        floats = [float(n) for n in re.findall(r"[-+]?(?:\d*\.*\d+)", text)]
-
-        if len(floats) == 0:
-            excpect_msg = f"""Unable to verify if the content is based on context."""
-            raise OutputParserException(excpect_msg)
-        if floats[0] == 0.0:
-            excpect_msg = f"""The generated text is not based on the context. Please rewrite the text so that it matches provided context."""
-            raise OutputParserException(excpect_msg)
-
-        # raise OutputParserException(f"Unexpected error: Testing errors.")
-
-        return True, text
-
-    @property
-    def _type(self) -> str:
-        return "hallucination_parser"
-
 text_formatter = PromptFormatter(
     system=textwrap.dedent(
         f"""
@@ -443,27 +417,46 @@ check = PromptFormatter(
     ),
 )
 
-error_retry = PromptFormatter(
+question = PromptFormatter(
     system=textwrap.dedent(
         f"""
-        Act as a error fixer. You are given a prompt, a completion and an error message.
-        The completion did not satisfy the constraints given in the prompt. Fix the completion
-        based on the error.
+        You are an assistant for question-answering tasks.
+        Use the following pieces of retrieved context and conversation history to answer the question.
+        If you don't know the answer, say that you don't know. Limit your response to three sentences maximum
+        and keep the answer concise. Don't reveal that the context is empty, just say you don't know.
         """
     ),
     user=textwrap.dedent(
         """
-        Prompt:
-        {prompt}
-        Completion:
-        {completion}
-
-        Above, the Completion did not satisfy the constraints given in the Prompt.
-        Details: {error}
-        Please try again:
+        Context start
+        {context}
+        Context end
+        Question: {question}
         """
     ),
 )
+
+class QuestionClassifierParser(BaseOutputParser[tuple[bool, BaseMessage]]):
+    """Custom parser to clean specified tag from results."""
+
+    def parse(self, text: Union[str, BaseMessage]) -> tuple[bool, BaseMessage]:
+        # print(f"Parsing tags: {text}")
+        if isinstance(text, BaseMessage):
+            text = text.content
+
+        # Extract all floats from the text using regular expressions
+        # Check if 'yes' exists on the first line of text
+        first_line = text.split('\n')[0].strip().lower()
+        if 'yes' in first_line:
+            return True, text
+        elif 'no' in first_line:
+            return False, text
+        else:
+            raise OutputParserException(f"Unexpected response: Expected 'yes' or 'no', but got '{first_line}'.")
+
+    @property
+    def _type(self) -> str:
+        return "question_classifier_parser"
 
 question_classifier = PromptFormatter(
     system=textwrap.dedent(
@@ -482,46 +475,7 @@ question_classifier = PromptFormatter(
         """
     ),
 )
-
-hallucination = PromptFormatter(
-    system=textwrap.dedent(
-        f"""
-        You are a grader assessing whether an LLM generation is grounded in / supported by a set of retrieved facts.
-
-        Give a binary score 1 or 0, where 1 means that the answer is grounded in / supported by the set of facts or history and answers the question.
-
-        After the score write a short explanation if the answer does not pass test. Always return the score of 0 or 1 regardless.
-
-        Example 1:
-        1
-
-        Generated content is grounded in facts
-
-        Example 2:
-        0
-
-        Generated content is built on information which is not in scope
-
-        Example 3:
-        0
-
-        Generated content is guessing
-        """
-    ),
-    user=textwrap.dedent(
-        """
-        {input}
-
-        LLM generation: {output}
-
-        Return 1 or 0 score and explanation regardless.
-        """
-    ),
-)
-hallucination.parser = HallucinationParser()
-
-        # Facts: {{context}}
-        # History: {{chat_history}}
+question_classifier.parser = QuestionClassifierParser()
 
 helper = PromptFormatter(
     system=textwrap.dedent(
@@ -560,24 +514,6 @@ chat = PromptFormatter(
 )
 # chat.parser = TagsParser(min_len=10)
 
-question = PromptFormatter(
-    system=textwrap.dedent(
-        f"""
-        You are an assistant for question-answering tasks.
-        Use the following pieces of retrieved context and conversation history to answer the question.
-        If you don't know the answer, say that you don't know. Limit your response to three sentences maximum
-        and keep the answer concise. Don't reveal that the context is empty, just say you don't know.
-        """
-    ),
-    user=textwrap.dedent(
-        """
-        Context start
-        {context}
-        Context end
-        Question: {question}
-        """
-    ),
-)
 
 hyde = PromptFormatter(
     system=textwrap.dedent(
@@ -879,7 +815,7 @@ class ResourceStructure(BaseModel):
 class ActionStructure(BaseModel):
     title: str = Field(description="Title for the step", title="Title")
     description: str = Field(
-        description="Description for the teacher for what to do", title="Description"
+        description="Objective, task, or target for what to do on the step", title="Description"
     )
     resources: List[ResourceStructure] = Field(
         description="List of content to help the Teacher to perform the step.",
@@ -891,7 +827,7 @@ class ActionStructure(BaseModel):
     )
 
 
-class JourneyStructure(BaseModel):
+class SubjectStructure(BaseModel):
     title: str = Field(description="Title of the class", title="Title")
     subject: str = Field(description="Subject of the class", title="Subject")
     intro: str = Field(description="Introduction to the class", title="Intro")
@@ -908,6 +844,7 @@ journey_structured = PromptFormatter(
     to format the context data. Return only the JSON object with the formatted data.
     """),
     user=textwrap.dedent("""
+
     context start
     {context}
     context end
@@ -920,7 +857,7 @@ journey_structured = PromptFormatter(
     Return only the properly formatted JSON object with the formatted data.
     """),
 )
-journey_structured.parser = PydanticOutputParser(pydantic_object=JourneyStructure)
+journey_structured.parser = PydanticOutputParser(pydantic_object=SubjectStructure)
 
 DEFAULT_PROMPT_FORMATTER = chat
 

@@ -1,33 +1,18 @@
 from functools import cache
-import pprint as pp
+import sys
 from typing import Dict, List
-import streamlit as st
 # from langchain_chroma import Chroma
 from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
     MarkdownHeaderTextSplitter,
 )
-from langchain_core.runnables import (
-    RunnableSequence,
-    RunnableParallel,
-    RunnablePassthrough,
-    RunnableBranch,
-    RunnableWithMessageHistory,
-    RunnableLambda
-)
-from langchain_core.prompts import PromptTemplate
+
 # from langchain_core.output_parsers import StrOutputParser
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain.schema.document import Document
-from langchain_community.document_compressors import FlashrankRerank
-from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.chat_history import BaseChatMessageHistory
-from langchain_core.messages import AIMessage
-from langchain_huggingface.llms import HuggingFacePipeline
-from lib.db_tools import get_vectorstore
-from lib.load_env import EMBEDDING_CHAR_LIMIT, INSTRUCT_CHAR_LIMIT
-from lib.prompts import question_classifier
-from lib.chain import  get_chain, get_embeddings, get_llm, init_llms, log_chain, format_chain_params, print_params
+
+from lib.load_env import SETTINGS
+from chains.init import  get_embeddings
 
 @cache
 def get_text_splitter(chunk_size, chunk_overlap):
@@ -38,182 +23,7 @@ def get_text_splitter(chunk_size, chunk_overlap):
         chunk_size=chunk_size, chunk_overlap=chunk_overlap
     )
 
-def get_session_history(session_id: str) -> BaseChatMessageHistory:
-    if "chat_history" not in st.session_state:
-        st.session_state["chat_history"] = {}
-
-    if session_id not in st.session_state["chat_history"]:
-        st.session_state["chat_history"][session_id] = ChatMessageHistory()
-    return st.session_state["chat_history"][session_id]
-
-def get_chain_with_history(chain_id: str, chain:RunnableSequence):
-    if "history_chains" not in st.session_state:
-        st.session_state["history_chains"] = {}
-    if chain_id in st.session_state["history_chains"]:
-        return st.session_state["history_chains"][chain_id]
-
-    history_chain = RunnableWithMessageHistory(
-        runnable=chain,
-        get_session_history=get_session_history,
-        input_messages_key="question",
-        output_messages_key="answer",
-        history_messages_key="chat_history"
-    )
-
-    st.session_state["history_chains"][chain_id] = history_chain
-    return history_chain
-
-compressor = None
-
-def rerank_documents(list_of_documents: list[Document], query: str, amount=5):
-    global compressor
-
-    # print("\n\n\nReranking documents")
-    # print(f"Amount of documents: {len(list_of_documents)}")
-    # print(f"Query: {query}\n\n\n")
-
-    if len(list_of_documents) > 5:
-        if compressor is None:
-            compressor = FlashrankRerank(top_n=amount)
-
-        ranked_documents = compressor.compress_documents(
-            documents=list_of_documents, query=query
-        )
-        return ranked_documents
-
-    return list_of_documents
-
-def rerank_rag(params: Dict):
-    query = params["question"]
-    new_content = []
-    new_content_strs = []
-    def sort_by_references(document: Document):
-        return len(document.metadata)
-
-    documents: list[Document] = params["documents"]
-
-    documents.sort(reverse=True, key=sort_by_references)
-    for document in documents:
-        if document.page_content not in new_content_strs:
-            new_content.append(document)
-            new_content_strs.append(document.page_content)
-
-    new_content = rerank_documents(new_content, query, 10)
-
-    return new_content
-
-rag_chains = {}
-
-def rag_chain(store_id:str, embedding_id="hyde", chain_id = "question", reset=False, with_history=False, with_chat=False, amount_of_documents=5) -> RunnableSequence:
-    global rag_chains
-    chain = get_chain(chain_id)
-    chat_chain = get_chain("chat")
-
-    chain_id = f"{store_id}-{embedding_id}-{chain_id}-{chain.llm_id}-{"history" if with_history else "nohistory"}-{"chat" if with_chat else "nochat"}-#{amount_of_documents}"
-    if chain_id in rag_chains and not reset:
-        return rag_chains[chain_id]
-
-    print(f"Initializing RAG chain: {chain_id} with {with_history=} and {with_chat=}")
-
-    vectorstore = get_vectorstore(store_id, embedding_id)
-    retriever = vectorstore.as_retriever(
-        search_type="similarity_score_threshold",
-        search_kwargs={"k": amount_of_documents, "score_threshold": 0.3},
-    )
-
-    executable = chain()
-    # llm = get_llm(chain.llm_id)
-    # prompt = chain.prompt_template or chain.prompt.get_chat_prompt_template()
-
-    # llm = get_llm(llm_id)
-    # prompt = get_prompt(chain_id)
-
-    documents:List = None
-    def store_documents(params):
-        nonlocal documents
-        if isinstance(params, Dict) and "documents" in params.keys():
-            documents = params["documents"]
-        elif isinstance(params, List) and len(params) > 0 and isinstance(params[0], Document):
-            documents = params
-        return params
-
-    def set_metadata(params):
-        print_params("metadata", params)
-
-        if isinstance(params, AIMessage) or isinstance(params, str):
-            params = {
-                "answer": params
-            }
-
-        if isinstance(params, tuple):
-            params = {
-                "answer": params[0]
-            }
-
-        if documents is None or len(documents) == 0:
-            return params
-
-        if "metadata" not in params:
-            params["metadata"] = {
-                "references": documents
-            }
-        else:
-            params["metadata"]["references"] = documents
-
-        return params
-
-    classification_chain = (
-        RunnableLambda(lambda x: {"question": x["question"]}) |
-        question_classifier.get_chat_prompt_template() |
-        get_llm("tester") |
-        log_chain |
-        RunnableLambda(lambda x: "yes" in str(x.content).lower())
-    )
-
-    def skip_search(params):
-        return {
-            "question": params["question"],
-            # "context": params["context"] if "context" in params.keys() else [],
-            "chat_history": params["chat_history"] if "chat_history" in params.keys() else []
-        }
-
-    qa_chain = (
-        RunnableParallel({
-            "is_question":
-                RunnableBranch(
-                    (lambda x: with_chat, classification_chain),
-                    RunnableLambda(lambda x: True)
-                ),
-            "__params": RunnablePassthrough()
-        })
-        | log_chain |
-        RunnableBranch(
-            (lambda x: x["is_question"], format_chain_params | RunnableParallel(
-                {
-                    "context": RunnableParallel({
-                        "documents":  retriever,  # add_context | retriever | log_chain,
-                        "__params": RunnablePassthrough(),
-                    }) | format_chain_params | rerank_rag | store_documents,
-                    "question": RunnableLambda(lambda x: x["question"]),
-                    "chat_history": RunnableLambda(lambda x: x["chat_history"] if "chat_history" in x.keys() else []),
-                }) | executable
-             ),
-            format_chain_params | RunnableLambda(skip_search) | chat_chain()
-        ) #| logchain_
-        | set_metadata
-        # | prompt
-        # | llm
-        # | StrOutputParser()
-    )
-
-    if with_history:
-        qa_chain = get_chain_with_history(chain_id, qa_chain)
-
-    rag_chains[chain_id] = qa_chain
-
-    return qa_chain
-
-def split_text(text, split=INSTRUCT_CHAR_LIMIT, overlap=100):
+def split_text(text, split=SETTINGS.default_llms.instruct.char_limit, overlap=100):
     text_len = len(text)
     split = text_len // (text_len / split)
     if (text_len - split) > overlap:
@@ -223,7 +33,7 @@ def split_text(text, split=INSTRUCT_CHAR_LIMIT, overlap=100):
         return [text]
 
 
-def join_documents(texts, split=INSTRUCT_CHAR_LIMIT):
+def join_documents(texts, split=SETTINGS.default_llms.instruct.char_limit):
     joins = []
     text_join = ""
 
@@ -247,7 +57,7 @@ def join_documents(texts, split=INSTRUCT_CHAR_LIMIT):
         else:
             _text = text.page_content
 
-        if len(text_join) > 100 and (len(text_join) + len(_text)) > chunk_length:
+        if len(_text) > 100 and (len(text_join) + len(_text)) > chunk_length and len(text_join) > 100:
             joins.append(text_join)
             text_join = _text
         else:
@@ -258,11 +68,9 @@ def join_documents(texts, split=INSTRUCT_CHAR_LIMIT):
     return joins
 
 
-def semantic_splitter(text, split=INSTRUCT_CHAR_LIMIT, progress_cb=None):
-    init_llms()
-
+def semantic_splitter(text, split=SETTINGS.default_llms.instruct.char_limit, progress_cb=None):
     if len(text) > 1000:
-        less_text = split_text(text, EMBEDDING_CHAR_LIMIT, 0)
+        less_text = split_text(text, SETTINGS.default_embeddings.default.char_limit, 0)
     else:
         less_text = [text]
 
@@ -279,7 +87,7 @@ def semantic_splitter(text, split=INSTRUCT_CHAR_LIMIT, progress_cb=None):
     return join_documents(texts, split)
 
 
-def split_markdown(text, split=INSTRUCT_CHAR_LIMIT):
+def split_markdown(text, split=SETTINGS.default_llms.instruct.char_limit):
     headers_to_split_on = [
         ("#", "Header 1"),
         ("##", "Header 2"),
@@ -292,7 +100,13 @@ def split_markdown(text, split=INSTRUCT_CHAR_LIMIT):
         headers_to_split_on=headers_to_split_on, strip_headers=False
     )
 
-    texts = markdown_splitter.split_text(text)
+    md_texts = markdown_splitter.split_text(text)
+    texts = [text for md_text in md_texts for text in split_text(md_text.page_content, split)]
+    # avg_len = sum(len(text) for text in texts) / len(texts)
+    # min_len = min(len(text) for text in texts)
+    # max_len = max(len(text) for text in texts)
+
+    # print(f"Average length of each string in texts: {avg_len}, Min length: {min_len}, Max length: {max_len}, Total amount of strings: {len(texts)}")
 
     return join_documents(texts, split)
 

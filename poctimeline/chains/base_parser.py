@@ -75,6 +75,7 @@ error_retry = PromptFormatter(
     ),
 )
 
+
 def get_text_from_completion(completion):
     completion_content = repr(completion)
     if isinstance(completion, BaseModel):
@@ -92,6 +93,7 @@ def get_text_from_completion(completion):
         completion_content = completion.strip()
 
     return completion_content
+
 
 class BaseParserChain(BaseChain):
     def __init__(
@@ -112,7 +114,7 @@ class BaseParserChain(BaseChain):
         self, custom_prompt: tuple[str, str] | None = None
     ) -> RunnableSequence:
         if self.chain is not None and (
-            custom_prompt is None or self.custom_prompt is custom_prompt
+            custom_prompt is None or repr(self.custom_prompt) == repr(custom_prompt)
         ):
             return self.chain
 

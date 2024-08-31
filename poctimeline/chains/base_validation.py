@@ -187,7 +187,7 @@ class BaseValidationChain(BaseChain):
         self, custom_prompt: tuple[str, str] | None = None, **kwargs
     ) -> RunnableSequence:
         if self.chain is not None and (
-            custom_prompt is None or self.custom_prompt is custom_prompt
+            custom_prompt is None or repr(self.custom_prompt) == repr(custom_prompt)
         ):
             return self.chain
 
@@ -233,7 +233,9 @@ class BaseValidationChain(BaseChain):
 
         self.verify_chain.name = f"{self.name}-validation-verify"
 
-        self.chain = RunnableLambda(lambda x: {"context": x} if isinstance(x, str) else x) | RunnableBranch(
+        self.chain = RunnableLambda(
+            lambda x: {"context": x} if isinstance(x, str) else x
+        ) | RunnableBranch(
             (
                 lambda x: (
                     (

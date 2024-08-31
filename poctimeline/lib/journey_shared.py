@@ -207,9 +207,7 @@ def llm_gen_step(content, journey:JourneyModel, subject:SubjectModel, step:Union
     if progress_cb is not None:
         progress_cb(0.3, "Generating subsection `"+step.title+"` structured format - ")
 
-    print("Start json step gen")
     json_step = llm_gen_json_step(gen_step)
-    print(f"{json_step=}")
 
     gen_step = llm_gen_update_actions(journey, subject, gen_step, json_step, generate_resources=generate_action_resources, progress_cb=progress_cb, progress_start=0.4, progress_end=1)
 

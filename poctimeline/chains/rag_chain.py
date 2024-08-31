@@ -99,7 +99,7 @@ class RagChain(BaseChain):
         self, custom_prompt: tuple[str, str] | None = None, **kwargs
     ) -> RunnableSequence:
         if self.chain is not None and (
-            custom_prompt is None or self.custom_prompt is custom_prompt
+            custom_prompt is None or repr(self.custom_prompt) == repr(custom_prompt)
         ):
             return self.chain
 

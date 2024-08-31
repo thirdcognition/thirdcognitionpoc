@@ -233,7 +233,7 @@ class BaseValidationChain(BaseChain):
 
         self.verify_chain.name = f"{self.name}-validation-verify"
 
-        self.chain = RunnableBranch(
+        self.chain = RunnableLambda(lambda x: {"context": x} if isinstance(x, str) else x) | RunnableBranch(
             (
                 lambda x: (
                     (

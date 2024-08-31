@@ -3,13 +3,13 @@ import sys
 import streamlit as st
 
 from langchain_core.messages import BaseMessage
-from chains.init import get_chain
-from lib.document_tools import create_document_lists, split_text
-from lib.load_env import SETTINGS
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
+from chains.init import get_chain
+from lib.document_tools import create_document_lists, split_text
+from lib.load_env import SETTINGS
 from lib.db_tools import FileDataTable, get_chroma_collection, get_db_files, init_db
 from lib.document_parse import markdown_to_text
 from lib.streamlit_tools import check_auth, get_all_categories, llm_edit

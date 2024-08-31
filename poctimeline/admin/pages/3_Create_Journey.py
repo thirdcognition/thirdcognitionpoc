@@ -132,8 +132,8 @@ def get_journey_gen(journey_name):
                 "Journey Instructions",
                 height=10,
                 key=f"journey_gen_instructions_{journey_name}",
-                value=journey_details.instructions,
-            )
+                value=journey_details.instructions or '',
+            ) or ''
             # journey_details.instructions = journey_instructions
             if len(journey_details.subjects) == 0:
                 journey_details.subjects = [SubjectModel()]

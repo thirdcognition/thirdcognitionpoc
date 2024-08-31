@@ -2,6 +2,11 @@ import os
 import sys
 import streamlit as st
 
+from langchain_core.messages import BaseMessage
+from chains.init import get_chain
+from lib.document_tools import create_document_lists, split_text
+from lib.load_env import SETTINGS
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
@@ -137,8 +142,75 @@ def manage_file(filename):
             )
 
             with tab1:
-                with st.container():
-                    st.write(summary, unsafe_allow_html=True)
+                if st.button(
+                    "Rewrite",
+                    key=f"llm_summary_rewrite_{filename}",
+                    use_container_width=True,
+                ):
+                    instance = (
+                        database_session.query(FileDataTable)
+                        .where(FileDataTable.filename == filename)
+                        .first()
+                    )
+                    text = instance.summary
+                    summary_texts = instance.texts
+                    if (
+                        instance.formatted_text is not None
+                        and instance.formatted_text != ""
+                    ):
+                        summary_texts = split_text(
+                            instance.formatted_text,
+                            SETTINGS.default_llms.instruct.char_limit,
+                            128,
+                        )
+                    with st.spinner("Rewriting"):
+                        if summary_texts is not None:
+                            # split_texts = split_text("\n".join(texts), CHAR_LIMIT)
+                            if len(summary_texts) == 1:
+                                shorter_text, shorter_thoughts = llm_edit(
+                                    "summary", summary_texts
+                                )
+                                if shorter_text is not None or shorter_text == "":
+                                    text = shorter_text
+                                else:
+                                    text = summary_texts[0]
+                            else:
+                                list_of_docs = create_document_lists(
+                                    summary_texts, source=filename
+                                )
+                                # print(f"{ list_of_docs = }")
+
+                                results = get_chain("summary_documents").invoke(
+                                    {"context": list_of_docs}
+                                )
+
+                                if isinstance(results, tuple) and len(results) == 2:
+                                    shorter_text, shorter_thoughts = results
+                                else:
+                                    shorter_text = results
+                                    shorter_thoughts = ""
+
+                                shorter_text = (
+                                    shorter_text.content
+                                    if isinstance(shorter_text, BaseMessage)
+                                    else shorter_text
+                                )
+
+                                # shorter_text, shorter_thoughts = llm_edit("summary", [summary_text])
+
+                                if shorter_text is not None:
+                                    text = shorter_text
+
+                    st.success("Markdown rewrite complete")
+
+                    if text is not None and text != "" and text != instance.summary:
+                        instance.summary = text
+                        database_session.commit()
+                        get_db_files(reset=True)
+                    st.rerun()
+                else:
+                    with st.container():
+                        st.write(summary, unsafe_allow_html=True)
 
             with tab2:
                 update = False

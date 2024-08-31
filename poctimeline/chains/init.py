@@ -242,7 +242,7 @@ def init_chain(
         llm=get_llm(id),
         retry_llm=get_llm(retry_id),
         prompt=prompt,
-        validation_llm=get_llm(validate_id) if check_for_hallucinations else None,
+        validation_llm=(get_llm(validate_id) if check_for_hallucinations else None),
     )
 
 

@@ -16,7 +16,7 @@ class Chain(BaseParserChain):
 
         self.chain = super().__call__(custom_prompt)
 
-        if self.validation_llm:
+        if self.validation_llm is not None:
             self.hallunication_chain = BaseValidationChain(parent_chain=self.chain, prompt=self.prompt, validation_llm=self.validation_llm, retry_llm=self.retry_llm)
             self.chain = self.hallunication_chain()
 

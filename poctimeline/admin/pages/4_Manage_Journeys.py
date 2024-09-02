@@ -304,11 +304,11 @@ def journey_subject_step_actions_ui(
     if edit_mode:
         with container1:
             with st.popover(":sparkle: Generate new modules", use_container_width=True):
-                generate_action_resources = st.checkbox(
-                    "Generate resources (extremely slow)",
-                    value=False,
-                    key=f"generate_action_button_resources_{journey_name}",
-                )
+                # generate_action_resources = st.checkbox(
+                #     "Generate resources (extremely slow)",
+                #     value=False,
+                #     key=f"generate_action_button_resources_{journey_name}",
+                # )
                 if st.button(
                     f"Are you sure you want to generate {journey_name}: {step.title} modules?",
                     key=f"generate_actions_button_{journey_name}",
@@ -348,7 +348,6 @@ def journey_subject_step_actions_ui(
                         subject,
                         step,
                         new_structured,
-                        generate_resources=generate_action_resources,
                     )
                     journey.subjects[subject_index].steps[step_index] = step
 
@@ -366,11 +365,11 @@ def journey_subject_step_actions_ui(
             with st.popover(
                 ":sparkle: Regenerate structured modules", use_container_width=True
             ):
-                generate_action_resources = st.checkbox(
-                    "Generate resources (extremely slow)",
-                    value=False,
-                    key=f"generate_structured_actions_resources_{journey_name}",
-                )
+                # generate_action_resources = st.checkbox(
+                #     "Generate resources (extremely slow)",
+                #     value=False,
+                #     key=f"generate_structured_actions_resources_{journey_name}",
+                # )
                 if st.button(
                     f"Are you sure you want regenerate {journey_name}: {journey.subjects[subject_index].steps[step_index].title} modules?",
                     key=f"generate_structured_actions_button_{journey_name}",
@@ -384,7 +383,6 @@ def journey_subject_step_actions_ui(
                         subject,
                         step,
                         new_structured,
-                        generate_resources=generate_action_resources,
                     )
                     journey.subjects[subject_index].steps[step_index] = step
                     st.rerun()
@@ -487,7 +485,7 @@ def edit_action_ui(
             height=200,
         )
         if st.button(
-            "Regenerate resource summary (slow)",
+            "Regenerate resource summary",
             key=f"journey_step_action_resource_generate_{journey_name}_{subject_index}_{step_index}_{action_index}_{resource_index}",
             on_click=generate_resource,
             args=(
@@ -699,18 +697,18 @@ def main():
                     use_container_width=True,
                 )
                 with mod_col2.popover(":sparkle:", use_container_width=True):
-                    generate_resources = st.checkbox(
-                        "Generate resources (extremely slow)",
-                        value=False,
-                        key=f"generate_resources_{journey_name}",
-                    )
+                    # generate_resources = st.checkbox(
+                    #     "Generate resources (extremely slow)",
+                    #     value=False,
+                    #     key=f"generate_resources_{journey_name}",
+                    # )
                     if st.button(
                         f"Are you sure you want regenerate {journey_name}: {subject_title}?",
                         key=f"generate_subject_button_{journey_name}",
                         use_container_width=True,
                     ):
                         journey.subjects[subject_index] = gen_journey_subject(
-                            journey, subject, generate_resources=generate_resources, subject_index=subject_index
+                            journey, subject, subject_index=subject_index
                         )
                         save_journey_command(journey_name, journey_index, journey)
 
@@ -746,11 +744,11 @@ def main():
                     use_container_width=True,
                 )
                 with mod_col2.popover(":sparkle:", use_container_width=True):
-                    generate_action_resources = st.checkbox(
-                        "Generate resources (extremely slow)",
-                        value=False,
-                        key=f"generate_step_resources_{journey_name}",
-                    )
+                    # generate_action_resources = st.checkbox(
+                    #     "Generate resources (extremely slow)",
+                    #     value=False,
+                    #     key=f"generate_step_resources_{journey_name}",
+                    # )
                     if st.button(
                         f"Are you sure you want regenerate {journey_name}: {subject_title} - {step_title}?",
                         key=f"generate_step_button_{journey_name}",
@@ -760,7 +758,6 @@ def main():
                             journey,
                             subject,
                             step_index=step_index,
-                            generate_resources=generate_action_resources,
                         )
                         save_journey_command(journey_name, journey_index, journey)
                 with mod_col3.popover(":x:", use_container_width=True):

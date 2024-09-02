@@ -164,7 +164,7 @@ def get_journey_gen(journey_name):
                 )
                 st.session_state.journey_get_details[journey_name] = journey_details
                 st.rerun()
-            st.session_state.journey_generator_generate_resources = but_col1.checkbox("Generate resources (extremely slow)")
+            # st.session_state.journey_generator_generate_resources = but_col1.checkbox("Generate resources (extremely slow)")
 
     # Check that all subjects have files defined
     def check_subject_files(subjects: List[SubjectModel]):

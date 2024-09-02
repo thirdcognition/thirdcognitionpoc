@@ -31,7 +31,7 @@ from lib.load_env import SETTINGS
 
 from chains.prompts import ActionStructure, SubjectStructure
 
-from lib.streamlit_tools import check_auth
+from lib.streamlit_tools import check_auth, get_all_categories
 
 st.set_page_config(
     page_title="TC POC: Create Journey",
@@ -631,7 +631,14 @@ def main():
     if not check_auth():
         return
 
-    db_journey = get_db_journey()
+    file_categories = get_all_categories()
+    categories = st.multiselect("Categories", file_categories)
+
+    if not categories:
+        st.header("First, choose a category.")
+        return
+
+    db_journey = get_db_journey(chroma_collections=["rag_" + category for category in categories])
 
     if db_journey is not None and len(db_journey.keys()) > 0:
         st.header("Journey database")

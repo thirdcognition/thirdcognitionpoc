@@ -15,7 +15,8 @@ from lib.load_env import SETTINGS
 from chains.prompts import (
     SubjectStructure,
     journey_steps,
-    journey_step_details,
+    journey_step_content,
+    journey_step_content_redo,
     journey_step_intro,
     journey_step_actions,
     journey_step_action_details,
@@ -47,9 +48,9 @@ class JourneyPrompts(BaseModel):
     steps: CustomPrompt = Field(
         default=CustomPrompt(system=journey_steps.system, user=journey_steps.user)
     )
-    step_detail: CustomPrompt = Field(
+    step_content: CustomPrompt = Field(
         default=CustomPrompt(
-            system=journey_step_details.system, user=journey_step_details.user
+            system=journey_step_content.system, user=journey_step_content.user
         )
     )
     step_intro: CustomPrompt = Field(
@@ -66,6 +67,12 @@ class JourneyPrompts(BaseModel):
         default=CustomPrompt(
             system=journey_step_action_details.system,
             user=journey_step_action_details.user,
+        )
+    )
+    step_content_redo: CustomPrompt = Field(
+        default=CustomPrompt(
+            system=journey_step_content_redo.system,
+            user=journey_step_content_redo.user,
         )
     )
 

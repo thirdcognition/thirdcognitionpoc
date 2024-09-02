@@ -304,11 +304,6 @@ def journey_subject_step_actions_ui(
     if edit_mode:
         with container1:
             with st.popover(":sparkle: Generate new modules", use_container_width=True):
-                # generate_action_resources = st.checkbox(
-                #     "Generate resources (extremely slow)",
-                #     value=False,
-                #     key=f"generate_action_button_resources_{journey_name}",
-                # )
                 if st.button(
                     f"Are you sure you want to generate {journey_name}: {step.title} modules?",
                     key=f"generate_actions_button_{journey_name}",
@@ -337,11 +332,8 @@ def journey_subject_step_actions_ui(
                     if isinstance(new_actions, BaseMessage):
                         new_actions = new_actions.content
 
-                    # print(f"{new_actions=}")
-                    # step =step
                     step.actions = new_actions.strip()
                     new_structured = llm_gen_json_step(step)
-                    # print(f"{new_structured=}")
                     step.structured.actions = new_structured.actions
                     step = llm_gen_update_actions(
                         journey,
@@ -365,11 +357,6 @@ def journey_subject_step_actions_ui(
             with st.popover(
                 ":sparkle: Regenerate structured modules", use_container_width=True
             ):
-                # generate_action_resources = st.checkbox(
-                #     "Generate resources (extremely slow)",
-                #     value=False,
-                #     key=f"generate_structured_actions_resources_{journey_name}",
-                # )
                 if st.button(
                     f"Are you sure you want regenerate {journey_name}: {journey.subjects[subject_index].steps[step_index].title} modules?",
                     key=f"generate_structured_actions_button_{journey_name}",
@@ -697,11 +684,6 @@ def main():
                     use_container_width=True,
                 )
                 with mod_col2.popover(":sparkle:", use_container_width=True):
-                    # generate_resources = st.checkbox(
-                    #     "Generate resources (extremely slow)",
-                    #     value=False,
-                    #     key=f"generate_resources_{journey_name}",
-                    # )
                     if st.button(
                         f"Are you sure you want regenerate {journey_name}: {subject_title}?",
                         key=f"generate_subject_button_{journey_name}",
@@ -744,11 +726,6 @@ def main():
                     use_container_width=True,
                 )
                 with mod_col2.popover(":sparkle:", use_container_width=True):
-                    # generate_action_resources = st.checkbox(
-                    #     "Generate resources (extremely slow)",
-                    #     value=False,
-                    #     key=f"generate_step_resources_{journey_name}",
-                    # )
                     if st.button(
                         f"Are you sure you want regenerate {journey_name}: {subject_title} - {step_title}?",
                         key=f"generate_step_button_{journey_name}",

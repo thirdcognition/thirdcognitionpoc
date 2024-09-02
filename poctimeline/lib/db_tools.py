@@ -18,7 +18,7 @@ from chains.prompts import (
     journey_step_details,
     journey_step_intro,
     journey_step_actions,
-    journey_step_action_details
+    journey_step_action_details,
 )
 
 chroma_client = None
@@ -64,7 +64,8 @@ class JourneyPrompts(BaseModel):
     )
     step_action_details: CustomPrompt = Field(
         default=CustomPrompt(
-            system=journey_step_action_details.system, user=journey_step_action_details.user
+            system=journey_step_action_details.system,
+            user=journey_step_action_details.user,
         )
     )
 
@@ -146,7 +147,7 @@ def init_db():
     return database_session
 
 
-def get_db_files(reset=False, filename=None):
+def get_db_files(reset=False, filename=None, categories=None):
     if (
         "db_files" not in st.session_state
         or reset
@@ -172,7 +173,27 @@ def get_db_files(reset=False, filename=None):
     else:
         db_files = st.session_state.db_files
 
+    if isinstance(categories, str):
+        categories = [categories]
+    if categories:
+        new_db_files = {}
+        for cat in categories:
+            new_db_files.update(
+                {k: v for k, v in db_files.items() if cat in v["category_tag"]}
+            )
+        db_files = new_db_files
     return db_files
+
+
+def delete_db_file(filename: str):
+    instance = (
+        database_session.query(FileDataTable)
+        .where(FileDataTable.filename == filename)
+        .first()
+    )
+    database_session.delete(instance)
+    database_session.commit()
+    get_db_files(reset=True)
 
 
 def get_db_journey(journey_name: str = None, reset=False) -> Dict[str, JourneyModel]:
@@ -209,7 +230,9 @@ def get_chroma_collection(
         return collections[name]
 
     global chroma_client
-    chroma_client = chroma_client or chromadb.PersistentClient(path=path, settings=ChromaSettings(anonymized_telemetry=False))
+    chroma_client = chroma_client or chromadb.PersistentClient(
+        path=path, settings=ChromaSettings(anonymized_telemetry=False)
+    )
 
     if update:
         chroma_client.delete_collection(name=name)
@@ -234,7 +257,9 @@ def get_vectorstore(
     id, embedding_id="base", update_vectorstores=False, path=SETTINGS.chroma_path
 ) -> Chroma:
     global chroma_client
-    chroma_client = chroma_client or chromadb.PersistentClient(path=path, settings=ChromaSettings(anonymized_telemetry=False))
+    chroma_client = chroma_client or chromadb.PersistentClient(
+        path=path, settings=ChromaSettings(anonymized_telemetry=False)
+    )
 
     global vectorstores
 
@@ -252,7 +277,8 @@ def get_vectorstore(
     vectorstores[id] = vectorstore
     return vectorstore
 
-def get_vectorstore_as_retriever(store_id, embedding_id="base", amount_of_documents = 5):
+
+def get_vectorstore_as_retriever(store_id, embedding_id="base", amount_of_documents=5):
     vectorstore = get_vectorstore(store_id, embedding_id)
     return vectorstore.as_retriever(
         search_type="similarity_score_threshold",

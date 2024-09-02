@@ -1,9 +1,11 @@
 from datetime import datetime
 import os
+import re
 import sys
 
 import gc
 from io import StringIO
+from typing import List, Union
 import sqlalchemy as sqla
 import streamlit as st
 from streamlit.runtime.uploaded_file_manager import UploadedFile
@@ -40,38 +42,77 @@ This is an *extremely* cool admin tool!
 
 database_session = init_db()
 
-def write_categories(add_new=True):
+def validate_category(category):
+    # Check length
+    if not 3 <= len(category) <= 63:
+        return False
+    # Check start and end with alphanumeric character
+    if not category[0].isalnum() or not category[-1].isalnum():
+        return False
+    # Check for valid characters
+    if not re.match(r"^[A-Za-z0-9_\-]*$", category) or ' ' in category:
+        return False
+    # Check for consecutive periods
+    if ".." in category:
+        return False
+    # Check for IPv4 address
+    if re.match(r"^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$", category):
+        return False
+    return True
+
+def write_categories(add_new=True) -> Union[List, None]:
     st.subheader("File categories")
 
     file_categories = get_all_categories()
 
     st.write(f"Current categories: {', '.join(file_categories)}")
 
-    cat_col1, cat_col2 = st.columns([3, 1], vertical_alignment="bottom")
+    cat_col1, cat_col2 = st.columns([5, 1], vertical_alignment="bottom")
+    new_categories = []
+    valid = True
     with cat_col1:
         new_categories_input = st.text_input(
             "Add" if add_new else "Show" + " more categories: _(split with ```,```)_",
             key="file_categories_" + "new" if add_new else "show",
         )
 
+        if new_categories_input:
+            _new_categories = new_categories_input.split(",")
+            for new_category in _new_categories:
+                new_category = new_category.strip().replace(' ', '_')
+
+                if not validate_category(new_category):
+                    valid = False
+                    st.error(f"Invalid category: {new_category}. Please ensure it meets the following requirements: "
+                            "1. Contains 3-63 characters, "
+                            "2. Starts and ends with an alphanumeric character, "
+                            "3. Contains only alphanumeric characters, underscores or hyphens (-), "
+                            "4. Does not contain two consecutive periods (..), "
+                            "5. Is not a valid IPv4 address.")
+                    break
+                if new_category not in new_categories:
+                    new_categories.append(new_category)
+
     with cat_col2:
         add_categories = st.button(
-            "Add", key="add_file_categories_" + "new" if add_new else "show"
+            "Add", key="add_file_categories_" + "new" if add_new else "show", disabled=not valid, use_container_width=True
         )
 
-    if add_categories:
-        new_categories = new_categories_input.split(",")
+    if add_categories and valid:
+        # new_categories = new_categories_input.replace(' ', '_').split(",")
         change = False
         for new_category in new_categories:
-            if new_category not in file_categories:
-                file_categories.append(new_category)
+            cat = new_category.strip()
+            if cat not in file_categories:
+                file_categories.append(cat)
                 change = True
 
         st.session_state.file_categories = file_categories
 
         if change:
-            print(f"New categories {file_categories}")
-            st.rerun()
+            return new_categories
+            # print(f"New categories {file_categories}")
+            # st.rerun()
 
 
 def process_file_contents(
@@ -348,13 +389,17 @@ def main():
     if not check_auth():
         return
 
-    write_categories()
+    new_categories = write_categories()
 
     file_categories = get_all_categories()
+    if (new_categories is not None and len(new_categories) > 0):
+        st.session_state.selected_new_categories = new_categories
+        print('rerun')
+        st.rerun()
 
     st.subheader("File uploader")
 
-    default_category = st.multiselect("Default category", file_categories)
+    default_category = st.multiselect("Default category", file_categories, default=st.session_state.selected_new_categories if "selected_new_categories" in st.session_state else None)
 
     # submitted = None
     uploaded_files = None

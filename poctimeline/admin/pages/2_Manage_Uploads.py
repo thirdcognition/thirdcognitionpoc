@@ -10,7 +10,13 @@ sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 from chains.init import get_chain
 from lib.document_tools import create_document_lists, split_text
 from lib.load_env import SETTINGS
-from lib.db_tools import FileDataTable, get_chroma_collection, get_db_files, init_db
+from lib.db_tools import (
+    FileDataTable,
+    delete_db_file,
+    get_chroma_collection,
+    get_db_files,
+    init_db,
+)
 from lib.document_parse import markdown_to_text
 from lib.streamlit_tools import check_auth, get_all_categories, llm_edit
 
@@ -49,14 +55,7 @@ def manage_file(filename):
             key=f"delete_button_{filename}",
             use_container_width=True,
         ):
-            instance = (
-                database_session.query(FileDataTable)
-                .where(FileDataTable.filename == filename)
-                .first()
-            )
-            database_session.delete(instance)
-            database_session.commit()
-            get_db_files(reset=True)
+            delete_db_file(filename)
             st.rerun()
     header_col1, header_col2 = st.columns([1, 4], vertical_alignment="bottom")
     with header_col1:
@@ -328,15 +327,33 @@ def main():
     if not check_auth():
         return
 
-    files = get_db_files()
+    file_categories = get_all_categories()
+    del_col, col = st.columns([1, 8], vertical_alignment="bottom")
+    categories = col.multiselect("Categories", file_categories)
 
-    if files is not None and len(files) > 0:
-        st.header("File database")
+    with del_col.popover(":x:", disabled=not categories, use_container_width=True):
+        if st.button(
+            f"Are you sure you want to remove {', '.join(categories)}?",
+            key=f"delete_button_categories",
+            use_container_width=True,
+        ):
+            files = get_db_files(categories=categories)
+            for file in files.keys():
+                delete_db_file(file)
+            st.rerun()
+
+    if categories:
+        files = get_db_files(categories=categories)
+
+        if files is not None and len(files) > 0:
+            st.header("File database")
+        else:
+            st.header("No files uploaded yet.")
+
+        for file in files.keys():
+            manage_file(file)
     else:
-        st.header("No files uploaded yet.")
-
-    for file in files.keys():
-        manage_file(file)
+        st.header("First, choose a category.")
 
 
 if __name__ == "__main__":

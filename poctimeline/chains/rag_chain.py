@@ -1,4 +1,3 @@
-import textwrap
 from typing import Any, Dict, List
 from langchain.schema.document import Document
 from langchain_community.document_compressors import FlashrankRerank
@@ -17,8 +16,9 @@ from lib.db_tools import get_vectorstore_as_retriever
 
 from chains.base import BaseChain, keep_chain_params, log_chain_params
 from chains.init import get_chain, get_llm
-from chains.prompts import PromptFormatter, question
-from lib.helpers import get_chain_with_history, print_params
+from lib.helpers import print_params
+from prompts.base import PromptFormatter
+from prompts.chat import question
 
 compressor = None
 def rerank_documents(list_of_documents: list[Document], query: str, amount=5):

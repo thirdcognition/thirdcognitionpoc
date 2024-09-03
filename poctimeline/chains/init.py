@@ -27,31 +27,13 @@ from lib.load_env import (
     ProviderModelSettings,
     ProviderSettings,
 )
-from chains.prompts import (
-    PromptFormatter,
-    text_formatter,
-    text_formatter_compress,
-    text_formatter_guided,
-    md_formatter,
-    md_formatter_guided,
-    action,
-    check,
-    question,
-    question_classifier,
-    helper,
-    chat,
-    grader,
-    hyde,
-    hyde_document,
-    summary,
-    summary_guided,
-    journey_steps,
-    journey_step_content,
-    journey_step_intro,
-    journey_step_actions,
-    journey_step_action_details,
-    journey_structured,
-)
+from prompts.base import PromptFormatter
+from prompts.journey import journey_steps, journey_step_intro, journey_step_action_details, journey_step_actions, journey_step_content, journey_step_content_redo
+from prompts.journey_structured import journey_structured
+from prompts.actions import action, summary, summary_guided, question_classifier, check, grader
+from prompts.formatters import text_formatter, text_formatter_compress, text_formatter_guided, md_formatter, md_formatter_guided
+from prompts.chat import chat, question, helper
+from prompts.hyde import hyde, hyde_document
 
 CHAT_RATE_LIMITER = None
 
@@ -260,7 +242,7 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
     "journey_structured": ("structured", journey_structured, False),
     "journey_steps": ("structured_detailed", journey_steps, True),
     "journey_step_content": ("instruct_detailed_warm", journey_step_content, True),
-    "journey_step_content_redo": ("instruct_detailed_warm_redo", journey_step_content, True),
+    "journey_step_content_redo": ("instruct_detailed_warm_redo", journey_step_content_redo, True),
     "journey_step_intro": ("instruct_warm", journey_step_intro, True),
     "journey_step_actions": ("instruct_detailed", journey_step_actions, True),
     "journey_step_action_details": ("instruct_warm", journey_step_action_details, True),

@@ -1,73 +1,31 @@
+import operator
 import textwrap
 from typing import Annotated, Dict
 
-from langchain_chroma import Chroma
 from typing_extensions import TypedDict
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.messages import BaseMessage, AIMessage, HumanMessage
+from langchain_core.messages import BaseMessage, AIMessage
 from langchain_core.runnables import RunnableConfig
 from chains.chain import Chain
 from lib.chat import DELIMITER, init_journey_chat
 from lib.db_tools import (
-    Base,
-    FileDataTable,
-    JourneyDataTable,
     JourneyModel,
-    JourneyPrompts,
-    StepModel,
-    SubjectModel,
-    get_db_files,
     get_db_journey,
     get_vectorstore,
-    init_db,
 )
 from chains.init import (
-    EMBEDDING_CHAR_LIMIT,
-    EMBEDDING_OVERLAP,
-    INSTRUCT_CHAR_LIMIT,
-    client_host,
-    SQLITE_DB,
     get_chain,
     get_llm,
-    # get_vectorstore,
 )
-from chains.prompts import ActionStructure, SubjectStructure, journey_steps
 
-import operator
-from typing import Annotated, List, Tuple, TypedDict
-from pydantic import BaseModel, Field
+from typing import Annotated, List, TypedDict
 
-class UserData(BaseModel):
-    name: str
-    age: int
-    # Add more fields as needed
-
-class TeachingItem(BaseModel):
-    """Teaching item"""
-
-    purpose: str = Field(description="Purpose of the teaching item")
-    content: str = Field(description="Content of the teaching item")
-    test: str = Field(description="Question for user to verify that they have learned the item")
-    test_verification: str = Field(description="What to verify from the user test answer")
-
-
-class TeachingItemPlan(BaseModel):
-    """Plan for teaching"""
-
-    steps: List[TeachingItem] = Field(
-        description="different teaching items to follow",
-    )
-
-class TeachingAction(BaseModel):
-    """Teaching action"""
-
-    parent_subject: SubjectStructure = Field(description="Parent subject the teaching action is part of")
-    parent_action: ActionStructure = Field(description="Parent action the teaching action is part of")
-    plan: TeachingItemPlan = Field(description="Plan for teaching")
-    messages: Annotated[List[BaseMessage], add_messages]
+from models.journey import ActionStructure, SubjectModel, SubjectStructure
+from models.teaching import TeachingAction, TeachingItemPlan, UserData
+from prompts.journey import JourneyPrompts, journey_steps
 
 journey_teaching_plan_parser = PydanticOutputParser(pydantic_object=TeachingItemPlan)
 

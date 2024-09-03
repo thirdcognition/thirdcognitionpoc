@@ -16,9 +16,9 @@ from langchain_core.runnables import (
 )
 from pydantic import BaseModel
 from chains.base import BaseChain
-from chains.prompts import PromptFormatter
 from lib.helpers import print_params
-
+from prompts.base import PromptFormatter
+from prompts.actions import error_retry
 
 def add_format_instructions(parser: BaseOutputParser):
     def _add_format_instructions(params: Dict):
@@ -51,30 +51,6 @@ def retry_setup(params):
             or ""
         ).strip(),
     }
-
-
-error_retry = PromptFormatter(
-    system=textwrap.dedent(
-        f"""
-        Act as a error fixer. You are given a prompt, a completion and an error message.
-        The completion did not satisfy the constraints given in the prompt. Fix the completion
-        based on the error.
-        """
-    ),
-    user=textwrap.dedent(
-        """
-        Prompt:
-        {prompt}
-        Completion:
-        {completion}
-
-        Above, the Completion did not satisfy the constraints given in the Prompt.
-        Details: {error}
-        Please try again:
-        """
-    ),
-)
-
 
 def get_text_from_completion(completion):
     completion_content = repr(completion)

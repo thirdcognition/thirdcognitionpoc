@@ -3,10 +3,11 @@ import sys
 import time
 from typing import List
 import streamlit as st
-
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
+from models.journey import SubjectModel
+from prompts.journey import JourneyPrompts
 from lib.journey_shared import (
     create_subject_prompt_editor,
     gen_journey_subject,
@@ -16,8 +17,6 @@ from lib.journey_shared import (
 )
 from lib.db_tools import (
     JourneyModel,
-    JourneyPrompts,
-    SubjectModel,
     get_db_journey,
     init_db,
 )

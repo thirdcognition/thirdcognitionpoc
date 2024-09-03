@@ -1,9 +1,9 @@
 from typing import Dict
 from langchain_core.runnables import RunnableSequence, RunnableLambda
 from langchain_core.output_parsers import StrOutputParser
-from chains.prompts import PromptFormatter
 
 from lib.helpers import print_params
+from prompts.base import PromptFormatter
 
 
 def keep_chain_params(params: Dict):

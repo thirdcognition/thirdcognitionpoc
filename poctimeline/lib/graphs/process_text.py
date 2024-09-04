@@ -16,13 +16,13 @@ from langgraph.constants import Send
 from langgraph.graph import END, START, StateGraph
 from langchain_community.document_loaders.url_playwright import PlaywrightURLLoader
 
-from chains.base_parser import get_text_from_completion
-from chains.init import get_chain
+from lib.chains.base_parser import get_text_from_completion
+from lib.chains.init import get_chain
 from lib.db_tools import update_db_file_and_rag
 from lib.document_parse import process_file_contents
 from lib.document_tools import a_semantic_splitter, markdown_to_text, semantic_splitter
 from lib.load_env import SETTINGS
-from models.sqlite_tables import (
+from lib.models.sqlite_tables import (
     SourceConcept,
     SourceConceptList,
     SourceContents,

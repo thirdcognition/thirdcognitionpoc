@@ -1,8 +1,8 @@
 from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 
-from models.sqlite_tables import SourceData
-from prompts.journey import JourneyPrompts
+from lib.models.sqlite_tables import SourceData
+from lib.prompts.journey import JourneyPrompts
 
 class ResourceStructure(BaseModel):
     title: str = Field(

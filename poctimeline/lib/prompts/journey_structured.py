@@ -1,6 +1,6 @@
 from langchain_core.output_parsers import PydanticOutputParser
-from models.journey import SubjectStructure
-from prompts.actions import structured
+from lib.models.journey import SubjectStructure
+from lib.prompts.actions import structured
 
 
 journey_structured = structured.customize()

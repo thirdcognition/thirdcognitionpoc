@@ -8,8 +8,8 @@ from langchain_core.messages import BaseMessage
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
-from models.journey import ActionStructure, JourneyModel, StepModel, SubjectModel, SubjectStructure
-from chains.init import get_chain
+from lib.models.journey import ActionStructure, JourneyModel, StepModel, SubjectModel, SubjectStructure
+from lib.chains.init import get_chain
 from lib.journey_shared import (
     create_subject_prompt_editor,
     delete_journey,

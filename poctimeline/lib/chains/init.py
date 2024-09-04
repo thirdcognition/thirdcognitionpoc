@@ -15,9 +15,9 @@ from langchain_community.chat_models.azureml_endpoint import (
     CustomOpenAIChatContentFormatter,
 )
 from langchain_core.embeddings import Embeddings
-from chains.base import BaseChain
-from chains.base import drop_thoughts
-from chains.chain import Chain
+from lib.chains.base import BaseChain
+from lib.chains.base import drop_thoughts
+from lib.chains.chain import Chain
 from lib.load_env import (
     DEBUGMODE,
     DEVMODE,
@@ -27,13 +27,13 @@ from lib.load_env import (
     ProviderModelSettings,
     ProviderSettings,
 )
-from prompts.base import PromptFormatter
-from prompts.journey import journey_steps, journey_step_intro, journey_step_action_details, journey_step_actions, journey_step_content, journey_step_content_redo
-from prompts.journey_structured import journey_structured
-from prompts.actions import action, summary, summary_guided, question_classifier, check, grader, combine_description
-from prompts.formatters import text_formatter, text_formatter_compress, text_formatter_guided, md_formatter, md_formatter_guided, concept_structured
-from prompts.chat import chat, question, helper
-from prompts.hyde import hyde, hyde_document
+from lib.prompts.base import PromptFormatter
+from lib.prompts.journey import journey_steps, journey_step_intro, journey_step_action_details, journey_step_actions, journey_step_content, journey_step_content_redo
+from lib.prompts.journey_structured import journey_structured
+from lib.prompts.actions import action, summary, summary_guided, question_classifier, check, grader, combine_description
+from lib.prompts.formatters import text_formatter, text_formatter_compress, text_formatter_guided, md_formatter, md_formatter_guided, concept_structured
+from lib.prompts.chat import chat, question, helper
+from lib.prompts.hyde import hyde, hyde_document
 
 CHAT_RATE_LIMITER = None
 

@@ -5,7 +5,7 @@ from langchain_core.callbacks import StreamingStdOutCallbackHandler
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.documents.base import Document
 
-from chains.rag_chain import get_rag_chain
+from lib.chains.rag_chain import get_rag_chain
 from lib.db_tools import JourneyModel, get_db_sources, get_db_journey, init_db
 from lib.helpers import get_chain_with_history, get_session_history
 

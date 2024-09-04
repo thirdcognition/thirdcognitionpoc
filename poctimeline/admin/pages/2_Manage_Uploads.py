@@ -8,8 +8,8 @@ from langchain_core.messages import BaseMessage
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
-from models.sqlite_tables import SourceContents
-from chains.init import get_chain
+from lib.models.sqlite_tables import SourceContents
+from lib.chains.init import get_chain
 from lib.document_tools import create_document_lists, split_text
 from lib.load_env import SETTINGS
 from lib.db_tools import (

@@ -17,8 +17,8 @@ from langchain_core.messages import BaseMessage
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
-from graphs.process_text import process_text
-from models.sqlite_tables import SourceContents
+from lib.graphs.process_text import process_text
+from lib.models.sqlite_tables import SourceContents
 from lib.db_tools import (
     SourceDataTable,
     # JourneyDataTable,

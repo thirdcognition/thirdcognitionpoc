@@ -1,7 +1,7 @@
-from chains.base_parser import BaseParserChain
+from lib.chains.base_parser import BaseParserChain
 from langchain_core.runnables import RunnableSequence
 
-from chains.base_validation import BaseValidationChain
+from lib.chains.base_validation import BaseValidationChain
 
 
 class Chain(BaseParserChain):

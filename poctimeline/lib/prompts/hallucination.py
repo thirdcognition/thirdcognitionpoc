@@ -5,7 +5,7 @@ from langchain_core.exceptions import OutputParserException
 from langchain_core.output_parsers import BaseOutputParser
 from langchain_core.messages import BaseMessage
 
-from prompts.base import PromptFormatter
+from lib.prompts.base import PromptFormatter
 
 class HallucinationParser(BaseOutputParser[tuple[bool, BaseMessage]]):
     """Custom parser to check for hallucinations"""

@@ -9,23 +9,23 @@ from langgraph.graph.message import add_messages
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.messages import BaseMessage, AIMessage
 from langchain_core.runnables import RunnableConfig
-from chains.chain import Chain
+from lib.chains.chain import Chain
 from lib.chat import DELIMITER, init_journey_chat
 from lib.db_tools import (
     JourneyModel,
     get_db_journey,
     get_vectorstore,
 )
-from chains.init import (
+from lib.chains.init import (
     get_chain,
     get_llm,
 )
 
 from typing import Annotated, List, TypedDict
 
-from models.journey import ActionStructure, SubjectModel, SubjectStructure
-from models.teaching import TeachingAction, TeachingItemPlan, UserData
-from prompts.journey import JourneyPrompts, journey_steps
+from lib.models.journey import ActionStructure, SubjectModel, SubjectStructure
+from lib.models.teaching import TeachingAction, TeachingItemPlan, UserData
+from lib.prompts.journey import JourneyPrompts, journey_steps
 
 journey_teaching_plan_parser = PydanticOutputParser(pydantic_object=TeachingItemPlan)
 

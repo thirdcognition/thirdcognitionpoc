@@ -15,10 +15,10 @@ from langchain_core.runnables import (
     RunnableLambda,
 )
 from pydantic import BaseModel
-from chains.base import BaseChain
+from lib.chains.base import BaseChain
 from lib.helpers import print_params
-from prompts.base import PromptFormatter
-from prompts.actions import error_retry
+from lib.prompts.base import PromptFormatter
+from lib.prompts.actions import error_retry
 
 
 def add_format_instructions(parser: BaseOutputParser):

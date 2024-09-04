@@ -10,11 +10,11 @@ from langchain_chroma import Chroma
 from chromadb.utils.embedding_functions import create_langchain_embedding
 from chromadb.config import Settings as ChromaSettings
 import streamlit as st
-from chains.init import get_embeddings
+from lib.chains.init import get_embeddings
 from lib.document_tools import get_rag_chunks
 from lib.load_env import SETTINGS
-from models.journey import JourneyModel
-from models.sqlite_tables import Base, SourceContents, SourceData, SourceDataTable, JourneyDataTable, SourceType
+from lib.models.journey import JourneyModel
+from lib.models.sqlite_tables import Base, SourceContents, SourceData, SourceDataTable, JourneyDataTable, SourceType
 
 chroma_client = None
 database_session = None

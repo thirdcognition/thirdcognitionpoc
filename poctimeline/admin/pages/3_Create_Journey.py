@@ -6,8 +6,8 @@ import streamlit as st
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
-from models.journey import SubjectModel
-from prompts.journey import JourneyPrompts
+from lib.models.journey import SubjectModel
+from lib.prompts.journey import JourneyPrompts
 from lib.journey_shared import (
     create_subject_prompt_editor,
     gen_journey_subject,

@@ -14,16 +14,16 @@ from langchain_core.runnables import (
 )
 from langchain.schema.document import Document
 
-from chains.base import BaseChain
-from chains.base_parser import (
+from lib.chains.base import BaseChain
+from lib.chains.base_parser import (
     add_format_instructions,
     error_retry,
     get_text_from_completion,
     retry_setup,
 )
 from lib.helpers import print_params
-from prompts.base import PromptFormatter
-from prompts.hallucination import hallucination
+from lib.prompts.base import PromptFormatter
+from lib.prompts.hallucination import hallucination
 
 
 def validation_param_set(params):

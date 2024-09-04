@@ -1,9 +1,9 @@
 import textwrap
 from typing import List
 from langchain_core.output_parsers import PydanticOutputParser
-from models.sqlite_tables import SourceConcept, SourceConceptList
-from prompts.base import KEEP_PRE_THINK_TOGETHER, MAINTAIN_CONTENT_AND_USER_LANGUAGE, PRE_THINK_INSTRUCT, PromptFormatter, TagsParser
-from prompts.actions import structured
+from lib.models.sqlite_tables import SourceConcept, SourceConceptList
+from lib.prompts.base import KEEP_PRE_THINK_TOGETHER, MAINTAIN_CONTENT_AND_USER_LANGUAGE, PRE_THINK_INSTRUCT, PromptFormatter, TagsParser
+from lib.prompts.actions import structured
 
 text_formatter = PromptFormatter(
     system=textwrap.dedent(

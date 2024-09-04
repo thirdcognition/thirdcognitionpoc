@@ -4,7 +4,7 @@ import streamlit_authenticator as stauth
 import yaml
 from yaml.loader import SafeLoader
 
-from chains.init import get_chain
+from lib.chains.init import get_chain
 from lib.db_tools import SourceDataTable, init_db
 from lib.document_tools import markdown_to_text
 from langchain_core.messages import BaseMessage

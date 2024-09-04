@@ -2,7 +2,7 @@ from mailbox import BabylMessage
 from typing import Annotated, List
 from pydantic import BaseModel, Field
 
-from models.journey import ActionStructure, SubjectStructure
+from lib.models.journey import ActionStructure, SubjectStructure
 
 class UserData(BaseModel):
     name: str

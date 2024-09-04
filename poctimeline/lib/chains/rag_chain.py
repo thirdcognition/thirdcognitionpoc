@@ -14,11 +14,11 @@ from lib.db_tools import get_vectorstore_as_retriever
 #     AIMessage,
 # )
 
-from chains.base import BaseChain, keep_chain_params, log_chain_params
-from chains.init import get_chain, get_llm
+from lib.chains.base import BaseChain, keep_chain_params, log_chain_params
+from lib.chains.init import get_chain, get_llm
 from lib.helpers import print_params
-from prompts.base import PromptFormatter
-from prompts.chat import question
+from lib.prompts.base import PromptFormatter
+from lib.prompts.chat import question
 
 compressor = None
 def rerank_documents(list_of_documents: list[Document], query: str, amount=5):

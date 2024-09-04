@@ -2,8 +2,8 @@ import textwrap
 from typing import List
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
-from models.prompts import CustomPrompt
-from prompts.base import (
+from lib.models.prompts import CustomPrompt
+from lib.prompts.base import (
     KEEP_PRE_THINK_TOGETHER,
     MAINTAIN_CONTENT_AND_USER_LANGUAGE,
     PRE_THINK_INSTRUCT,

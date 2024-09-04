@@ -16,8 +16,8 @@ from langchain_experimental.text_splitter import SemanticChunker
 from langchain.schema.document import Document
 
 from lib.load_env import SETTINGS
-from chains.init import get_embeddings
-from models.sqlite_tables import SourceContents
+from lib.chains.init import get_embeddings
+from lib.models.sqlite_tables import SourceContents
 
 
 @cache

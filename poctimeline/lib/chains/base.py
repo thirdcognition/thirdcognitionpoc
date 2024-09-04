@@ -3,7 +3,7 @@ from langchain_core.runnables import RunnableSequence, RunnableLambda
 from langchain_core.output_parsers import StrOutputParser
 
 from lib.helpers import print_params
-from prompts.base import PromptFormatter
+from lib.prompts.base import PromptFormatter
 
 
 def keep_chain_params(params: Dict):

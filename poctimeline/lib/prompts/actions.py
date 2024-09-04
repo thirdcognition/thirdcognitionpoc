@@ -3,7 +3,7 @@ from typing import Union
 from langchain_core.exceptions import OutputParserException
 from langchain_core.output_parsers import JsonOutputParser, BaseOutputParser
 from langchain_core.messages import BaseMessage
-from prompts.base import (
+from lib.prompts.base import (
     MAINTAIN_CONTENT_AND_USER_LANGUAGE,
     PromptFormatter,
     KEEP_PRE_THINK_TOGETHER,

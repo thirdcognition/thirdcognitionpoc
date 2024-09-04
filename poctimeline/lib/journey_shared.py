@@ -6,8 +6,8 @@ import streamlit as st
 from typing import Any, Callable, Dict, List, Union
 from langchain_core.messages import BaseMessage, AIMessage
 
-from chains.init import get_base_chain, get_chain
-from chains.rag_chain import get_rag_chain
+from lib.chains.init import get_base_chain, get_chain
+from lib.chains.rag_chain import get_rag_chain
 from lib.db_tools import (
     get_db_sources,
     get_db_journey,
@@ -17,10 +17,10 @@ from lib.document_tools import markdown_to_text
 from lib.document_tools import create_document_lists
 from lib.load_env import SETTINGS
 from lib.streamlit_tools import llm_edit
-from models.journey import ActionStructure, JourneyModel, ResourceStructure, StepModel, SubjectModel, SubjectStructure
-from models.prompts import CustomPrompt
-from models.sqlite_tables import SourceContents, SourceData, JourneyDataTable
-from prompts.journey import JourneyStep, JourneyStepList
+from lib.models.journey import ActionStructure, JourneyModel, ResourceStructure, StepModel, SubjectModel, SubjectStructure
+from lib.models.prompts import CustomPrompt
+from lib.models.sqlite_tables import SourceContents, SourceData, JourneyDataTable
+from lib.prompts.journey import JourneyStep, JourneyStepList
 
 def save_journey(journey_name, journey:JourneyModel) -> bool:
     print(f"Save journey {journey_name}")

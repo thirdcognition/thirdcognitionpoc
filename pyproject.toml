@@ -37,6 +37,7 @@ langchain-anthropic = "^0.1.23"
 langchain-openai = "^0.1.22"
 azure-identity = "^1.17.1"
 langsmith = "^0.1.106"
+playwright = "^1.46.0"
 
 [build-system]
 requires = ["poetry-core"]

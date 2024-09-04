@@ -5,8 +5,8 @@ import yaml
 from yaml.loader import SafeLoader
 
 from chains.init import get_chain
-from lib.db_tools import FileDataTable, init_db
-from lib.document_parse import markdown_to_text
+from lib.db_tools import SourceDataTable, init_db
+from lib.document_tools import markdown_to_text
 from langchain_core.messages import BaseMessage
 
 with open("admin_auth.yaml") as file:
@@ -45,7 +45,7 @@ def get_all_categories():
 
     if "file_categories" not in st.session_state:
         uniq_categories = []
-        categories = database_session.query(FileDataTable.category_tag).distinct()
+        categories = database_session.query(SourceDataTable.category_tag).distinct()
         for items in categories:
             for category_list in items:
                 if len(category_list) > 0:

@@ -4,20 +4,22 @@ import streamlit as st
 
 from langchain_core.messages import BaseMessage
 
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
+from models.sqlite_tables import SourceContents
 from chains.init import get_chain
 from lib.document_tools import create_document_lists, split_text
 from lib.load_env import SETTINGS
 from lib.db_tools import (
-    FileDataTable,
+    SourceDataTable,
     delete_db_file,
     get_chroma_collection,
-    get_db_files,
+    get_db_sources,
     init_db,
 )
-from lib.document_parse import markdown_to_text
+from lib.document_tools import markdown_to_text
 from lib.streamlit_tools import check_auth, get_all_categories, llm_edit
 
 st.set_page_config(
@@ -36,7 +38,7 @@ This is an *extremely* cool admin tool!
 def manage_file(filename):
     database_session = init_db()
     file_categories = get_all_categories()
-    file_entry = get_db_files()[filename]
+    file_entry = get_db_sources(source=filename)[filename]
     # Add Streamlit editors to edit 'disabled' and 'category_tag' fields
 
     if "rewrite_text" not in st.session_state:
@@ -61,9 +63,9 @@ def manage_file(filename):
     with header_col1:
         show_details = st.toggle("Extend", key=f"show_{filename}")
         disable_checkbox = st.toggle(
-            f"Disable", value=file_entry["disabled"], key=f"disable_{filename}"
+            f"Disable", value=file_entry.disabled, key=f"disable_{filename}"
         )
-        st.download_button("Download", file_entry["file_data"], file_name=filename)
+        st.download_button("Download", file_entry.file_data, file_name=filename)
 
     with header_col2:
         with st.form(f"edit_fields_{filename}", border=False):
@@ -73,13 +75,13 @@ def manage_file(filename):
                 category_tags = st.multiselect(
                     "Category",
                     file_categories,
-                    default=file_entry["category_tag"],
+                    default=file_entry.category_tag,
                     key=f"category_{filename}",
                 )
 
                 chroma_collection = st.text_input(
                     f"Chroma collection",
-                    value=", ".join(file_entry["chroma_collection"]),
+                    value=", ".join(file_entry.chroma_collection),
                     key=f"chroma_{filename}",
                 )
             with col4:
@@ -97,19 +99,12 @@ def manage_file(filename):
             changes = False
 
             for key in updates.keys():
-                changes = changes or updates[key] != file_entry[key]
+                changes = changes or updates[key] != file_entry.__getattribute__(key)
 
             if changes:
                 instance = (
-                    database_session.query(FileDataTable)
-                    .where(FileDataTable.filename == filename)
-                    .first()
-                )
-
-            if changes:
-                instance = (
-                    database_session.query(FileDataTable)
-                    .where(FileDataTable.filename == filename)
+                    database_session.query(SourceDataTable)
+                    .where(SourceDataTable.source == filename)
                     .first()
                 )
                 instance.disabled = updates["disabled"]
@@ -120,24 +115,25 @@ def manage_file(filename):
 
             if changes:
                 database_session.commit()
-                get_db_files(reset=True)
+                get_db_sources(reset=True)
                 st.rerun()
 
     if show_details:
         with st.container(border=True):
-            filename = file_entry["filename"]
+            filename = file_entry.source
             filetype = filename.split(".")[-1]
-            summary = file_entry["summary"]
-            text = file_entry["formatted_text"]
-            thoughts = None  # file_entry["format_thoughts"]
-            raw = file_entry["texts"]
+            summary = file_entry.source_contents.summary
+            summary_thoughts = file_entry.source_contents.summary_thoughts
+            text = file_entry.source_contents.formatted_content
+            text_thoughts = file_entry.source_contents.formatted_content_thoughts
+            raw = file_entry.texts
 
             if filename in rewrite_text:
                 text = rewrite_text[filename]
-                thoughts = rewrite_thoughts[filename]
+                text_thoughts = rewrite_thoughts[filename]
 
-            tab1, tab2, tab3, tab4 = st.tabs(
-                ["Summary", "Formatted", "Unformatted", "RAG"]
+            tab1, tab2, tab3, tab4, tab5 = st.tabs(
+                ["Summary", "Formatted", "Unformatted", "Concepts", "RAG"]
             )
 
             with tab1:
@@ -147,18 +143,20 @@ def manage_file(filename):
                     use_container_width=True,
                 ):
                     instance = (
-                        database_session.query(FileDataTable)
-                        .where(FileDataTable.filename == filename)
+                        database_session.query(SourceDataTable)
+                        .where(SourceDataTable.source == filename)
                         .first()
                     )
-                    text = instance.summary
+                    contents = SourceContents(**instance.source_contents.__dict__)
+
+                    text = contents.summary
                     summary_texts = instance.texts
                     if (
-                        instance.formatted_text is not None
-                        and instance.formatted_text != ""
+                        contents.summary is not None
+                        and contents.summary != ""
                     ):
                         summary_texts = split_text(
-                            instance.formatted_text,
+                            contents.summary,
                             SETTINGS.default_llms.instruct.char_limit,
                             128,
                         )
@@ -202,13 +200,15 @@ def manage_file(filename):
 
                     st.success("Markdown rewrite complete")
 
-                    if text is not None and text != "" and text != instance.summary:
-                        instance.summary = text
+                    if text is not None and text != "" and text != contents.summary:
+                        contents.summary = text
+                        instance.source_contents = contents
                         database_session.commit()
-                        get_db_files(reset=True)
+                        get_db_sources(reset=True)
                     st.rerun()
                 else:
                     with st.container():
+                        # st.caption("Toughts\n" + summary_thoughts)
                         st.write(summary, unsafe_allow_html=True)
 
             with tab2:
@@ -262,21 +262,23 @@ def manage_file(filename):
                     rewrite_text[filename] = text
                     rewrite_thoughts[filename] = thoughts
 
-                if thoughts != None and len(thoughts) > 0:
-                    st.caption(thoughts, unsafe_allow_html=True)
+                if text_thoughts != None and len(text_thoughts) > 0:
+                    st.caption(text_thoughts, unsafe_allow_html=True)
 
                 if text != None and len(text) > 0:
                     st.write(text, unsafe_allow_html=True)
 
                 if update:
                     instance = (
-                        database_session.query(FileDataTable)
-                        .where(FileDataTable.filename == filename)
+                        database_session.query(SourceDataTable)
+                        .where(SourceDataTable.source == filename)
                         .first()
                     )
-                    instance.formatted_text = text
+                    contents = SourceContents(**instance.source_contents.__dict__)
+                    contents.formatted_content = text
+                    instance.source_contents = contents
                     database_session.commit()
-                    get_db_files(reset=True)
+                    get_db_sources(reset=True)
 
             with tab3:
                 for i, text in enumerate(raw):
@@ -284,10 +286,18 @@ def manage_file(filename):
                     st.write(text, unsafe_allow_html=True)
 
             with tab4:
-                # print(f"{file_entry["chroma_collection"]=}")
+                for concept_tag in file_entry.source_contents.summaries.keys():
+                    st.write(f"### {concept_tag}:")
+                    st.write(file_entry.source_contents.summaries[concept_tag])
+                    with st.expander("Concept instances"):
+                        concepts = [concept.__dict__ for concept in file_entry.source_contents.concepts if concept_tag in [cat.tag for cat in concept.category]]
+                        st.write(concepts)
+
+            with tab5:
+                # print(f"{file_entry.chroma_collection=}")
                 rag_id = st.selectbox(
                     "RAG DB",
-                    file_entry["chroma_collection"],
+                    file_entry.chroma_collection,
                     placeholder="Choose one",
                     index=None,
                 )
@@ -298,11 +308,11 @@ def manage_file(filename):
                     st.write("##### RAG Items:")
 
                     rag_items = chroma_collection.get(
-                        file_entry["chroma_ids"],
+                        file_entry.chroma_ids,
                         include=["embeddings", "documents", "metadatas"],
                     )
 
-                    for i, id in enumerate(file_entry["chroma_ids"]):
+                    for i, id in enumerate(file_entry.chroma_ids):
                         [sub_col1, sub_col2] = st.columns([1, 3])
                         try:
                             index = rag_items["ids"].index(id)
@@ -337,13 +347,13 @@ def main():
             key=f"delete_button_categories",
             use_container_width=True,
         ):
-            files = get_db_files(categories=categories)
+            files = get_db_sources(categories=categories)
             for file in files.keys():
                 delete_db_file(file)
             st.rerun()
 
     if categories:
-        files = get_db_files(categories=categories)
+        files = get_db_sources(categories=categories)
 
         if files is not None and len(files) > 0:
             st.header("File database")

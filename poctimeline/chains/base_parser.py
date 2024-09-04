@@ -1,6 +1,6 @@
 import textwrap
 from typing import Dict
-
+from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.output_parsers import (
     PydanticOutputParser,
@@ -19,6 +19,7 @@ from chains.base import BaseChain
 from lib.helpers import print_params
 from prompts.base import PromptFormatter
 from prompts.actions import error_retry
+
 
 def add_format_instructions(parser: BaseOutputParser):
     def _add_format_instructions(params: Dict):
@@ -52,6 +53,7 @@ def retry_setup(params):
         ).strip(),
     }
 
+
 def get_text_from_completion(completion):
     completion_content = repr(completion)
     if isinstance(completion, BaseModel):
@@ -62,11 +64,17 @@ def get_text_from_completion(completion):
         if isinstance(completion[0], bool):
             completion_content = completion[1].strip()
         else:
-            completion_content = f"[thinking_start] {completion[0].strip()} [thinking_end] {completion[1].strip()}"
+            completion_content = (
+                f"[thinking_start] {completion[1].strip()} [thinking_end]"
+                if len(completion[1].strip()) > 0
+                else ""
+            ) + f"{completion[0].strip()}"
     elif isinstance(completion, tuple):
         completion_content = completion[1].strip()
     elif isinstance(completion, str):
         completion_content = completion.strip()
+    elif isinstance(completion, Document):
+        completion_content = completion.page_content
 
     return completion_content
 

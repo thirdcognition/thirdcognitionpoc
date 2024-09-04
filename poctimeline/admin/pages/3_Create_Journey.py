@@ -53,8 +53,8 @@ def create_subject(
 
     col1, col2 = st.columns([4, 1], vertical_alignment="bottom")
     with col1:
-        subject.db_files = get_files_for_journey(
-            chroma_collection, journey_name, subject_index, subject.db_files
+        subject.db_sources = get_files_for_journey(
+            chroma_collection, journey_name, subject_index, subject.db_sources
         )
 
     subject.step_amount = col2.number_input(
@@ -167,7 +167,7 @@ def get_journey_gen(journey_name):
     # Check that all subjects have files defined
     def check_subject_files(subjects: List[SubjectModel]):
         for subject in subjects:
-            if len(subject.db_files) < 1:
+            if len(subject.db_sources) < 1:
                 return False
         return True
 
@@ -209,7 +209,7 @@ def get_journey_gen(journey_name):
 
             journey_details.title = title
             journey_details.summary = summary
-            journey_details.db_files = files
+            journey_details.db_sources = files
 
         if save_journey(journey_name, journey_details):
             st.success("Journey saved.")

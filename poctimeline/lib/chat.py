@@ -6,7 +6,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.documents.base import Document
 
 from chains.rag_chain import get_rag_chain
-from lib.db_tools import JourneyModel, get_db_files, get_db_journey, init_db
+from lib.db_tools import JourneyModel, get_db_sources, get_db_journey, init_db
 from lib.helpers import get_chain_with_history, get_session_history
 
 DELIMITER = "±~"
@@ -135,13 +135,13 @@ def chat_elements(chat_state, journey_name=None):
                                 # formatted = "formatted_" in reference.metadata["file"]
 
                                 # meta_keys = reference.metadata.keys()
-                                db_file = get_db_files(filename=file)[file]
+                                db_file = get_db_sources(source=file)[file]
                                 [col1, col2] = st.columns([1, 3])
                                 col1.write(file)
                                 if filetype != "epub":
                                     col1.download_button(
                                         "Download",
-                                        db_file["file_data"],
+                                        db_file.file_data,
                                         file_name=file,
                                         key=file + "_" + chat_state + "_" + str(i),
                                     )

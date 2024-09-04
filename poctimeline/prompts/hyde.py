@@ -1,5 +1,5 @@
 import textwrap
-from prompts.base import PromptFormatter
+from prompts.base import MAINTAIN_CONTENT_AND_USER_LANGUAGE, PromptFormatter
 
 
 hyde = PromptFormatter(
@@ -10,6 +10,7 @@ hyde = PromptFormatter(
         formulate a standalone answer which could be a result
         for a search engine query for the question.
         Use maximum of three sentences.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         """
     ),
     user=textwrap.dedent("""{question}"""),
@@ -20,6 +21,7 @@ hyde_document = PromptFormatter(
         f"""
         Given the title and the subject generate a short description for a document defined by
         the title. Use maximum of five sentences.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         """
     ),
     user=textwrap.dedent("""{question}"""),

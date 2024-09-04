@@ -4,6 +4,7 @@ from langchain_core.exceptions import OutputParserException
 from langchain_core.output_parsers import JsonOutputParser, BaseOutputParser
 from langchain_core.messages import BaseMessage
 from prompts.base import (
+    MAINTAIN_CONTENT_AND_USER_LANGUAGE,
     PromptFormatter,
     KEEP_PRE_THINK_TOGETHER,
     PRE_THINK_INSTRUCT,
@@ -14,6 +15,7 @@ action = PromptFormatter(
     system=textwrap.dedent(
         f"""
         Act as a task completing machine.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         {PRE_THINK_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
         Use the following pieces of information between the context start and context end to complete the task.
@@ -133,6 +135,7 @@ summary = PromptFormatter(
     system=textwrap.dedent(
         f"""
         You are an assistant for summarizing texts.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         {PRE_THINK_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
         Summarize the text between the context start and context end using natural language.
@@ -153,6 +156,7 @@ summary_guided = PromptFormatter(
     system=textwrap.dedent(
         f"""
         You are an assistant for summarizing texts.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         {PRE_THINK_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
         Summarize the text between the context start and context end using natural language
@@ -164,12 +168,33 @@ summary_guided = PromptFormatter(
         Context start
         {context}
         Context end
-        Instructions: {question}
+        Instructions: {instructions}
         Summarize the text.
         """
     ),
 )
 summary_guided.parser = TagsParser(min_len=10)
+
+combine_description = PromptFormatter(
+    system=textwrap.dedent(
+        f"""
+        You are an assistant for summarizing bullet points.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
+        {PRE_THINK_INSTRUCT}
+        {KEEP_PRE_THINK_TOGETHER}
+        Summarize the bullet points between the context start and context end using natural language into one description.
+        """
+    ),
+    user=textwrap.dedent(
+        """
+        Context start
+        {context}
+        Context end
+        Summarize the bullet points into one description.
+        """
+    ),
+)
+combine_description.parser = TagsParser(min_len=10)
 
 error_retry = PromptFormatter(
     system=textwrap.dedent(
@@ -196,23 +221,24 @@ error_retry = PromptFormatter(
 structured = PromptFormatter(
     system=textwrap.dedent(
         """
-    Act as a structured data formatter and use specified format instructions exactly
-    to format the context data. Return only the JSON object with the formatted data.
-    """
+        Act as a structured data formatter and use specified format instructions exactly
+        to format the context data. Return only the JSON object with the formatted data.
+        If history is available use it as specified.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
+        """
     ),
     user=textwrap.dedent(
         """
-
-    context start
-    {context}
-    context end
-    ----------------
-    format instructions start
-    {format_instructions}
-    format instructions end
-    ----------------
-    Format the context data using the format instructions.
-    Return only the properly formatted JSON object with the formatted data.
-    """
+        context start
+        {context}
+        context end
+        ----------------
+        format instructions start
+        {format_instructions}
+        format instructions end
+        ----------------
+        Format the context data using the format instructions.
+        Return only the properly formatted JSON object with the formatted data.
+        """
     ),
 )

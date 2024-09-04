@@ -1,13 +1,16 @@
 import io
+import os
 import re
-from typing import Iterable, Sequence, Union
-from bs4 import BeautifulSoup
+import concurrent.futures
+from typing import Iterable, List, Sequence, Union
 import numpy as np
 import fitz
-from markdown import markdown
+
 from rapidocr_onnxruntime import RapidOCR
 
-from lib.document_tools import semantic_splitter
+from lib.db_tools import db_file_exists, get_db_sources, save_db_file
+from lib.document_tools import a_semantic_splitter, semantic_splitter, split_markdown, split_text
+from lib.load_env import SETTINGS
 
 ocr = None
 
@@ -114,6 +117,25 @@ def extract_images_from_page(
         imgs, start + substep_total, step - substep_total, ocrs, progress_cb=progress_cb
     )
 
+def process_page(page, doc, page_percentage_total, total, i, step, xrefs, ocrs, progress_cb):
+    if progress_cb:
+        progress_cb(
+            page_percentage_total / total * i + i * step,
+            f"Parsing page {page.number}",
+        )
+
+    page_string = re.sub(" {2,}", " ", page.get_text())
+    page_string += extract_images_from_page(
+        doc,
+        page,
+        page_percentage_total / total * i + i * step,
+        step,
+        xrefs,
+        ocrs,
+        progress_cb=progress_cb,
+    )
+
+    return page_string
 
 # Function to convert PDF to text using PyMuPDFLoader
 def load_pymupdf(file: io.BytesIO, filetype, progress_cb=None):
@@ -133,27 +155,8 @@ def load_pymupdf(file: io.BytesIO, filetype, progress_cb=None):
 
     text = ""
 
-    for page in doc:
-        if progress_cb:
-            progress_cb(
-                page_percentage_total / total * i + i * step,
-                f"Parsing page {page.number}",
-            )
-
-        page_string = re.sub(" {2,}", " ", page.get_text())
-        page_string += extract_images_from_page(
-            doc,
-            page,
-            page_percentage_total / total * i + i * step,
-            step,
-            xrefs,
-            ocrs,
-            progress_cb=progress_cb,
-        )
-
-        text += page_string
-
-        i += 1
+    for i, page in enumerate(doc):
+        text += process_page(page, doc, page_percentage_total, total, i, step, xrefs, ocrs, progress_cb)
 
     if progress_cb:
         progress_cb(0.6, "Splitting text...")
@@ -169,21 +172,87 @@ def load_pymupdf(file: io.BytesIO, filetype, progress_cb=None):
 
     return chunks
 
+async def process_file_contents(
+    uploaded_file: io.BytesIO, filename:str, category:List[str]=None, overwrite=False
+):
+    filetype = os.path.basename(filename).split(".")[-1]
+    file_exists = db_file_exists(filename)
 
-def markdown_to_text(markdown_string):
-    """Converts a markdown string to plaintext"""
+    if file_exists and overwrite is not True:
+        return get_db_sources(source=filename)[filename].texts
 
-    # md -> html -> text since BeautifulSoup can extract text cleanly
-    html = markdown(markdown_string)
+    texts = None
 
-    # remove code snippets
-    html = re.sub(r"<pre>(.*?)</pre>", "\1", html)
-    html = re.sub(r"<code>(.*?)</code>", "\1", html)
-    html = html.replace("```markdown", "")
-    html = html.replace("```", "")
+    if (
+        filetype == "pdf"
+        or filetype == "epub"
+        or filetype == "xps"
+        or filetype == "mobi"
+        or filetype == "fb2"
+        or filetype == "cbz"
+        or filetype == "svg"
+    ):
+        texts = await process_document_filetype(uploaded_file, filetype=filetype)
 
-    # extract text
-    soup = BeautifulSoup(html, "html.parser")
-    text = "".join(soup.findAll(string=True))
+    elif filetype == "md" or filetype == "txt":
+        text = io.StringIO(uploaded_file.getvalue().decode("utf-8")).read()
+        texts = split_markdown(text)
+    else:
+        raise Exception("Unsupported file type")
 
-    return text
+    split_texts = []
+    for text in texts:
+        if len(text) > SETTINGS.default_llms.instruct.char_limit:
+            split_texts = split_texts + split_text(text)
+        else:
+            split_texts.append(text)
+
+    texts = split_texts
+    collections = None
+    if category is not None:
+        collections = []
+        for cat in category:
+            collections.append("rag_" + cat)
+
+    save_db_file(filename, texts, category, collections, uploaded_file)
+
+    return texts
+
+async def process_document_filetype(file: io.BytesIO, filetype=None, progress_cb=None):
+    doc = fitz.open(stream=file.read(), filetype=filetype)
+    text = ""
+
+    page_percentage_total = 0.1
+    total_left = 0.6 - page_percentage_total
+
+    i = 0
+    total = len(doc)
+    step = total_left / total
+
+    xrefs = {}
+    ocrs = {}
+    # chunks = []
+
+    text = ""
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = []
+        for i, page in enumerate(doc):
+            futures.append(executor.submit(process_page, page, doc, page_percentage_total, total, i, step, xrefs, ocrs, progress_cb))
+
+        for future in concurrent.futures.as_completed(futures):
+            text += future.result()
+
+    if progress_cb:
+        progress_cb(0.6, "Splitting text...")
+
+    return await a_semantic_splitter(
+        text,
+        progress_cb=lambda x, y: (
+            progress_cb(min(1, 0.6 + 0.4 * y / x), f"Splitting text {y+1}/{x}")
+            if progress_cb
+            else None
+        ),
+    )
+
+

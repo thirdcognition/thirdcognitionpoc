@@ -60,6 +60,9 @@ KEEP_PRE_THINK_TOGETHER = """
         While following your plan don't explain what you are doing.
         """
 
+MAINTAIN_CONTENT_AND_USER_LANGUAGE = """
+        Maintain the content and the language of the input and always output in the language used in context and history.
+        """
 
 class PromptFormatter(BaseModel):
     system: str = Field(description="The system message template")

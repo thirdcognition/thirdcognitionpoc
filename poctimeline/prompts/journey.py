@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from models.prompts import CustomPrompt
 from prompts.base import (
     KEEP_PRE_THINK_TOGETHER,
+    MAINTAIN_CONTENT_AND_USER_LANGUAGE,
     PRE_THINK_INSTRUCT,
     PromptFormatter,
     TagsParser,
@@ -32,6 +33,7 @@ journey_steps = PromptFormatter(
         Only use the information available within the context.
         If there's a history with previous titles, subjects or actions,
         use them to make sure you don't repeat the same subjects or actions.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         Return only the properly formatted JSON object with the formatted data.
         """
     ),
@@ -82,6 +84,7 @@ journey_step_content = PromptFormatter(
         Only use the information available within the context. Do not add or remove information from the context.
         If there's a history with previous titles, subjects or actions,
         use them to make sure you don't repeat the same subjects or actions.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         If instructions are provided follow them exactly.
         """
     ),
@@ -108,6 +111,7 @@ journey_step_content = PromptFormatter(
         The study materials should be exhaustive, detailed and generated from the context.
         If there's a history with previous titles, subjects or actions,
         use them to make sure you don't repeat the same subjects or actions.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         If instructions are provided follow them exactly.
         """
     ),
@@ -129,6 +133,7 @@ journey_step_content_redo = PromptFormatter(
         Only use the information available within the context. Do not add or remove information from the context.
         If instructions are provided follow them exactly.
         The material should be clearly divided into sections with headers generated from the content.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         Use a formal tone, but write the content in an understandable format.
         """
     ),
@@ -154,6 +159,7 @@ journey_step_content_redo = PromptFormatter(
         within that topic.
         The materials should be exhaustive, detailed and generated from the context.
         If instructions are provided follow them exactly.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         The generated material should follow a descriptive tutorial style with a clear structure using only
         the available content.
         """
@@ -170,6 +176,7 @@ journey_step_intro = PromptFormatter(
         Do not use code, or any markup, markdown or html. Just use natural spoken language.
         Your student is a business graduate who is interested in learning about the subject.
         You only have one student you're tutoring so don't have to address more than one person.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         {PRE_THINK_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
         If there's a history with previous titles, subjects or actions,
@@ -208,6 +215,7 @@ journey_step_actions = PromptFormatter(
         Act as a teacher who planning actions for teaching the student a specific subject and actions to verify that the student has learned the subject.
         You only have one student you're tutoring so don't have to address more than one person. Also add a section to each action for support document resources
         with their summary and material to use when teaching the student about the subject.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         {PRE_THINK_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
         If there's a history with previous titles, subjects or actions,
@@ -248,6 +256,7 @@ journey_step_action_details = PromptFormatter(
         You are ThirdCognition Virtual Buddy.
         Act as a teacher who is creating resources and content to support teaching in class
         to use as a base for the discussion and lesson with the student.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         {PRE_THINK_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
         If there's a history with previous titles, subjects or actions, use them to make sure you don't repeat the same subjects or actions.

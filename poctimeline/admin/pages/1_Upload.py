@@ -1,4 +1,6 @@
+import asyncio
 from datetime import datetime
+import io
 import os
 import re
 import sys
@@ -9,38 +11,40 @@ from typing import List, Union
 import sqlalchemy as sqla
 import streamlit as st
 from streamlit.runtime.uploaded_file_manager import UploadedFile
+from streamlit.elements.lib.mutable_status_container import StatusContainer
 from langchain_core.messages import BaseMessage
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
-from chains.init import get_chain
+from graphs.process_text import process_text
+from models.sqlite_tables import SourceContents
 from lib.db_tools import (
-    FileDataTable,
+    SourceDataTable,
     # JourneyDataTable,
-    get_chroma_collection,
-    get_db_files,
+    get_db_sources,
     init_db,
 )
 
-from lib.document_parse import load_pymupdf, markdown_to_text
-from lib.document_tools import create_document_lists, split_markdown, split_text
+from lib.document_parse import load_pymupdf
+from lib.document_tools import split_markdown, split_text
 from lib.load_env import SETTINGS
-from lib.streamlit_tools import check_auth, get_all_categories, llm_edit
+from lib.streamlit_tools import check_auth, get_all_categories
 
 st.set_page_config(
     page_title="TC POC: Upload files",
     page_icon="static/icon.png",
     layout="centered",
     menu_items={
-        'About': """# ThirdCognition PoC
+        "About": """# ThirdCognition PoC
 [ThirdCognition](https://thirdcognition.com)
 This is an *extremely* cool admin tool!
         """
-    }
+    },
 )
 
 database_session = init_db()
+
 
 def validate_category(category):
     # Check length
@@ -50,7 +54,7 @@ def validate_category(category):
     if not category[0].isalnum() or not category[-1].isalnum():
         return False
     # Check for valid characters
-    if not re.match(r"^[A-Za-z0-9_\-]*$", category) or ' ' in category:
+    if not re.match(r"^[A-Za-z0-9_\-]*$", category) or " " in category:
         return False
     # Check for consecutive periods
     if ".." in category:
@@ -59,6 +63,7 @@ def validate_category(category):
     if re.match(r"^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$", category):
         return False
     return True
+
 
 def write_categories(add_new=True) -> Union[List, None]:
     st.subheader("File categories")
@@ -79,23 +84,28 @@ def write_categories(add_new=True) -> Union[List, None]:
         if new_categories_input:
             _new_categories = new_categories_input.split(",")
             for new_category in _new_categories:
-                new_category = new_category.strip().replace(' ', '_')
+                new_category = new_category.strip().replace(" ", "_")
 
                 if not validate_category(new_category):
                     valid = False
-                    st.error(f"Invalid category: {new_category}. Please ensure it meets the following requirements: "
-                            "1. Contains 3-63 characters, "
-                            "2. Starts and ends with an alphanumeric character, "
-                            "3. Contains only alphanumeric characters, underscores or hyphens (-), "
-                            "4. Does not contain two consecutive periods (..), "
-                            "5. Is not a valid IPv4 address.")
+                    st.error(
+                        f"Invalid category: {new_category}. Please ensure it meets the following requirements: "
+                        "1. Contains 3-63 characters, "
+                        "2. Starts and ends with an alphanumeric character, "
+                        "3. Contains only alphanumeric characters, underscores or hyphens (-), "
+                        "4. Does not contain two consecutive periods (..), "
+                        "5. Is not a valid IPv4 address."
+                    )
                     break
                 if new_category not in new_categories:
                     new_categories.append(new_category)
 
     with cat_col2:
         add_categories = st.button(
-            "Add", key="add_file_categories_" + "new" if add_new else "show", disabled=not valid, use_container_width=True
+            "Add",
+            key="add_file_categories_" + "new" if add_new else "show",
+            disabled=not valid,
+            use_container_width=True,
         )
 
     if add_categories and valid:
@@ -121,7 +131,7 @@ def process_file_contents(
     filetype = os.path.basename(uploaded_file.name).split(".")[-1]
 
     file_exists = database_session.query(
-        sqla.exists().where(FileDataTable.filename == filename)
+        sqla.exists().where(SourceDataTable.source == filename)
     ).scalar()
 
     if file_exists and overwrite is not True:
@@ -140,7 +150,11 @@ def process_file_contents(
             or filetype == "svg"
         ):
             parse_bar = st.progress(0, text="Parsing")
-            texts = load_pymupdf(uploaded_file, filetype=filetype, progress_cb = lambda x, y: parse_bar.progress(x, text=y))
+            texts = load_pymupdf(
+                uploaded_file,
+                filetype=filetype,
+                progress_cb=lambda x, y: parse_bar.progress(x, text=y),
+            )
             if parse_bar:
                 parse_bar.progress(1, text="Done.")
                 parse_bar.empty()
@@ -169,8 +183,8 @@ def process_file_contents(
             if file_exists:
                 # If the file exists, get the row and update its text field
                 existing_file = (
-                    database_session.query(FileDataTable)
-                    .filter(FileDataTable.filename == filename)
+                    database_session.query(SourceDataTable)
+                    .filter(SourceDataTable.source == filename)
                     .first()
                 )
 
@@ -185,10 +199,9 @@ def process_file_contents(
                 st.success(f"{filename} updated within database successfully.")
             else:
 
-
                 # If the file does not exist, create a new row
-                file = FileDataTable(
-                    filename=filename,
+                file = SourceDataTable(
+                    source=filename,
                     texts=texts,
                     category_tag=category,
                     chroma_collection=collections,
@@ -201,188 +214,85 @@ def process_file_contents(
 
             database_session.commit()
 
-def process_file_data(filename, category):
+
+async def process_source(
+    category, filename=None, url=None, file: io.BytesIO = None, overwrite=False
+):
     with st.status(f"Document generation: {filename}"):
-        file_entry = get_db_files()[filename]
-        texts = file_entry["texts"]
-        filetype = os.path.basename(filename).split(".")[-1]
+        # file_entry = get_db_sources()[filename]
+        contents: SourceContents = None
+        # texts = file_entry.texts
+        # filetype = os.path.basename(filename).split(".")[-1]
 
-        with st.spinner("Rewriting"):
-            formatted_text = None
-            format_thoughts = None
-            if texts is not None and filetype != "md":
-                if len(texts) > 1:
-                    formatted_text, format_thoughts = llm_edit("text_formatter_compress", texts)
-                else:
-                    formatted_text, format_thoughts = llm_edit("text_formatter", texts)
-            elif filetype == "md":
-                if len(texts) > 1 or len(texts[0]) > 1000:
-                    formatted_text, format_thoughts = llm_edit(
-                        "text_formatter_compress", split_text(markdown_to_text("\n".join(texts)))
+        states = {"split": "Document parsing", "reformat": "Document re-formatting", "concept": "Concept search", "summary": "Summary writing", "collapse": "Collapsing contents", "final_contents": "Combining contents", "rag": "RAG database update"}
+        state_status = {}
+        for state in states.keys():
+            state_status[state] = st.empty()
+
+        # with st.spinner("Processing"):
+        config = {
+            "configurable": {
+                "collect_concepts": True,
+                "overwrite_sources": overwrite,
+            }
+        }
+        # result = await process_text.ainvoke({"filename": filename, "file": file, "category": category}, config=config)
+        events = []
+        async for event in process_text.astream_events(
+            {"filename": filename, "file": file, "category": category},
+            config=config,
+            version="v2",
+        ):
+            if (
+                event["event"] == "on_chain_start"
+                or event["event"] == "on_chain_end"
+            ):
+                input = event["data"]["input"] if "input" in event["data"] else None
+                output = (
+                    event["data"]["output"] if "output" in event["data"] else None
+                )
+
+                for state in states.keys():
+                    update_state_status = (
+                        input[f"{state}_complete"]
+                        if input is not None and f"{state}_complete" in input
+                        else False
+                    ) or (
+                        output[f"{state}_complete"]
+                        if output is not None and f"{state}_complete" in output
+                        else False
                     )
-                else:
-                    formatted_text = None
-            with st.container(height=400):
-                st.write("### Formatted text:")
-                if format_thoughts is not None and format_thoughts != "":
-                    print(f"{format_thoughts=}")
-                    st.write("#### Thoughts")
-                    st.caption(format_thoughts)
-                st.write(formatted_text)
+                    if update_state_status:
+                        # if isinstance(state_status[state], StatusContainer):
+                        #     state_status[state].update(label=f"{states[state]} complete", state="complete")
+                        # else:
+                        state_status[state].empty()
+                        state_status[state].success(f"{states[state]} complete")
+                    elif f"{state}_content" == event["name"] and event["event"] == "on_chain_start":
+                        # if not isinstance(state_status[state], StatusContainer):
+                        state_status[state].empty()
+                        state_status[state].info(f"{states[state]} in progress") #, state="running")
 
-        st.success("Rewrite complete")
-
-        with st.spinner("Summarizing text"):
-            summary_text = None
-            shorter_thoughts = None
-            summary_texts = texts
-            if formatted_text is not None and formatted_text != "":
-                summary_texts = split_text(formatted_text, SETTINGS.default_llms.instruct.char_limit, 128)
-
-            if summary_texts is not None:
-                # split_texts = split_text("\n".join(texts), CHAR_LIMIT)
-                if len(summary_texts) == 1:
-                    shorter_text, shorter_thoughts = llm_edit("summary", summary_texts)
-                    if shorter_text is not None or shorter_text == "":
-                        summary_text = shorter_text
-                    else:
-                        summary_text = summary_texts[0]
-                else:
-                    list_of_docs = create_document_lists(summary_texts, source=filename)
-                    # print(f"{ list_of_docs = }")
-
-                    results = get_chain("summary_documents").invoke(
-                        {"context": list_of_docs}
-                    )
-
-                    if isinstance(results, tuple) and len(results) == 2:
-                        shorter_text, shorter_thoughts = results
-                    else:
-                        shorter_text = results
-                        shorter_thoughts = ''
-
-                    shorter_text = shorter_text.content if isinstance(shorter_text, BaseMessage) else shorter_text
-
-                    # shorter_text, shorter_thoughts = llm_edit("summary", [summary_text])
-
-                    if shorter_text is not None:
-                        summary_text = shorter_text
-
-        st.success("Summary complete")
+                # print(f"\n\n\n{event["name"]=}: {event["event"]}\n\n\n")
+            events.append(event)
+        # print(f"\n\n{result=}\n\n")
+        result = events[-1]["data"]["output"]
+        if "source_contents" in result:
+            contents = result["source_contents"]
+        else:
+            contents = result["content_summaries"]
 
         with st.container(height=400):
+            for state in states.keys():
+                state_status[state].empty()
             st.write(f"### Summary")
-            if shorter_thoughts is not None and shorter_thoughts != "":
-                st.write("#### Thoughts")
-                st.caption(shorter_thoughts)
-            st.write(summary_text)
-
-        rag_split = []
-        rag_ids = []
-        rag_metadatas = []
-        rag_documents = []
-        with st.spinner("Creating RAG"):
-            if texts is not None and filetype != "md":
-                rag_split = split_text("\n".join(texts), SETTINGS.default_embeddings.default.char_limit, SETTINGS.default_embeddings.default.overlap)
-            elif filetype == "md":
-                rag_split = split_text(markdown_to_text("\n".join(texts)), SETTINGS.default_embeddings.default.char_limit, SETTINGS.default_embeddings.default.overlap)
-
-            rag_ids = [filename + "_" + str(i) for i in range(len(rag_split))]
-            rag_metadatas = [
-                {
-                    "file": filename,
-                    "category": ", ".join(category),
-                    "filetype": filetype,
-                    "split": i,
-                }
-                for i in range(len(rag_split))
-            ]
-
-            if formatted_text is not None and formatted_text:
-                if len(formatted_text) > SETTINGS.default_embeddings.default.char_limit:
-                    formatted_split = split_text(formatted_text, SETTINGS.default_embeddings.default.char_limit, SETTINGS.default_embeddings.default.overlap)
-                else:
-                    formatted_split = [formatted_text]
-
-                rag_split = rag_split + formatted_split
-                rag_ids = rag_ids + [
-                    filename + "_formatted_" + str(i)
-                    for i in range(len(formatted_split))
-                ]
-                rag_metadatas = rag_metadatas + [
-                    {
-                        "file": "formatted_" + filename,
-                        "thoughts": format_thoughts,
-                        "category": ", ".join(category),
-                        "filetype": filetype,
-                        "split": i,
-                    }
-                    for i in range(len(formatted_split))
-                ]
-                # rag_documents = create_document_lists(rag_split, list_of_metadata=rag_metadatas, source=filename)
-        st.success("RAG generation complete")
-        # Save the filename and text into the database
-
-        # file_exists = database_session.query(
-        #     sqla.exists().where(FileDataTable.filename == filename)
-        # ).scalar()
-
-        with st.spinner("Saving to database..."):
-            # if file_exists:
-            # If the file exists, get the row and update its text field
-            existing_file = (
-                database_session.query(FileDataTable)
-                .filter(FileDataTable.filename == filename)
-                .first()
-            )
-
-            collections = existing_file.chroma_collection
-            if len(existing_file.chroma_ids) > 0:
-                for collection in collections:
-                    vectorstore = get_chroma_collection(collection)
-                    vectorstore.delete(existing_file.chroma_ids)
-
-            collections = []
-
-            for cat in category:
-                collections.append("rag_" + cat)
-                vectorstore = get_chroma_collection("rag_" + cat) #get_vectorstore("rag_" + cat)
-                store_complete = False
-                retries = 0
-                while not store_complete and retries < 3:
-                    if (retries > 0):
-                        vectorstore.delete(rag_ids)
-                    retries += 1
-                    vectorstore.add(
-                        ids=rag_ids, documents=rag_split, metadatas=rag_metadatas
-                    )
-                    rag_items = vectorstore.get(
-                            rag_ids,
-                            include=["embeddings", "documents", "metadatas"],
-                        )
-                    store_complete = True
-
-                    for rag_id in rag_ids:
-                        if rag_id not in rag_items["ids"]:
-                            store_complete = False
-                            print(f"{rag_id} not in {rag_items["ids"]} - retrying...")
-                            break
+            # if contents.summary_thoughts is not None and contents.summary_thoughts != "":
+            #     st.write("#### Thoughts")
+            #     st.caption(contents.summary_thoughts)
+            st.write(contents.summary)
 
 
-            existing_file.texts = texts  # Update the text field with the new content
-            existing_file.formatted_text = formatted_text
-            existing_file.summary = summary_text
-            existing_file.category_tag = category
-            existing_file.chroma_ids = rag_ids
-            existing_file.chroma_collection = collections
-            existing_file.last_updated = datetime.now()
-
-            st.success(f"{filename} updated within database successfully.")
-
-            database_session.commit()
-
-
-def main():
+async def main():
     init_db()
     st.title("Upload Files")
 
@@ -392,14 +302,22 @@ def main():
     new_categories = write_categories()
 
     file_categories = get_all_categories()
-    if (new_categories is not None and len(new_categories) > 0):
+    if new_categories is not None and len(new_categories) > 0:
         st.session_state.selected_new_categories = new_categories
-        print('rerun')
+        print("rerun")
         st.rerun()
 
     st.subheader("File uploader")
 
-    default_category = st.multiselect("Default category", file_categories, default=st.session_state.selected_new_categories if "selected_new_categories" in st.session_state else None)
+    default_category = st.multiselect(
+        "Default category",
+        file_categories,
+        default=(
+            st.session_state.selected_new_categories
+            if "selected_new_categories" in st.session_state
+            else None
+        ),
+    )
 
     # submitted = None
     uploaded_files = None
@@ -419,14 +337,14 @@ def main():
         st.session_state.new_files_names = []
         st.session_state.new_files_details = {}
 
-    existing_files = st.session_state.existing_files
+    existing_files: List[UploadedFile] = st.session_state.existing_files
     existing_files_details = st.session_state.existing_files_details
     existing_files_names = st.session_state.existing_files_names
-    new_files = st.session_state.new_files
+    new_files: List[UploadedFile] = st.session_state.new_files
     new_files_details = st.session_state.new_files_details
     new_files_names = st.session_state.new_files_names
 
-    db_files = get_db_files()
+    db_sources = get_db_sources()
 
     new_file_count = 0
     unique_files = len(existing_files_names) + len(new_files_names)
@@ -435,13 +353,13 @@ def main():
         for uploaded_file in uploaded_files:
             # Convert the file to text based on its extension
             filename = os.path.basename(uploaded_file.name)
-            filetype = filename.split(".")[-1]
+            # filetype = filename.split(".")[-1]
 
             # file_exists = database_session.query(
-            #     sqla.exists().where(FileDataTable.filename == filename)
+            #     sqla.exists().where(SourceDataTable.source == filename)
             # ).scalar()
 
-            file_exists = filename in db_files
+            file_exists = filename in db_sources
 
             if file_exists and uploaded_file.name not in existing_files_names:
                 existing_files.append(uploaded_file)
@@ -464,7 +382,7 @@ def main():
             existing_files_details[filename] = {
                 "file": file,
                 "name": filename,
-                "category": db_files[filename]["category_tag"],
+                "category": db_sources[filename].category_tag,
             }
         file_data = existing_files_details[filename]
 
@@ -525,22 +443,10 @@ def main():
             elif filename in new_files_details:
                 det = new_files_details[filename]
 
-            process_file_contents(det["file"], det["name"], det["category"])
-            # get_db_files(reset=True)
-            gc.collect()
-        get_db_files(reset=True)
-        for filename in keys:
-            det = None
-            if filename in existing_files_details:
-                det = existing_files_details[filename]
-            elif filename in new_files_details:
-                det = new_files_details[filename]
+            await process_source(det["category"], filename=filename, file=det["file"])
 
-            process_file_data(det["name"], det["category"])
-            gc.collect()
-
-        get_db_files(reset=True)
+        get_db_sources(reset=True)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

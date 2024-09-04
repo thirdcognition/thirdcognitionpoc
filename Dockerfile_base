@@ -12,3 +12,4 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
 
 COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/ms-playwright playwright install --with-deps

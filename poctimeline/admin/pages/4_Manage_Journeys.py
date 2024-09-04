@@ -148,8 +148,8 @@ def journey_subject_details_ui(
             key=f"subject_summary_{journey_name}_{subject_index}",
             height=200,
         )
-        journey.subjects[subject_index].db_files = get_files_for_journey(
-            journey.chroma_collection[0], journey_name, subject_index, subject.db_files
+        journey.subjects[subject_index].db_sources = get_files_for_journey(
+            journey.chroma_collection[0], journey_name, subject_index, subject.db_sources
         )
         # if st.button("Regenerate", key=f"regenerate_button_{journey_name}_{subject_index}"):
         #     journey.subjects[subject_index] = gen_journey_subject(journey, subject)

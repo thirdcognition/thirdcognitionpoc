@@ -9,17 +9,17 @@ from langchain_core.messages import BaseMessage, AIMessage
 from chains.init import get_base_chain, get_chain
 from chains.rag_chain import get_rag_chain
 from lib.db_tools import (
-    get_db_files,
+    get_db_sources,
     get_db_journey,
     init_db,
 )
-from lib.document_parse import markdown_to_text
+from lib.document_tools import markdown_to_text
 from lib.document_tools import create_document_lists
 from lib.load_env import SETTINGS
 from lib.streamlit_tools import llm_edit
 from models.journey import ActionStructure, JourneyModel, ResourceStructure, StepModel, SubjectModel, SubjectStructure
 from models.prompts import CustomPrompt
-from models.sqlite_tables import JourneyDataTable
+from models.sqlite_tables import SourceContents, SourceData, JourneyDataTable
 from prompts.journey import JourneyStep, JourneyStepList
 
 def save_journey(journey_name, journey:JourneyModel) -> bool:
@@ -362,17 +362,18 @@ def llm_gen_journey_doc(list_of_strings = []) -> tuple[str, str]:
 
     return text, thoughts
 
-def build_journey_doc_from_files(db_files: Dict[str, Any]) -> str:
+def build_journey_doc_from_files(db_sources: Dict[str, SourceData]) -> str:
     list_of_strings = []
-    for filename in db_files:
+    for filename in db_sources:
+        content = SourceContents(**db_sources[filename].file_content.__dict__)
         if (
-            db_files[filename]["formatted_text"] is not None
-            and db_files[filename]["formatted_text"] != ""
+            content.formatted_content is not None
+            and content.formatted_content != ""
         ):
-            list_of_strings.append(db_files[filename]["formatted_text"])
+            list_of_strings.append(content.formatted_content)
         else:
             list_of_strings.append(
-                markdown_to_text("\n".join(db_files[filename]["texts"]))
+                markdown_to_text("\n".join(db_sources[filename].texts))
             )
 
     compressed = ''
@@ -385,17 +386,17 @@ def build_journey_doc_from_files(db_files: Dict[str, Any]) -> str:
 def get_files_for_journey(
     default_category, journey_name, step, gen_from: Dict = None
 ) -> List[Any]:
-    db_files = get_db_files()
+    db_sources = get_db_sources()
     shown_files = {}
 
     if default_category is None or len(default_category) < 1:
         st.write("Select category tag(s) first to see available files.")
     else:
-        for filename in db_files.keys():
-            category_tags = db_files[filename]["category_tag"]
+        for filename in db_sources.keys():
+            category_tags = db_sources[filename].category_tag
 
             if len([i for i in category_tags if i in default_category]) > 0:
-                shown_files[filename] = db_files[filename]
+                shown_files[filename] = db_sources[filename]
 
     if gen_from is None:
         gen_from = {}
@@ -528,7 +529,7 @@ def gen_journey_subject(journey: JourneyModel, subject: SubjectModel, subject_in
     # journey:JourneyModel = st.session_state.journey_get_details[journey_name]
     # vectorstore = get_vectorstore("rag_"+ journey["category"][0], "hyde")
     with st.status(f"Building section {subject_index+1} document"):
-        compressed = build_journey_doc_from_files(subject.db_files)
+        compressed = build_journey_doc_from_files(subject.db_sources)
         st.success("Generating section document done.")
     if step_index is None:
         with st.status(f"Building section {subject_index+1}"):
@@ -538,7 +539,7 @@ def gen_journey_subject(journey: JourneyModel, subject: SubjectModel, subject_in
                 subject,
                 subject_index=subject_index,            )
             st.success(f"Section {subject_index+1} done.")
-            subject.files = list(subject.db_files.keys())
+            subject.files = list(subject.db_sources.keys())
     else:
         with st.status(f"Building section {subject_index+1} subsection {step_index+1}"):
             bar = st.progress(0, text=f"Generating section {subject_index+1} subsection {step_index+1}")

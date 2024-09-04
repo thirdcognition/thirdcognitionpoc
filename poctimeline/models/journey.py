@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 
+from models.sqlite_tables import SourceData
 from prompts.journey import JourneyPrompts
 
 class ResourceStructure(BaseModel):
@@ -61,13 +62,13 @@ class SubjectModel(BaseModel):
     step_amount: int = Field(default=None)
     action_amount: int = Field(default=None)
     files: List[str] = Field(default_factory=list)
-    db_files: Dict[str, Dict] = Field(default_factory=dict)
+    db_sources: Dict[str, SourceData] = Field(default_factory=dict)
 
 
 class JourneyModel(BaseModel):
     journeyname: Optional[str] = None
     files: List[str] = Field(default_factory=list)
-    db_files: Dict[str, Dict] = Field(default_factory=dict)
+    db_sources: Dict[str, SourceData] = Field(default_factory=dict)
     subjects: List[SubjectModel] = Field(default_factory=list)
     chroma_collection: List[str] = Field(default_factory=list)
     disabled: Optional[bool] = False

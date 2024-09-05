@@ -445,65 +445,65 @@ def create_subject_prompt_editor(id:str, subject: SubjectModel, edit_mode: bool 
             subject.prompts.step_intro = edit_prompt(4, subject.prompts.step_intro, tab4)
             subject.prompts.step_actions = edit_prompt(5, subject.prompts.step_actions, tab5)
             subject.prompts.step_action_details = edit_prompt(6, subject.prompts.step_action_details, tab6)
+
+            with tab7:
+                if edit_mode:
+                    bulk_prompt = (
+                        "Prompt: steps\n"
+                        "--system--\n"
+                        f"{subject.prompts.steps.system}\n"
+                        "--system--\n"
+                        "--user--\n"
+                        f"{subject.prompts.steps.user}\n"
+                        "--user--\n\n"
+
+                        "Prompt: step_intro\n"
+                        "--system--\n"
+                        f"{subject.prompts.step_intro.system}\n"
+                        "--system--\n"
+                        "--user--\n"
+                        f"{subject.prompts.step_intro.user}\n"
+                        "--user--\n\n"
+
+                        "Prompt: step_content\n"
+                        "--system--\n"
+                        f"{subject.prompts.step_content.system}\n"
+                        "--system--\n"
+                        "--user--\n"
+                        f"{subject.prompts.step_content.user}\n"
+                        "--user--\n\n"
+
+                        "Prompt: step_content_redo\n"
+                        "--system--\n"
+                        f"{subject.prompts.step_content_redo.system}\n"
+                        "--system--\n"
+                        "--user--\n"
+                        f"{subject.prompts.step_content_redo.user}\n"
+                        "--user--\n\n"
+
+                        "Prompt: step_actions\n"
+                        "--system--\n"
+                        f"{subject.prompts.step_actions.system}\n"
+                        "--system--\n"
+                        "--user--\n"
+                        f"{subject.prompts.step_actions.user}\n"
+                        "--user--\n\n"
+
+                        "Prompt: step_action_details\n"
+                        "--system--\n"
+                        f"{subject.prompts.step_action_details.system}\n"
+                        "--system--\n"
+                        "--user--\n"
+                        f"{subject.prompts.step_action_details.user}\n"
+                        "--user--"
+                    )
+                    bulk = st.text_area("Bulk prompt", value=bulk_prompt, height=300, key=f"bulk_prompt_{id}")
+
+                    if st.button("Update prompts", key=f"update_prompts_{id}"):
+                        update_subject_prompts(subject, bulk)
+                    st.rerun()
         except Exception as e:
             st.error(f"An error occurred: {e}")
-
-        with tab7:
-            if edit_mode:
-                bulk_prompt = (
-                    "Prompt: steps\n"
-                    "--system--\n"
-                    f"{subject.prompts.steps.system}\n"
-                    "--system--\n"
-                    "--user--\n"
-                    f"{subject.prompts.steps.user}\n"
-                    "--user--\n\n"
-
-                    "Prompt: step_intro\n"
-                    "--system--\n"
-                    f"{subject.prompts.step_intro.system}\n"
-                    "--system--\n"
-                    "--user--\n"
-                    f"{subject.prompts.step_intro.user}\n"
-                    "--user--\n\n"
-
-                    "Prompt: step_content\n"
-                    "--system--\n"
-                    f"{subject.prompts.step_content.system}\n"
-                    "--system--\n"
-                    "--user--\n"
-                    f"{subject.prompts.step_content.user}\n"
-                    "--user--\n\n"
-
-                    "Prompt: step_content_redo\n"
-                    "--system--\n"
-                    f"{subject.prompts.step_content_redo.system}\n"
-                    "--system--\n"
-                    "--user--\n"
-                    f"{subject.prompts.step_content_redo.user}\n"
-                    "--user--\n\n"
-
-                    "Prompt: step_actions\n"
-                    "--system--\n"
-                    f"{subject.prompts.step_actions.system}\n"
-                    "--system--\n"
-                    "--user--\n"
-                    f"{subject.prompts.step_actions.user}\n"
-                    "--user--\n\n"
-
-                    "Prompt: step_action_details\n"
-                    "--system--\n"
-                    f"{subject.prompts.step_action_details.system}\n"
-                    "--system--\n"
-                    "--user--\n"
-                    f"{subject.prompts.step_action_details.user}\n"
-                    "--user--"
-                   )
-                bulk = st.text_area("Bulk prompt", value=bulk_prompt, height=300, key=f"bulk_prompt_{id}")
-
-                if st.button("Update prompts", key=f"update_prompts_{id}"):
-                    update_subject_prompts(subject, bulk)
-                    st.rerun()
 
     return subject.prompts
 

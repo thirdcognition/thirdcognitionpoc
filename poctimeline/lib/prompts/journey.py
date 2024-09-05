@@ -3,6 +3,7 @@ from typing import List
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 from lib.models.prompts import CustomPrompt
+from lib.models.sqlite_tables import CategoryTag
 from lib.prompts.base import (
     KEEP_PRE_THINK_TOGETHER,
     MAINTAIN_CONTENT_AND_USER_LANGUAGE,
@@ -17,7 +18,12 @@ class JourneyStep(BaseModel):
     description: str = Field(
         description="Description for the subject", title="Description"
     )
-
+    concept_ids: List[str] = Field(
+        description="List of concepts id used by the subject", title="Concepts IDs"
+    )
+    concept_tags: List[CategoryTag] = Field(
+        description="List of concepts tags used by the subject", title="Concept Tags"
+    )
 
 class JourneyStepList(BaseModel):
     steps: List[JourneyStep] = Field(description="List of subjects", title="Subjects")
@@ -73,7 +79,7 @@ journey_step_content = PromptFormatter(
     system=textwrap.dedent(
         f"""
         You are ThirdCognition Virtual Buddy.
-        Act as a teacher who is planning the content for a class with a specific subject.
+        Act as a teacher who is writing study material for a class with a specific subject.
         Do not use code, or any markup, markdown or html. Just use natural spoken language divided
         into a clear structure.
         Your student is a business graduate who is interested in learning about the subject.
@@ -82,8 +88,8 @@ journey_step_content = PromptFormatter(
         {KEEP_PRE_THINK_TOGETHER}
         Create the study material for the student with the following information between context start and end.
         Only use the information available within the context. Do not add or remove information from the context.
-        If there's a history with previous titles, subjects or actions,
-        use them to make sure you don't repeat the same subjects or actions.
+        If instructions are provided follow them exactly. The material should be clearly divided into sections
+        with titles and sections generated from the content.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         If instructions are provided follow them exactly.
         """
@@ -105,67 +111,17 @@ journey_step_content = PromptFormatter(
 
         Create study materials for the student defined by the subject. Don't include any other content outside of the subject.
         Only use the information available within the context. Do not add or remove information from the context.
-        If instructions are provided, follow them exactly. If instructions specify
-        a topic or subject, make sure the list includes only items which fall within
-        within that topic.
+        If instructions are provided, follow them exactly. If instructions specify a topic or subject, make sure the
+        output includes only items which fall within them.
         The study materials should be exhaustive, detailed and generated from the context.
-        If there's a history with previous titles, subjects or actions,
-        use them to make sure you don't repeat the same subjects or actions.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         If instructions are provided follow them exactly.
-        """
-    ),
-)
-journey_step_content.parser = TagsParser(min_len=10)
-
-journey_step_content_redo = PromptFormatter(
-    system=textwrap.dedent(
-        f"""
-        You are ThirdCognition Virtual Buddy.
-        Act as a teacher who is detailing the content for a class with a specific subject.
-        Do not use code, or any markup, or html. Just use natural spoken language divided
-        into a clear structure.
-        Your student is a business graduate who is interested in learning about the subject.
-        You only have one student you're tutoring and you are making material for them.
-        {PRE_THINK_INSTRUCT}
-        {KEEP_PRE_THINK_TOGETHER}
-        Create the material for the student with the following information between context start and end.
-        Only use the information available within the context. Do not add or remove information from the context.
-        If instructions are provided follow them exactly.
-        The material should be clearly divided into sections with headers generated from the content.
-        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
-        Use a formal tone, but write the content in an understandable format.
-        """
-    ),
-    user=textwrap.dedent(  # Use get_journey_format_example instead
-        """
-        instuctions start
-        {journey_instructions}
-        {instructions}
-        instructions end
-
-        context start
-        {context}
-        context end
-
-        Subject:
-        {subject}
-
-
-        Create materials for the student defined by the subject. Don't include any other content outside of the subject.
-        Only use the information available within the context. Do not add or remove information from the context.
-        If instructions are provided, follow them exactly. If instructions specify
-        a topic or subject, make sure the list includes only items which fall within
-        within that topic.
-        The materials should be exhaustive, detailed and generated from the context.
-        If instructions are provided follow them exactly.
-        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
-        The generated material should follow a descriptive tutorial style with a clear structure using only
+        The generated material should follow a descriptive tutorial and blog style with a clear structure using only
         the available content.
         """
     ),
 )
-journey_step_content_redo.parser = TagsParser(min_len=10)
+journey_step_content.parser = TagsParser(min_len=10)
 
 journey_step_intro = PromptFormatter(
     system=textwrap.dedent(
@@ -311,11 +267,5 @@ class JourneyPrompts(BaseModel):
         default=CustomPrompt(
             system=journey_step_action_details.system,
             user=journey_step_action_details.user,
-        )
-    )
-    step_content_redo: CustomPrompt = Field(
-        default=CustomPrompt(
-            system=journey_step_content_redo.system,
-            user=journey_step_content_redo.user,
         )
     )

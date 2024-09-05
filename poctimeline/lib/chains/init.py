@@ -243,7 +243,6 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
     "journey_structured": ("structured", journey_structured, False),
     "journey_steps": ("structured_detailed" if not DEVMODE else "structured", journey_steps, True),
     "journey_step_content": ("instruct_detailed_warm", journey_step_content, True),
-    "journey_step_content_redo": ("instruct_detailed_warm_redo", journey_step_content_redo, True),
     "journey_step_intro": ("instruct_warm", journey_step_intro, True),
     "journey_step_actions": ("instruct_detailed" if not DEVMODE else "instruct", journey_step_actions, True),
     "journey_step_action_details": ("instruct_warm", journey_step_action_details, True),

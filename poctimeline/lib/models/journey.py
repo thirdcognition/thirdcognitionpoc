@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 
-from lib.models.sqlite_tables import SourceData
+from lib.models.sqlite_tables import SourceConcept, SourceData
 from lib.prompts.journey import JourneyPrompts
 
 class ResourceStructure(BaseModel):
@@ -46,6 +46,7 @@ class StepModel(BaseModel):
     title: str = Field(default=None)
     subject: str = Field(default=None)
     content: str = Field(default=None)
+    concepts: List[SourceConcept] = Field(default=None)
     intro: str = Field(default=None)
     actions: str = Field(default=None)
     structured: SubjectStructure = Field(

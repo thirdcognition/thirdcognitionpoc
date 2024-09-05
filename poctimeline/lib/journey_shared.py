@@ -37,8 +37,6 @@ def save_journey(journey_name, journey:JourneyModel) -> bool:
         print("Remove old Journey")
         database_session.delete(journey_db)
 
-
-
     print("Create journey")
     journey_db = JourneyDataTable(
         journeyname=journey_name,
@@ -88,7 +86,6 @@ async def llm_gen_title_summary(steps: List[Union[StepModel, SubjectModel]]) -> 
                 "action": "Summarize context with 10 words or less to a title",
             }
     )
-
 
     summary = await llm_edit([context], "Summarize the following list of titles and intros into a summary description.", force=True)
 

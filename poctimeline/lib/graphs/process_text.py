@@ -26,8 +26,6 @@ from lib.models.sqlite_tables import (
     SourceConcept,
     SourceConceptList,
     SourceContents,
-    SourceData,
-    SourceDataTable,
 )
 
 

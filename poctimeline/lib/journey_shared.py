@@ -501,7 +501,7 @@ def create_subject_prompt_editor(id:str, subject: SubjectModel, edit_mode: bool 
 
                     if st.button("Update prompts", key=f"update_prompts_{id}"):
                         update_subject_prompts(subject, bulk)
-                    st.rerun()
+                        st.rerun()
         except Exception as e:
             st.error(f"An error occurred: {e}")
 

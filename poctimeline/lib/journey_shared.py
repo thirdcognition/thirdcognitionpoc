@@ -438,12 +438,15 @@ def create_subject_prompt_editor(id:str, subject: SubjectModel, edit_mode: bool 
 
     with st.expander(f"Prompts for {id}", expanded=False):
         tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Subsections", "Subsection\nIntro", "Subsection\nPrelim content", "Subsection\nFinal content", "Subsection\nModules", "Subsection\nModule Details", "Bulk"])
-        subject.prompts.steps = edit_prompt(1, subject.prompts.steps, tab1)
-        subject.prompts.step_content = edit_prompt(2, subject.prompts.step_content, tab2)
-        subject.prompts.step_content_redo = edit_prompt(3, subject.prompts.step_content_redo, tab3)
-        subject.prompts.step_intro = edit_prompt(4, subject.prompts.step_intro, tab4)
-        subject.prompts.step_actions = edit_prompt(5, subject.prompts.step_actions, tab5)
-        subject.prompts.step_action_details = edit_prompt(6, subject.prompts.step_action_details, tab6)
+        try:
+            subject.prompts.steps = edit_prompt(1, subject.prompts.steps, tab1)
+            subject.prompts.step_content = edit_prompt(2, subject.prompts.step_content, tab2)
+            subject.prompts.step_content_redo = edit_prompt(3, subject.prompts.step_content_redo, tab3)
+            subject.prompts.step_intro = edit_prompt(4, subject.prompts.step_intro, tab4)
+            subject.prompts.step_actions = edit_prompt(5, subject.prompts.step_actions, tab5)
+            subject.prompts.step_action_details = edit_prompt(6, subject.prompts.step_action_details, tab6)
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
 
         with tab7:
             if edit_mode:

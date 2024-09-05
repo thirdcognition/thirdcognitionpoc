@@ -58,11 +58,9 @@ class SourceConceptList(BaseModel):
 
 class SourceContents(BaseModel):
     formatted_content: str
-    formatted_content_thoughts: str
     summary: str
-    summary_thoughts: str
     concepts: List[SourceConcept]
-    summaries: Dict[str, str] = Field(
+    concept_summaries: Dict[str, str] = Field(
         description="A dictionary of summaries for each concept where key is the concept id and value is the summary of all contents related to that concept", title="Summaries"
     )
 

@@ -1,4 +1,6 @@
+from io import BytesIO
 import re
+from typing import List
 import streamlit as st
 import streamlit_authenticator as stauth
 import yaml
@@ -8,6 +10,8 @@ from lib.chains.init import get_chain
 from lib.db_tools import SourceDataTable, init_db
 from lib.document_tools import markdown_to_text
 from langchain_core.messages import BaseMessage
+
+from lib.graphs.process_text import ProcessTextState, process_text
 
 with open("admin_auth.yaml") as file:
     auth_config = yaml.load(file, Loader=SafeLoader)
@@ -60,92 +64,222 @@ def get_all_categories():
     return uniq_categories
 
 
-def llm_edit(chain, texts, guidance=None, force=False) -> tuple[str, str]:
-    text = ""
-    thoughts = ""
+async def process_text_call(
+    show_progress=True,
+    texts: List[str] = None,
+    source: str = None,
+    filename: str = None,
+    file: BytesIO = None,
+    url: str = None,
+    category: List[str] = None,
+    overwrite: bool = False,
+    guidance: str = None,
+    collect_concepts=True,
+    summarize:bool=True
+) -> ProcessTextState:
+    config = {
+        "configurable": {
+            "collect_concepts": collect_concepts,
+            "overwrite_sources": overwrite,
+            "update_rag": (source != None or file != None or url != None)
+            and category != None,
+            "guidance": guidance,
+            "summarize": summarize
+        }
+    }
+    states = {"split": "Read and analysis of document", "reformat": "Document re-formatting"}
+    if config["configurable"]["collect_concepts"]:
+        states.update(
+            {
+                "concept": "Concept search",
+            }
+        )
+    states.update(
+        {
+            "summary": "Summary writing",
+            "collapse": "Collapsing contents",
+            "final_contents": "Combining contents",
+        }
+    )
 
-    i = 0
-    total = len(texts)
+    if config["configurable"]["update_rag"]:
+        states.update({"rag": "RAG database update"})
 
-    if total > 1 and chain == "summary":
-        total += 1
+    state_status = {}
+    if show_progress:
+        for state in states.keys():
+            state_status[state] = st.empty()
+    events = []
+
+    params = {}
+    if source is not None:
+        params["source"] = source
+    if filename is not None:
+        params["filename"] = filename
+    if file is not None:
+        params["file"] = file
+    if url is not None:
+        params["url"] = url
+    if category is not None:
+        params["category"] = category
+    if texts is not None:
+        params["contents"] = texts
+
+    async for event in process_text.astream_events(
+        params,
+        config=config,
+        version="v2",
+    ):
+        if show_progress and (
+            event["event"] == "on_chain_start" or event["event"] == "on_chain_end"
+        ):
+            input = (
+                event["data"]["input"]
+                if "input" in event["data"] and isinstance(event["data"]["input"], dict)
+                else None
+            )
+            output = (
+                event["data"]["output"]
+                if "output" in event["data"]
+                and isinstance(event["data"]["output"], dict)
+                else None
+            )
+
+            for state in states.keys():
+                update_state_status = (
+                    input[f"{state}_complete"]
+                    if input is not None and f"{state}_complete" in input
+                    else False
+                ) or (
+                    output[f"{state}_complete"]
+                    if output is not None and f"{state}_complete" in output
+                    else False
+                )
+                if update_state_status:
+                    # if isinstance(state_status[state], StatusContainer):
+                    #     state_status[state].update(label=f"{states[state]} complete", state="complete")
+                    # else:
+                    state_status[state].empty()
+                    state_status[state].success(f"{states[state]} complete")
+                elif (
+                    f"{state}_content" == event["name"]
+                    and event["event"] == "on_chain_start"
+                ):
+                    # if not isinstance(state_status[state], StatusContainer):
+                    state_status[state].empty()
+                    state_status[state].info(
+                        f"{states[state]} in progress"
+                    )  # , state="running")
+
+            # print(f"\n\n\n{event["name"]=}: {event["event"]}\n\n\n")
+        events.append(event)
+    # print(f"\n\n{result=}\n\n")
+    result = events[-1]["data"]["output"]
+
+    if show_progress:
+        for state in states.keys():
+            state_status[state].empty()
+
+    return result
+
+
+async def llm_edit(texts:List[str], guidance=None, force:bool=False, show_process=True, summarize:bool=False) -> str:
+    if texts == None or texts[0] == None:
+        raise ValueError("No text provided")
 
     if not force and (
-        texts == None or texts[0] == None or total == 1 and len(texts[0]) < 1000
+        len(texts) == 1 and len(texts[0]) < 1000
     ):
-        return None, None
+        return texts[0] or ''
 
-    bar = st.progress(0, text="Processing...")
+    result = await process_text_call(show_progress=show_process, texts=texts, guidance=guidance, collect_concepts=False, summarize=summarize)
 
-    if total > 1:
-        inputs = []
-        for sub_text in texts:
-            bar.progress(i / total, f"Processing {i+1} / {total}...")
-            i += 1
-            _text = re.sub(r"[pP]age [0-9]+:", "", sub_text)
-            _text = re.sub(r"[iI]mage [0-9]+:", "", _text)
-            input = {"context": _text}
+    contents = result["content_result"]
 
-            guided_llm = ""
-            if guidance is not None and guidance != "":
-                input["question"] = guidance
-                guided_llm = "_guided"
-
-            inputs.append(input)
-
-            result = get_chain(chain + guided_llm).invoke(input)
-
-            if isinstance(result, tuple) and len(result) == 1:
-                result = result[0]
-
-            mid_thoughts = ''
-            if isinstance(result, tuple) and len(result) == 2:
-                mid_results, mid_thoughts = result
-            else:
-                mid_results = result
-
-            mid_results = mid_results.content if isinstance(mid_results, BaseMessage) else mid_results
-
-            text += mid_results + "\n\n"
-            thoughts += mid_thoughts + "\n\n"
-
+    if summarize:
+        return contents["summary"].strip()
     else:
-        _text = re.sub(r"[pP]age [0-9]+", "", texts[0])
-        _text = re.sub(r"[iI]mage [0-9]+", "", _text)
-        text = _text
+        return contents["formatted_content"].strip()
 
-    bar.progress((total - 1) / total, text="Summarizing...")
 
-    if chain == "summary":
-        text = markdown_to_text(text)
 
-        input = {"context": text}
 
-        guided_llm = ""
+# text = ""
 
-        if guidance is not None and guidance != "":
-            guided_llm = "_guided"
-            input["question"] = guidance
+# i = 0
+# total = len(texts)
 
-        result = get_chain(chain + guided_llm).invoke(input)
-        thoughts = ''
+# if total > 1 and chain == "summary":
+#     total += 1
 
-        if isinstance(result, tuple) and len(result) == 1:
-            result = result[0]
+# if not force and (
+#     texts == None or texts[0] == None or total == 1 and len(texts[0]) < 1000
+# ):
+#     return None, None
 
-        if isinstance(result, tuple) and len(result) == 2:
-            text, thoughts = result
-        else:
-            text = result
+# bar = st.progress(0, text="Processing...")
 
-        text = text.content if isinstance(text, BaseMessage) else text
+# text =
 
-    bar.empty()
+# if total > 1:
+#     inputs = []
+#     for sub_text in texts:
+#         bar.progress(i / total, f"Processing {i+1} / {total}...")
+#         i += 1
+#         _text = re.sub(r"[pP]age [0-9]+:", "", sub_text)
+#         _text = re.sub(r"[iI]mage [0-9]+:", "", _text)
+#         input = {"context": _text}
 
-    return text.strip(), thoughts.strip()
+#         guided_llm = ""
+#         if guidance is not None and guidance != "":
+#             input["question"] = guidance
+#             guided_llm = "_guided"
+
+#         inputs.append(input)
+
+#         result = get_chain(chain + guided_llm).invoke(input)
+
+#         if isinstance(result, tuple) and len(result) == 2:
+#             result = result[1]
+
+#         mid_results = mid_results.content if isinstance(mid_results, BaseMessage) else mid_results
+
+#         text += mid_results + "\n\n"
+
+# else:
+#     _text = re.sub(r"[pP]age [0-9]+", "", texts[0])
+#     _text = re.sub(r"[iI]mage [0-9]+", "", _text)
+#     text = _text
+
+# bar.progress((total - 1) / total, text="Summarizing...")
+
+# if chain == "summary":
+#     text = markdown_to_text(text)
+
+#     input = {"context": text}
+
+#     guided_llm = ""
+
+#     if guidance is not None and guidance != "":
+#         guided_llm = "_guided"
+#         input["question"] = guidance
+
+#     text = get_chain(chain + guided_llm).invoke(input)
+
+#     if isinstance(text, tuple) and len(text) == 2:
+#         _,  text = text
+
+#     text = text.content if isinstance(text, BaseMessage) else text
+
+# bar.empty()
+
+# return text.strip()
+
 
 def nav_to(url):
     nav_script = """
         <meta http-equiv="refresh" content="0; url='%s'">
-    """ % (url)
+    """ % (
+        url
+    )
     st.write(nav_script, unsafe_allow_html=True)

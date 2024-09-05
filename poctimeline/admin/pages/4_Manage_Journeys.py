@@ -152,7 +152,7 @@ def journey_subject_details_ui(
             journey.chroma_collection[0], journey_name, subject_index, subject.db_sources
         )
         # if st.button("Regenerate", key=f"regenerate_button_{journey_name}_{subject_index}"):
-        #     journey.subjects[subject_index] = gen_journey_subject(journey, subject)
+        #     journey.subjects[subject_index] = await gen_journey_subject((journey, subject)
         # save_journey_ui(f"{journey_name}_{subject_index}", journey_name, journey)
     else:
         if subject.instructions:
@@ -605,7 +605,7 @@ def remove_resource(
     ].resources.pop(resource_index)
 
 
-def main():
+async def main():
     init_db()
     st.title("Manage Journeys")
 
@@ -685,7 +685,7 @@ def main():
                         key=f"generate_subject_button_{journey_name}",
                         use_container_width=True,
                     ):
-                        journey.subjects[subject_index] = gen_journey_subject(
+                        journey.subjects[subject_index] = await gen_journey_subject(
                             journey, subject, subject_index=subject_index
                         )
                         save_journey_command(journey_name, journey_index, journey)
@@ -727,7 +727,7 @@ def main():
                         key=f"generate_step_button_{journey_name}",
                         use_container_width=True,
                     ):
-                        journey.subjects[subject_index] = gen_journey_subject(
+                        journey.subjects[subject_index] = await gen_journey_subject(
                             journey,
                             subject,
                             step_index=step_index,

@@ -16,7 +16,6 @@ from langchain_community.chat_models.azureml_endpoint import (
 )
 from langchain_core.embeddings import Embeddings
 from lib.chains.base import BaseChain
-from lib.chains.base import drop_thoughts
 from lib.chains.chain import Chain
 from lib.load_env import (
     DEBUGMODE,
@@ -235,10 +234,10 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
     "action": ("instruct_0", action, False),
     "grader": ("structured", grader, False),
     "check": ("instruct_0", check, False),
-    "text_formatter": ("instruct_detailed" if not DEVMODE else "instruct", text_formatter, True),
-    "text_formatter_compress": ("instruct_detailed" if not DEVMODE else "instruct", text_formatter_compress, True),
+    "text_formatter": ("instruct" if not DEVMODE else "instruct", text_formatter, False),
+    "text_formatter_compress": ("instruct" if not DEVMODE else "instruct", text_formatter_compress, False),
     "text_formatter_guided_0": ("instruct_detailed" if not DEVMODE else "instruct", text_formatter_guided, True),
-    "md_formatter": ("instruct_detailed" if not DEVMODE else "instruct", md_formatter, True),
+    "md_formatter": ("instruct" if not DEVMODE else "instruct", md_formatter, False),
     "md_formatter_guided": ("instruct_detailed_0", md_formatter_guided, True),
     "concept_structured": ("structured", concept_structured, True),
     "journey_structured": ("structured", journey_structured, False),
@@ -273,7 +272,7 @@ def get_base_chain(chain) -> Union[BaseChain, RunnableSequence]:
         base_chain = get_base_chain("text_formatter_compress")
 
         chains[chain] = create_stuff_documents_chain(
-            base_chain() | drop_thoughts,
+            base_chain(),
             base_chain.prompt.get_chat_prompt_template(),
             output_parser=base_chain.prompt.parser,
         )
@@ -281,7 +280,7 @@ def get_base_chain(chain) -> Union[BaseChain, RunnableSequence]:
 
     if "summary_documents" == chain:
         chains[chain] = (
-            get_chain("stuff_documents") | drop_thoughts | get_chain("summary")
+            get_chain("stuff_documents") | get_chain("summary")
         )
         return chains[chain]
 

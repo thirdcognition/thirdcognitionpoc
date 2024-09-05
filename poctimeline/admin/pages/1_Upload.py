@@ -29,7 +29,7 @@ from lib.db_tools import (
 from lib.document_parse import load_pymupdf
 from lib.document_tools import split_markdown, split_text
 from lib.load_env import SETTINGS
-from lib.streamlit_tools import check_auth, get_all_categories
+from lib.streamlit_tools import check_auth, get_all_categories, process_text_call
 
 st.set_page_config(
     page_title="TC POC: Upload files",
@@ -224,71 +224,23 @@ async def process_source(
         # texts = file_entry.texts
         # filetype = os.path.basename(filename).split(".")[-1]
 
-        states = {"split": "Document parsing", "reformat": "Document re-formatting", "concept": "Concept search", "summary": "Summary writing", "collapse": "Collapsing contents", "final_contents": "Combining contents", "rag": "RAG database update"}
-        state_status = {}
-        for state in states.keys():
-            state_status[state] = st.empty()
-
+        result = await process_text_call(
+            category=category,
+            filename=filename,
+            url=url,
+            file=file,
+            overwrite=overwrite,
+            collect_concepts=True
+        )
         # with st.spinner("Processing"):
-        config = {
-            "configurable": {
-                "collect_concepts": True,
-                "overwrite_sources": overwrite,
-            }
-        }
-        # result = await process_text.ainvoke({"filename": filename, "file": file, "category": category}, config=config)
-        events = []
-        async for event in process_text.astream_events(
-            {"filename": filename, "file": file, "category": category},
-            config=config,
-            version="v2",
-        ):
-            if (
-                event["event"] == "on_chain_start"
-                or event["event"] == "on_chain_end"
-            ):
-                input = event["data"]["input"] if "input" in event["data"] else None
-                output = (
-                    event["data"]["output"] if "output" in event["data"] else None
-                )
 
-                for state in states.keys():
-                    update_state_status = (
-                        input[f"{state}_complete"]
-                        if input is not None and f"{state}_complete" in input
-                        else False
-                    ) or (
-                        output[f"{state}_complete"]
-                        if output is not None and f"{state}_complete" in output
-                        else False
-                    )
-                    if update_state_status:
-                        # if isinstance(state_status[state], StatusContainer):
-                        #     state_status[state].update(label=f"{states[state]} complete", state="complete")
-                        # else:
-                        state_status[state].empty()
-                        state_status[state].success(f"{states[state]} complete")
-                    elif f"{state}_content" == event["name"] and event["event"] == "on_chain_start":
-                        # if not isinstance(state_status[state], StatusContainer):
-                        state_status[state].empty()
-                        state_status[state].info(f"{states[state]} in progress") #, state="running")
-
-                # print(f"\n\n\n{event["name"]=}: {event["event"]}\n\n\n")
-            events.append(event)
-        # print(f"\n\n{result=}\n\n")
-        result = events[-1]["data"]["output"]
         if "source_contents" in result:
             contents = result["source_contents"]
         else:
             contents = result["content_summaries"]
 
         with st.container(height=400):
-            for state in states.keys():
-                state_status[state].empty()
             st.write(f"### Summary")
-            # if contents.summary_thoughts is not None and contents.summary_thoughts != "":
-            #     st.write("#### Thoughts")
-            #     st.caption(contents.summary_thoughts)
             st.write(contents.summary)
 
 

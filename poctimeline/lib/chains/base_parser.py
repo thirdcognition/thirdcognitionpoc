@@ -56,25 +56,25 @@ def retry_setup(params):
 
 def get_text_from_completion(completion):
     completion_content = repr(completion)
-    if isinstance(completion, BaseModel):
-        completion_content = completion.model_dump_json()
-    elif isinstance(completion, BaseMessage):
-        completion_content = completion.content.strip()
-    elif isinstance(completion, tuple) and len(completion) == 2:
+    if isinstance(completion, tuple):
         if isinstance(completion[0], bool):
             completion_content = completion[1].strip()
-        else:
+        elif len(completion) == 2:
             completion_content = (
                 f"[thinking_start] {completion[1].strip()} [thinking_end]"
                 if len(completion[1].strip()) > 0
                 else ""
             ) + f"{completion[0].strip()}"
-    elif isinstance(completion, tuple):
-        completion_content = completion[1].strip()
-    elif isinstance(completion, str):
-        completion_content = completion.strip()
+        else:
+            completion_content = completion[0].strip()
+    elif isinstance(completion, BaseMessage):
+        completion_content = completion.content.strip()
     elif isinstance(completion, Document):
         completion_content = completion.page_content
+    elif isinstance(completion, BaseModel):
+        completion_content = completion.model_dump_json()
+    elif isinstance(completion, str):
+        completion_content = completion.strip()
 
     return completion_content
 

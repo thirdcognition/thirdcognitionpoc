@@ -130,7 +130,7 @@ def __split_text(semantic_splitter, txt):
 
 
 async def a_semantic_splitter(
-    text, split=SETTINGS.default_llms.instruct.char_limit, progress_cb=None
+    text:str, split=SETTINGS.default_llms.instruct.char_limit, progress_cb=None
 ):
     if len(text) > 1000:
         less_text = split_text(text, SETTINGS.default_embeddings.default.char_limit, 0)
@@ -193,21 +193,15 @@ def split_markdown(text, split=SETTINGS.default_llms.instruct.char_limit):
 
 def create_document_lists(
     list_of_strings: List[str],
-    list_of_thoughts: List[str] = None,
     source="local",
     list_of_metadata: List[Dict[str, any]] = None,
 ):
     doc_list = []
 
     for index, item in enumerate(list_of_strings):
-        thinking = list_of_thoughts[index] if list_of_thoughts else None
         metadata = list_of_metadata[index] if list_of_metadata else None
         if metadata is None:
-            metadata = (
-                {"source": source, "thought": thinking, "index": index}
-                if thinking
-                else {"source": source, "index": index}
-            )
+            metadata = {"source": source, "index": index}
 
         if len(item) > 3000:
             split_texts = split_text(item, split=3000, overlap=100)
@@ -279,7 +273,6 @@ def get_rag_chunks(
         rag_metadatas = rag_metadatas + [
             {
                 "source": "formatted_" + source,
-                "thoughts": content.formatted_content_thoughts,
                 "category": ", ".join(category),
                 "filetype": filetype,
                 "split": i,

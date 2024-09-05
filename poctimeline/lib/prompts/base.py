@@ -162,8 +162,9 @@ class TagsParser(BaseOutputParser[bool]):
     min_len: int = 10
     start_tag: str = "thinking_start"
     end_tag: str = "thinking_end"
+    return_tag: bool = False
 
-    def parse(self, text: Union[str, BaseMessage]) -> tuple[str, str]:
+    def parse(self, text: Union[str, BaseMessage]) -> Union[str, tuple[str, str]]:
         # print(f"Parsing tags: {text}")
         if isinstance(text, BaseMessage):
             text = text.content
@@ -228,7 +229,10 @@ class TagsParser(BaseOutputParser[bool]):
 
             raise OutputParserException(excpect_msg)
 
-        return text_contents_joined, tag_contents_joined
+        if self.return_tag:
+            return text_contents_joined, tag_contents_joined
+        else:
+            return text_contents_joined
 
     @property
     def _type(self) -> str:

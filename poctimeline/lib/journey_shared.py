@@ -77,25 +77,20 @@ def delete_journey(journey_name):
     else:
         st.warning(f"{journey_name} does not exist in the database.")
 
-def llm_gen_title_summary(steps: List[Union[StepModel, SubjectModel]]) -> tuple[str, str]:
+async def llm_gen_title_summary(steps: List[Union[StepModel, SubjectModel]]) -> tuple[str, str]:
     if isinstance(steps[0], SubjectModel):
         context = "\n".join([f"Title: {subject.title}\n Summary:\n{subject.summary}\n" for subject in steps])
     else:
         context = "\n".join([f"Title: {step.title}\n Subject:\n{step.subject}\nIntroduction:\n{step.intro or ""}" for step in steps])
-    result = get_chain("action").invoke(
+    title = get_chain("action").invoke(
             {
                 "context": context,
                 "action": "Summarize context with 10 words or less to a title",
             }
     )
 
-    if isinstance(result, tuple) and len(result) == 2:
-        title, title_thoughts = result
-    else:
-        title = result
-        title_thoughts = ''
 
-    summary, summary_thoughts = llm_edit("summary", [context], "Summarize the following list of titles and intros into a summary description.", force=True)
+    summary = await llm_edit([context], "Summarize the following list of titles and intros into a summary description.", force=True)
 
     return title.strip(), summary.strip()
 
@@ -310,8 +305,6 @@ def llm_gen_step_content(journey:JourneyModel, subject:SubjectModel, step:Union[
 
 def llm_gen_journey_doc(list_of_strings = []) -> tuple[str, str]:
     text = "\n".join(list_of_strings)
-    list_of_thoughts = []
-    thoughts = ''
 
     # bar = st.progress(0, text="Compressing journey document")
 
@@ -327,45 +320,37 @@ def llm_gen_journey_doc(list_of_strings = []) -> tuple[str, str]:
         chain = get_chain("stuff_documents")
 
         list_of_strings = []
-        list_of_thoughts = []
         total = len(list_of_docs)
         for i, document in enumerate(list_of_docs):
             # bar.progress(i / total, text=f"Compressing page {i+1}/{total}")
             result = chain.invoke({"context": [document]})
             if isinstance(result, tuple):
                 list_of_strings.append(result[0])
-                list_of_thoughts.append(result[1])
             else:
                 list_of_strings.append(result)
-                list_of_thoughts.append("")
 
         text = "\n".join(list_of_strings)
-        thoughts = "\n".join(list_of_thoughts)
 
         reduce = len(text) > SETTINGS.default_llms.instruct.char_limit
         if reduce:
             # bar.progress(1 - 1/total, text="Result too long, 2nd pass")
-            list_of_docs = create_document_lists(list_of_strings, list_of_thoughts)
-            result = chain.invoke(
+            list_of_docs = create_document_lists(list_of_strings)
+            text = chain.invoke(
                     {
                         "context": list_of_docs,
                     }
                 )
-            if isinstance(result, tuple) and len(result) == 2:
-                text, thoughts = result
-            else:
-                text = result
-                thoughts = ''
+
         # bar.progress(1.0, text="Compression complete")
 
     # bar.empty()
 
-    return text, thoughts
+    return text
 
 def build_journey_doc_from_files(db_sources: Dict[str, SourceData]) -> str:
     list_of_strings = []
     for filename in db_sources:
-        content = SourceContents(**db_sources[filename].file_content.__dict__)
+        content = SourceContents(**db_sources[filename].source_contents.__dict__)
         if (
             content.formatted_content is not None
             and content.formatted_content != ""
@@ -379,7 +364,7 @@ def build_journey_doc_from_files(db_sources: Dict[str, SourceData]) -> str:
     compressed = ''
 
     with st.spinner("Generating journey document"):
-        compressed, compress_thoughts = llm_gen_journey_doc(list_of_strings)
+        compressed = llm_gen_journey_doc(list_of_strings)
 
     return compressed
 
@@ -525,7 +510,7 @@ def update_subject_prompts(subject: SubjectModel, bulk: str):
     subject.prompts.step_action_details.system = prompts['step_action_details']['system']
     subject.prompts.step_action_details.user = prompts['step_action_details']['user']
 
-def gen_journey_subject(journey: JourneyModel, subject: SubjectModel, subject_index: int = 0, step_index: int = None) -> SubjectModel:
+async def gen_journey_subject(journey: JourneyModel, subject: SubjectModel, subject_index: int = 0, step_index: int = None) -> SubjectModel:
     # journey:JourneyModel = st.session_state.journey_get_details[journey_name]
     # vectorstore = get_vectorstore("rag_"+ journey["category"][0], "hyde")
     with st.status(f"Building section {subject_index+1} document"):
@@ -533,7 +518,7 @@ def gen_journey_subject(journey: JourneyModel, subject: SubjectModel, subject_in
         st.success("Generating section document done.")
     if step_index is None:
         with st.status(f"Building section {subject_index+1}"):
-            subject = gen_subject(
+            subject = await gen_subject(
                 compressed,
                 journey,
                 subject,
@@ -570,7 +555,7 @@ def gen_journey_subject(journey: JourneyModel, subject: SubjectModel, subject_in
 
     return subject
 
-def gen_subject(
+async def gen_subject(
     content,
     journey:JourneyModel,
     subject:SubjectModel,
@@ -625,7 +610,7 @@ def gen_subject(
         steps.append(new_step)
     bar.progress(0.95, text="Generating title")
 
-    title, summary = llm_gen_title_summary(steps)
+    title, summary = await llm_gen_title_summary(steps)
     bar.progress(1.0, text="Generation complete")
 
     bar.empty()

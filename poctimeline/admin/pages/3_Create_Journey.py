@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import time
@@ -78,7 +79,7 @@ def create_subject(
     return subject
 
 
-def get_journey_gen(journey_name):
+async def get_journey_gen(journey_name):
     st.subheader("Journey generator")
     if (
         "journey_get_details" not in st.session_state
@@ -186,7 +187,7 @@ def get_journey_gen(journey_name):
 
         for i, subject in enumerate(journey_details.subjects):
             # print(f"Generating subject {i+1} for journey {journey_name}")
-            subject = gen_journey_subject(journey_details, subject, subject_index=i)
+            subject = await gen_journey_subject(journey_details, subject, subject_index=i)
 
             if subject is not None:
                 journey_details.subjects[i] = subject
@@ -197,13 +198,13 @@ def get_journey_gen(journey_name):
         with st.spinner("Generating journey titles and summaries"):
             files = []
             for i, subject in enumerate(journey_details.subjects):
-                title, summary = llm_gen_title_summary(subject.steps)
+                title, summary = await llm_gen_title_summary(subject.steps)
                 journey_details.subjects[i].title = title
                 journey_details.subjects[i].summary = summary
 
                 files.extend(subject.files)
 
-            title, summary = llm_gen_title_summary(journey_details.subjects)
+            title, summary = await llm_gen_title_summary(journey_details.subjects)
 
             st.success("Generating journey titles and summaries done.")
 
@@ -227,7 +228,7 @@ def get_journey_gen(journey_name):
 
 
 # Streamlit app
-def main():
+async def main():
 
     init_db()
     st.title("Create Journey")
@@ -257,7 +258,7 @@ def main():
         ):
             journey_name = st.session_state.creating_journey
             st.header(f"Create new journey: {journey_name}")
-            st.session_state.journey_create_data = get_journey_gen(journey_name)
+            st.session_state.journey_create_data = await get_journey_gen(journey_name)
             if st.session_state.journey_create_data.complete:
                 st.session_state.journey_create_data = JourneyModel()
                 st.session_state.journey_get_details = {}
@@ -268,5 +269,4 @@ def main():
 
 
 if __name__ == "__main__":
-
-    main()
+    asyncio.run(main())

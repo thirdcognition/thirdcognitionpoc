@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import streamlit as st
@@ -35,7 +36,7 @@ This is an *extremely* cool admin tool!
 )
 
 
-def manage_file(filename):
+async def manage_file(filename):
     database_session = init_db()
     file_categories = get_all_categories()
     file_entry = get_db_sources(source=filename)[filename]
@@ -43,10 +44,8 @@ def manage_file(filename):
 
     if "rewrite_text" not in st.session_state:
         st.session_state.rewrite_text = {}
-        st.session_state.rewrite_thoughts = {}
 
     rewrite_text = st.session_state.rewrite_text
-    rewrite_thoughts = st.session_state.rewrite_thoughts
 
     # for i in range(len(query)):
     col1, col2 = st.columns([1, 10], vertical_alignment="center")
@@ -123,14 +122,11 @@ def manage_file(filename):
             filename = file_entry.source
             filetype = filename.split(".")[-1]
             summary = file_entry.source_contents.summary
-            summary_thoughts = file_entry.source_contents.summary_thoughts
             text = file_entry.source_contents.formatted_content
-            text_thoughts = file_entry.source_contents.formatted_content_thoughts
             raw = file_entry.texts
 
             if filename in rewrite_text:
                 text = rewrite_text[filename]
-                text_thoughts = rewrite_thoughts[filename]
 
             tab1, tab2, tab3, tab4, tab5 = st.tabs(
                 ["Summary", "Formatted", "Unformatted", "Concepts", "RAG"]
@@ -149,56 +145,54 @@ def manage_file(filename):
                     )
                     contents = SourceContents(**instance.source_contents.__dict__)
 
-                    text = contents.summary
-                    summary_texts = instance.texts
-                    if (
-                        contents.summary is not None
-                        and contents.summary != ""
-                    ):
-                        summary_texts = split_text(
-                            contents.summary,
-                            SETTINGS.default_llms.instruct.char_limit,
-                            128,
-                        )
+                    # text = contents.summary
+                    # summary_texts = instance.texts
+                    # if (
+                    #     contents.summary is not None
+                    #     and contents.summary != ""
+                    # ):
+                    #     summary_texts = split_text(
+                    #         contents.summary,
+                    #         SETTINGS.default_llms.instruct.char_limit,
+                    #         128,
+                    #     )
                     with st.spinner("Rewriting"):
-                        if summary_texts is not None:
+                        if instance.texts is not None:
+                            text = await llm_edit([contents.formatted_content] if len(contents.formatted_content)>1000 else instance.texts, summarize=True)
                             # split_texts = split_text("\n".join(texts), CHAR_LIMIT)
-                            if len(summary_texts) == 1:
-                                shorter_text, shorter_thoughts = llm_edit(
-                                    "summary", summary_texts
-                                )
-                                if shorter_text is not None or shorter_text == "":
-                                    text = shorter_text
-                                else:
-                                    text = summary_texts[0]
-                            else:
-                                list_of_docs = create_document_lists(
-                                    summary_texts, source=filename
-                                )
-                                # print(f"{ list_of_docs = }")
+                            # if len(summary_texts) == 1:
+                            #     shorter_text = llm_edit(
+                            #         summary_texts
+                            #     )
+                            #     if shorter_text is not None or shorter_text == "":
+                            #         text = shorter_text
+                            #     else:
+                            #         text = summary_texts[0]
+                            # else:
+                            #     list_of_docs = create_document_lists(
+                            #         summary_texts, source=filename
+                            #     )
+                            #     # print(f"{ list_of_docs = }")
 
-                                results = get_chain("summary_documents").invoke(
-                                    {"context": list_of_docs}
-                                )
+                            #     results = get_chain("summary_documents").invoke(
+                            #         {"context": list_of_docs}
+                            #     )
 
-                                if isinstance(results, tuple) and len(results) == 2:
-                                    shorter_text, shorter_thoughts = results
-                                else:
-                                    shorter_text = results
-                                    shorter_thoughts = ""
+                            #     if isinstance(results, tuple) and len(results) == 2:
+                            #         _, shorter_text = results
 
-                                shorter_text = (
-                                    shorter_text.content
-                                    if isinstance(shorter_text, BaseMessage)
-                                    else shorter_text
-                                )
+                            #     shorter_text = (
+                            #         shorter_text.content
+                            #         if isinstance(shorter_text, BaseMessage)
+                            #         else shorter_text
+                            #     )
 
-                                # shorter_text, shorter_thoughts = llm_edit("summary", [summary_text])
+                            #     shorter_text = llm_edit([shorter_text])
 
-                                if shorter_text is not None:
-                                    text = shorter_text
+                            #     if shorter_text is not None:
+                            #         text = shorter_text
 
-                    st.success("Markdown rewrite complete")
+                    st.success("Summary rewrite complete")
 
                     if text is not None and text != "" and text != contents.summary:
                         contents.summary = text
@@ -208,15 +202,14 @@ def manage_file(filename):
                     st.rerun()
                 else:
                     with st.container():
-                        # st.caption("Toughts\n" + summary_thoughts)
                         st.write(summary, unsafe_allow_html=True)
 
             with tab2:
                 update = False
-                col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
+                col1, col2, col3, col4 = st.columns([3, 1, 1, 1], vertical_alignment="bottom")
                 with col1:
                     guidance = st.text_input(
-                        "Guidance for the rewriter:", key=f"llm_md_guidance_{filename}"
+                        "Guidance for the rewriter:", key=f"llm_md_guidance_{filename}", value=''
                     )
 
                 with col2:
@@ -241,29 +234,23 @@ def manage_file(filename):
                     ):
                         text = ""
                         rewrite_text[filename] = ""
-                        rewrite_thoughts[filename] = ""
 
                 if rewrite:
                     text = None
                     with st.spinner("Rewriting"):
                         if raw is not None and filetype != "md":
-                            text, thoughts = llm_edit("text_formatter", raw, guidance)
+                            text = await llm_edit(raw, guidance if 0 < len(guidance) else None)
                         elif filetype == "md":
                             if len(raw) > 1 or len(raw[0]) > 1000:
-                                text, thoughts = llm_edit(
-                                    "text_formatter",
+                                text = await llm_edit(
                                     [markdown_to_text("\n".join(raw))],
-                                    guidance,
+                                    guidance if 0 < len(guidance) else None,
                                 )
                             else:
                                 text = markdown_to_text(raw[0])
 
                     st.success("Markdown rewrite complete")
                     rewrite_text[filename] = text
-                    rewrite_thoughts[filename] = thoughts
-
-                if text_thoughts != None and len(text_thoughts) > 0:
-                    st.caption(text_thoughts, unsafe_allow_html=True)
 
                 if text != None and len(text) > 0:
                     st.write(text, unsafe_allow_html=True)
@@ -286,9 +273,9 @@ def manage_file(filename):
                     st.write(text, unsafe_allow_html=True)
 
             with tab4:
-                for concept_tag in file_entry.source_contents.summaries.keys():
+                for concept_tag in file_entry.source_contents.concept_summaries.keys():
                     st.write(f"### {concept_tag}:")
-                    st.write(file_entry.source_contents.summaries[concept_tag])
+                    st.write(file_entry.source_contents.concept_summaries[concept_tag])
                     with st.expander("Concept instances"):
                         concepts = [concept.__dict__ for concept in file_entry.source_contents.concepts if concept_tag in [cat.tag for cat in concept.category]]
                         st.write(concepts)
@@ -330,7 +317,7 @@ def manage_file(filename):
                     st.write("Select RAG DB first.")
 
 
-def main():
+async def main():
     init_db()
     st.title("Manage Uploads")
 
@@ -361,10 +348,10 @@ def main():
             st.header("No files uploaded yet.")
 
         for file in files.keys():
-            manage_file(file)
+            await manage_file(file)
     else:
         st.header("First, choose a category.")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

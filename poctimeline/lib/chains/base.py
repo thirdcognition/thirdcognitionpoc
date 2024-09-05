@@ -22,9 +22,6 @@ def log_chain_params(params):
     return params
 
 
-drop_thoughts = RunnableLambda(lambda x: x[0] if isinstance(x, tuple) else x)
-
-
 class BaseChain:
     def __init__(
         self,

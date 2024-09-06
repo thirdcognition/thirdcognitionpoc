@@ -95,7 +95,7 @@ def chat_elements(chat_state, journey_name=None):
             st.session_state.chat_journey
         ]
         # st.subheader(journey.subjects[subject_index].steps[step_index].title)
-        st.write(journey.subjects[subject_index].steps[step_index].content)
+        # st.write(journey.subjects[subject_index].steps[step_index].content)
     # print(f"chat state {st.session_state.chat_state} {chat_state}")
     # user_query = None
     # if "user_query" in st.session_state:
@@ -191,11 +191,11 @@ you can do so by selecting any of the subjects provided for you from the menu on
         st.rerun()
 
 
-    # if journey is not None and len(history.messages) == 0:
-    #     history.add_ai_message(
-    #         AIMessage(journey.subjects[subject_index].steps[step_index].intro)
-    #     )
-    #     st.rerun()
+    if journey is not None and len(history.messages) == 0:
+        history.add_ai_message(
+            AIMessage(journey.subjects[subject_index].steps[step_index].content)
+        )
+        st.rerun()
 
     ai_state = st.empty()
     if len(history.messages) < 2:

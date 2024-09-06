@@ -306,5 +306,5 @@ def get_vectorstore_as_retriever(store_id, embedding_id="base", amount_of_docume
     vectorstore = get_vectorstore(store_id, embedding_id)
     return vectorstore.as_retriever(
         search_type="similarity_score_threshold",
-        search_kwargs={"k": amount_of_documents, "score_threshold": 0.3},
+        search_kwargs={"k": amount_of_documents, "score_threshold": 0.15},
     )

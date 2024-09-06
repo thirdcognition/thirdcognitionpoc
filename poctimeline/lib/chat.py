@@ -87,7 +87,7 @@ def chat_elements(chat_state, journey_name=None):
     subject_index = None
     step_index = None
 
-    if "chat_journey" in st.session_state:
+    if "chat_journey" in st.session_state and st.session_state.chat_journey is not None and st.session_state.chat_journey != "":
         # print(f"{ chat_state = }")
         subject_index = int(chat_state.split(DELIMITER)[1])
         step_index = int(chat_state.split(DELIMITER)[2])
@@ -191,14 +191,14 @@ you can do so by selecting any of the subjects provided for you from the menu on
         st.rerun()
 
 
-    if journey is not None and len(history.messages) == 0:
-        history.add_ai_message(
-            AIMessage(journey.subjects[subject_index].steps[step_index].intro)
-        )
-        st.rerun()
+    # if journey is not None and len(history.messages) == 0:
+    #     history.add_ai_message(
+    #         AIMessage(journey.subjects[subject_index].steps[step_index].intro)
+    #     )
+    #     st.rerun()
 
     ai_state = st.empty()
-    if len(history.messages) == 1:
+    if len(history.messages) < 2:
         with ai_state.chat_message("AI"):
             st.write("I'm waiting for your questions...")
 

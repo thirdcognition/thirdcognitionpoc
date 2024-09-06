@@ -11,12 +11,13 @@ from chromadb.utils.embedding_functions import create_langchain_embedding
 from chromadb.config import Settings as ChromaSettings
 import streamlit as st
 from chains.init import get_embeddings
+from chains.prompt_generator import CustomPrompt, CustomPromptContainer
 from lib.load_env import SETTINGS
 from chains.prompts import (
     SubjectStructure,
     journey_steps,
     journey_step_content,
-    journey_step_content_redo,
+    # journey_step_content_redo,
     journey_step_intro,
     journey_step_actions,
     journey_step_action_details,
@@ -37,11 +38,6 @@ class StepModel(BaseModel):
     structured: SubjectStructure = Field(
         default=SubjectStructure(title="", subject="", intro="", content="", actions=[])
     )
-
-
-class CustomPrompt(BaseModel):
-    system: str = Field(default=None)
-    user: str = Field(default=None)
 
 
 class JourneyPrompts(BaseModel):
@@ -69,12 +65,22 @@ class JourneyPrompts(BaseModel):
             user=journey_step_action_details.user,
         )
     )
-    step_content_redo: CustomPrompt = Field(
-        default=CustomPrompt(
-            system=journey_step_content_redo.system,
-            user=journey_step_content_redo.user,
-        )
+    # step_content_redo: CustomPrompt = Field(
+    #     default=CustomPrompt(
+    #         system=journey_step_content_redo.system,
+    #         user=journey_step_content_redo.user,
+    #     )
+    # )
+
+def convert_to_journey_prompts(container: CustomPromptContainer) -> JourneyPrompts:
+    return JourneyPrompts(
+        steps=container.steps,
+        step_content=container.step_content,
+        step_intro=container.step_intro,
+        step_actions=container.step_actions,
+        step_action_details=container.step_action_details
     )
+
 
 
 class SubjectModel(BaseModel):

@@ -21,6 +21,8 @@ from langchain_core.output_parsers import BaseOutputParser
 
 # from fewshot_data import FewShotItem, example_tasks
 
+actor_introductions = "You are a helpful and efficient AI assistant Virtual Buddy."
+
 pre_think_instruct = """
         Before starting plan how to proceed step by step and place your thinking between
         [thinking_start] and [thinking_end]-tags. Then follow your plan and return only the expected output.
@@ -595,13 +597,14 @@ class JourneyStepList(BaseModel):
 journey_steps = PromptFormatter(
     system=textwrap.dedent(
         f"""
+        {actor_introductions}
         Act as a teacher who is planning a curriculum.
         Using the content between context start and end write a list
         with the specified format structure.
         If instructions are provided follow them exactly.
         Only use the information available within the context.
-        If there's a history with previous titles, subjects or actions,
-        use them to make sure you don't repeat the same subjects or actions.
+        If there's a history with previous titles or subjects,
+        use them to make sure you don't repeat the same subjects.
         Return only the properly formatted JSON object with the formatted data.
         """
     ),
@@ -629,8 +632,8 @@ journey_steps = PromptFormatter(
         Format the context data using the format structure.
         Do not add any information to the context or come up with subjects
         not defined within the context.
-        If there's a history with previous titles, subjects or actions,
-        use them to make sure you don't repeat the same subjects or actions.
+        If there's a history with previous titles or subjects,
+        use them to make sure you don't repeat the same subjects.
         Return only the properly formatted JSON object with the formatted data.
         """
     ),
@@ -640,7 +643,7 @@ journey_steps.parser = PydanticOutputParser(pydantic_object=JourneyStepList)
 journey_step_content = PromptFormatter(
     system=textwrap.dedent(
         f"""
-        You are ThirdCognition Virtual Buddy.
+        {actor_introductions}
         Act as a teacher who is planning the content for a class with a specific subject.
         Do not use code, or any markup, markdown or html. Just use natural spoken language divided
         into a clear structure.
@@ -650,8 +653,7 @@ journey_step_content = PromptFormatter(
         {keep_pre_think_together}
         Create the study material for the student with the following information between context start and end.
         Only use the information available within the context. Do not add or remove information from the context.
-        If there's a history with previous titles, subjects or actions,
-        use them to make sure you don't repeat the same subjects or actions.
+        If there's a history with previous titles or subjects, use them to make sure you don't repeat the same subjects.
         If instructions are provided follow them exactly.
         """
     ),
@@ -676,67 +678,67 @@ journey_step_content = PromptFormatter(
         a topic or subject, make sure the list includes only items which fall within
         within that topic.
         The study materials should be exhaustive, detailed and generated from the context.
-        If there's a history with previous titles, subjects or actions,
-        use them to make sure you don't repeat the same subjects or actions.
+        If there's a history with previous titles or subjects,
+        use them to make sure you don't repeat the sam or subjects.
         If instructions are provided follow them exactly.
         """
     ),
 )
 journey_step_content.parser = TagsParser(min_len=10)
 
-journey_step_content_redo = PromptFormatter(
-    system=textwrap.dedent(
-        f"""
-        You are ThirdCognition Virtual Buddy.
-        Act as a teacher who is detailing the content for a class with a specific subject.
-        Do not use code, or any markup, markdown or html. Just use natural spoken language divided
-        into a clear structure.
-        Your student is a business graduate who is interested in learning about the subject.
-        You only have one student you're tutoring and you are making material for them.
-        {pre_think_instruct}
-        {keep_pre_think_together}
-        Create the material for the student with the following information between context start and end.
-        Only use the information available within the context. Do not add or remove information from the context.
-        If there's a history with previous titles, subjects or actions,
-        use them to make sure you don't repeat the same subjects or actions.
-        If instructions are provided follow them exactly.
-        The material should be clearly divided into sections defined by 2nd level headers and content for those sections.
-        Use a formal tone, but write the content in an understandable format.
-        """
-    ),
-    user=textwrap.dedent(  # Use get_journey_format_example instead
-        """
-        instuctions start
-        {journey_instructions}
-        {instructions}
-        instructions end
+# journey_step_content_redo = PromptFormatter(
+#     system=textwrap.dedent(
+#         f"""
+#         {actor_introductions}
+#         Act as a teacher who is detailing the content for a class with a specific subject.
+#         Do not use code, or any markup, markdown or html. Just use natural spoken language divided
+#         into a clear structure.
+#         Your student is a business graduate who is interested in learning about the subject.
+#         You only have one student you're tutoring and you are making material for them.
+#         {pre_think_instruct}
+#         {keep_pre_think_together}
+#         Create the material for the student with the following information between context start and end.
+#         Only use the information available within the context. Do not add or remove information from the context.
+#         If there's a history with previous titles or subjects,
+#         use them to make sure you don't repeat the same subjects.
+#         If instructions are provided follow them exactly.
+#         The material should be clearly divided into sections defined by 2nd level headers and content for those sections.
+#         Use a formal tone, but write the content in an understandable format.
+#         """
+#     ),
+#     user=textwrap.dedent(  # Use get_journey_format_example instead
+#         """
+#         instuctions start
+#         {journey_instructions}
+#         {instructions}
+#         instructions end
 
-        context start
-        {context}
-        context end
+#         context start
+#         {context}
+#         context end
 
-        Subject:
-        {subject}
+#         Subject:
+#         {subject}
 
 
-        Create materials for the student defined by the subject. Don't include any other content outside of the subject.
-        Only use the information available within the context. Do not add or remove information from the context.
-        If instructions are provided, follow them exactly. If instructions specify
-        a topic or subject, make sure the list includes only items which fall within
-        within that topic.
-        The materials should be exhaustive, detailed and generated from the context.
-        If instructions are provided follow them exactly.
-        The generated material should follow a descriptive tutorial style with a clear structure using only
-        the available content.
-        """
-    ),
-)
-journey_step_content_redo.parser = TagsParser(min_len=10)
+#         Create materials for the student defined by the subject. Don't include any other content outside of the subject.
+#         Only use the information available within the context. Do not add or remove information from the context.
+#         If instructions are provided, follow them exactly. If instructions specify
+#         a topic or subject, make sure the list includes only items which fall within
+#         within that topic.
+#         The materials should be exhaustive, detailed and generated from the context.
+#         If instructions are provided follow them exactly.
+#         The generated material should follow a descriptive tutorial style with a clear structure using only
+#         the available content.
+#         """
+#     ),
+# )
+# journey_step_content_redo.parser = TagsParser(min_len=10)
 
 journey_step_intro = PromptFormatter(
     system=textwrap.dedent(
         f"""
-        You are ThirdCognition Virtual Buddy.
+        {actor_introductions}
         Act as a teacher who is explaining the class with a specific subject for the student at the
         beginning of the class. Use an informal style and 3 sentences maximum.
         Do not use code, or any markup, markdown or html. Just use natural spoken language.
@@ -744,8 +746,8 @@ journey_step_intro = PromptFormatter(
         You only have one student you're tutoring so don't have to address more than one person.
         {pre_think_instruct}
         {keep_pre_think_together}
-        If there's a history with previous titles, subjects or actions,
-        use them to make sure you don't repeat the same subjects or actions.
+        If there's a history with previous titles or subjects,
+        use them to make sure you don't repeat the same subjects.
         Use the content for the class available between content start and end.
         """
     ),
@@ -776,14 +778,14 @@ journey_step_intro.parser = TagsParser(min_len=10)
 journey_step_actions = PromptFormatter(
     system=textwrap.dedent(
         f"""
-        You are ThirdCognition Virtual Buddy.
-        Act as a teacher who planning actions for teaching the student a specific subject and actions to verify that the student has learned the subject.
-        You only have one student you're tutoring so don't have to address more than one person. Also add a section to each action for support document resources
+        {actor_introductions}
+        Act as a teacher who planning sections of content for teaching the student a specific subject.
+        You only have one student you're tutoring so don't have to address more than one person. Also add references to support documents
         with their summary and material to use when teaching the student about the subject.
         {pre_think_instruct}
         {keep_pre_think_together}
-        If there's a history with previous titles, subjects or actions,
-        use them to make sure you don't repeat the same subjects or actions.
+        If there's a history with previous titles or subjects,
+        use them to make sure you don't repeat the same subjects.
         Use the content for the class available between content start and end.
         """
     ),
@@ -804,11 +806,11 @@ journey_step_actions = PromptFormatter(
         {context}
         content end
 
-        Write a list of actions to take to teach the subject to the student and how to verify that the student has learned the subject.
-        Prepare also a list of document resources and their summary to use with each action when teaching the student about the subject.
+        Write a list of sections with their content to teach the subject to the student.
+        Prepare also a list of reference documents and their summary to use with each section when teaching the student about the subject.
         If instructions are provided, follow them exactly. If instructions specify a topic or subject, make sure the list includes only
         items which fall within within that topic. Create at maximum the specified amount of items.
-        If there's a history with previous titles, subjects or actions, use them to make sure you don't repeat the same subjects or actions.
+        If there's a history with previous titles or subjects, use them to make sure you don't repeat the same subjects.
         """
     ),
 )
@@ -817,12 +819,12 @@ journey_step_actions.parser = TagsParser(min_len=10)
 journey_step_action_details = PromptFormatter(
     system=textwrap.dedent(
         f"""
-        You are ThirdCognition Virtual Buddy.
+        {actor_introductions}
         Act as a teacher who is creating resources and content to support teaching in class
         to use as a base for the discussion and lesson with the student.
         {pre_think_instruct}
         {keep_pre_think_together}
-        If there's a history with previous titles, subjects or actions, use them to make sure you don't repeat the same subjects or actions.
+        If there's a history with previous titles or subjects, use them to make sure you don't repeat the same subjects.
         Use the provided resource description and the content available between content start and end to create the resources.
         """
     ),
@@ -843,8 +845,8 @@ journey_step_action_details = PromptFormatter(
         Prepare max 10 sentences of material as the resource described to be used while teaching a student.
         If instructions are provided, follow them exactly. If instructions specify a topic or subject, make sure the list includes only
         items which fall within within that topic.
-        If there's a history with previous titles, subjects or actions,
-        use them to make sure you don't repeat the same subjects or actions.
+        If there's a history with previous titles or subjects,
+        use them to make sure you don't repeat the same subjects.
         """
     ),
 )
@@ -862,16 +864,16 @@ class ResourceStructure(BaseModel):
     )
 
 class ActionStructure(BaseModel):
-    title: str = Field(description="Title for the step", title="Title")
+    title: str = Field(description="Title for the content", title="Title")
     description: str = Field(
-        description="Objective, task, or target for what to do on the step", title="Description"
+        description="Objective, or target for the content", title="Description"
     )
     resources: List[ResourceStructure] = Field(
-        description="List of content to help the Teacher to perform the step.",
+        description="List of references to documents or resources to help with the specifics for the content.",
         title="Resources",
     )
     test: str = Field(
-        description="Description on how to do a test to verify that the student has succeeded in learning the contents for the step.",
+        description="Description on how to do a test to verify that the student has succeeded in learning the contents.",
         title="Test",
     )
 
@@ -882,8 +884,8 @@ class SubjectStructure(BaseModel):
     intro: str = Field(description="Introduction to the class", title="Intro")
     content: str = Field(description="Detailed content of the class", title="Content")
     actions: List[ActionStructure] = Field(
-        description="List steps for the teacher to take within the class to teach the subject.",
-        title="Actions",
+        description="List of contents to help teaching the subject.",
+        title="Content",
     )
 
 

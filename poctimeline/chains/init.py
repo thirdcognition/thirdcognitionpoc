@@ -52,6 +52,7 @@ from chains.prompts import (
     journey_step_action_details,
     journey_structured,
 )
+from chains.prompt_generator import journey_prompts
 
 CHAT_RATE_LIMITER = None
 
@@ -257,10 +258,11 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
     "text_formatter_guided_0": ("instruct_detailed", text_formatter_guided, True),
     "md_formatter": ("instruct", md_formatter, False),
     "md_formatter_guided": ("instruct_0", md_formatter_guided, False),
+    "journey_prompt_generator": ("structured_detailed", journey_prompts, True),
     "journey_structured": ("structured", journey_structured, False),
     "journey_steps": ("structured_detailed", journey_steps, True),
     "journey_step_content": ("instruct_detailed_warm", journey_step_content, True),
-    "journey_step_content_redo": ("instruct_detailed_warm_redo", journey_step_content, True),
+    # "journey_step_content_redo": ("instruct_detailed_warm_redo", journey_step_content, True),
     "journey_step_intro": ("instruct_warm", journey_step_intro, True),
     "journey_step_actions": ("instruct_detailed", journey_step_actions, True),
     "journey_step_action_details": ("instruct_warm", journey_step_action_details, True),

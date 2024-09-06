@@ -48,6 +48,7 @@ class StepModel(BaseModel):
     content: str = Field(default=None)
     concepts: List[SourceConcept] = Field(default=None)
     intro: str = Field(default=None)
+    summary: str = Field(default=None)
     actions: str = Field(default=None)
     structured: SubjectStructure = Field(
         default=SubjectStructure(title="", subject="", intro="", content="", actions=[])
@@ -62,13 +63,15 @@ class SubjectModel(BaseModel):
     instructions: str = Field(default=None)
     step_amount: int = Field(default=None)
     action_amount: int = Field(default=None)
-    files: List[str] = Field(default_factory=list)
-    db_sources: Dict[str, SourceData] = Field(default_factory=dict)
+    concepts: List[SourceConcept] = Field(default=None)
+    # files: List[str] = Field(default_factory=list)
+    # db_sources: Dict[str, SourceData] = Field(default_factory=dict)
 
 
 class JourneyModel(BaseModel):
     journeyname: Optional[str] = None
-    files: List[str] = Field(default_factory=list)
+    journey_template_id: Optional[str] = None
+    sources: List[str] = Field(default_factory=list)
     db_sources: Dict[str, SourceData] = Field(default_factory=dict)
     subjects: List[SubjectModel] = Field(default_factory=list)
     chroma_collection: List[str] = Field(default_factory=list)

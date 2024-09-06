@@ -15,8 +15,11 @@ from lib.prompts.base import (
 
 class JourneyStep(BaseModel):
     title: str = Field(description="Title for the subject", title="Title")
-    description: str = Field(
-        description="Description for the subject", title="Description"
+    subject: str = Field(
+        description="Describes the subject in one sentence", title="Subject"
+    )
+    summary: str = Field(
+        description="Summary of what the subject is about and concepts it uses", title="Summary"
     )
     concept_ids: List[str] = Field(
         description="List of concepts id used by the subject", title="Concepts IDs"

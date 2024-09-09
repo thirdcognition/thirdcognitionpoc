@@ -616,7 +616,7 @@ def remove_resource(
 
 
 @st.fragment
-def journey_subjects_ui(journey_name: str, journey_index: int, journey: JourneyModel):
+async def journey_subjects_ui(journey_name: str, journey_index: int, journey: JourneyModel):
     col1, col2 = st.columns([1, 1], vertical_alignment="center")
     subject_titles = [subject.title for subject in journey.subjects]
     subject_title = col1.selectbox(
@@ -647,7 +647,7 @@ def journey_subjects_ui(journey_name: str, journey_index: int, journey: JourneyM
                 key=f"generate_subject_button_{journey_name}",
                 use_container_width=True,
             ):
-                journey.subjects[st.session_state.subject_index] = gen_journey_subject(
+                journey.subjects[st.session_state.subject_index] = await gen_journey_subject(
                     journey, subject, st.session_state.subject_index
                 )
                 save_journey_command(journey_name, journey_index, journey)
@@ -686,7 +686,7 @@ def journey_subjects_ui(journey_name: str, journey_index: int, journey: JourneyM
                 key=f"generate_step_button_{journey_name}",
                 use_container_width=True,
             ):
-                journey.subjects[st.session_state.subject_index] = gen_journey_subject(
+                journey.subjects[st.session_state.subject_index] = await gen_journey_subject(
                     journey,
                     subject,
                     step_index=step_index,

@@ -4,6 +4,7 @@ import sys
 import time
 from typing import List
 import streamlit as st
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
@@ -78,6 +79,7 @@ def create_subject(
 
     return subject
 
+
 @st.fragment
 async def get_journey_gen(journey_name):
     st.subheader("Journey generator")
@@ -128,12 +130,15 @@ async def get_journey_gen(journey_name):
         # col1, col2 = st.columns([5, 1], vertical_alignment="bottom")
         generate_start = False
         if not st.session_state.journey_generator_running:
-            journey_details.instructions = st.text_area(
-                "Journey Instructions",
-                height=10,
-                key=f"journey_gen_instructions_{journey_name}",
-                value=journey_details.instructions or '',
-            ) or ''
+            journey_details.instructions = (
+                st.text_area(
+                    "Journey Instructions",
+                    height=10,
+                    key=f"journey_gen_instructions_{journey_name}",
+                    value=journey_details.instructions or "",
+                )
+                or ""
+            )
             # journey_details.instructions = journey_instructions
             if len(journey_details.subjects) == 0:
                 journey_details.subjects = [SubjectModel()]
@@ -145,14 +150,18 @@ async def get_journey_gen(journey_name):
                     )
             but_col1, but_col2 = st.columns([4, 1], vertical_alignment="bottom")
 
-            but_subcol1, but_subcol2 = but_col1.columns([1, 3], vertical_alignment="center")
+            but_subcol1, but_subcol2 = but_col1.columns(
+                [1, 3], vertical_alignment="center"
+            )
 
             but_subcol2.write("_will copy prompts from previous section_")
             if but_subcol1.button("Add section", use_container_width=True):
                 i = len(journey_details.subjects)
                 prompts = JourneyPrompts()
                 if i > 0 and journey_details.subjects[-1].prompts is not None:
-                    prompts = JourneyPrompts(**journey_details.subjects[-1].prompts.model_dump())
+                    prompts = JourneyPrompts(
+                        **journey_details.subjects[-1].prompts.model_dump()
+                    )
 
                 journey_details.subjects.append(
                     create_subject(
@@ -172,7 +181,6 @@ async def get_journey_gen(journey_name):
                 return False
         return True
 
-
     if (
         but_col2 is not None
         and len(journey_details.subjects or []) > 0
@@ -180,14 +188,16 @@ async def get_journey_gen(journey_name):
             "Generate",
             key=f"generate_journey_{journey_name}",
             disabled=not check_subject_files(journey_details.subjects),
-            use_container_width=True
+            use_container_width=True,
         )
     ):
         st.session_state.journey_generator_running = True
 
         for i, subject in enumerate(journey_details.subjects):
             # print(f"Generating subject {i+1} for journey {journey_name}")
-            subject = await gen_journey_subject(journey_details, subject, subject_index=i)
+            subject = await gen_journey_subject(
+                journey_details, subject, subject_index=i
+            )
 
             if subject is not None:
                 journey_details.subjects[i] = subject

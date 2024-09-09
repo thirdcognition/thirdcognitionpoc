@@ -310,4 +310,6 @@ for embedding_provider_settings in SETTINGS.embeddings:
 
 print(f"+++ DEFAULTS +++")
 print(f"\tLLM: {SETTINGS.default_provider.type} {SETTINGS.default_llms.default.model}")
-print(f"\tEMBEDDING: {SETTINGS.default_embedding_provider.type} {SETTINGS.default_embeddings.default.model}")
+print(
+    f"\tEMBEDDING: {SETTINGS.default_embedding_provider.type} {SETTINGS.default_embeddings.default.model}"
+)

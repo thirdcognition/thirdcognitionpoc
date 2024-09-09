@@ -1,5 +1,10 @@
 import textwrap
-from lib.prompts.base import MAINTAIN_CONTENT_AND_USER_LANGUAGE, PRE_THINK_INSTRUCT, PromptFormatter, TagsParser
+from lib.prompts.base import (
+    MAINTAIN_CONTENT_AND_USER_LANGUAGE,
+    PRE_THINK_INSTRUCT,
+    PromptFormatter,
+    TagsParser,
+)
 
 
 question = PromptFormatter(

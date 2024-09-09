@@ -130,7 +130,7 @@ def __split_text(semantic_splitter, txt):
 
 
 async def a_semantic_splitter(
-    text:str, split=SETTINGS.default_llms.instruct.char_limit, progress_cb=None
+    text: str, split=SETTINGS.default_llms.instruct.char_limit, progress_cb=None
 ):
     if len(text) > 1000:
         less_text = split_text(text, SETTINGS.default_embeddings.default.char_limit, 0)
@@ -292,7 +292,9 @@ def get_rag_chunks(
             )
             concept_split += cur_concept_split
             concept_ids += [
-                (source + "_concept_" + concept.id + "_" + str(i) + "_" + str(j)).replace(" ", "_")
+                (
+                    source + "_concept_" + concept.id + "_" + str(i) + "_" + str(j)
+                ).replace(" ", "_")
                 for j in range(len(cur_concept_split))
             ]
 

@@ -64,9 +64,9 @@ class ProcessTextState(TypedDict):
     filename: str
     url: str
     source: str
-    contents: List[Union[Document, str]] #Annotated[list[Document], operator.add]
+    contents: List[Union[Document, str]]  # Annotated[list[Document], operator.add]
     final_contents: List[Document]
-    reformat_contents: List[Document] #Annotated[list[Document], operator.add]
+    reformat_contents: List[Document]  # Annotated[list[Document], operator.add]
     # concepts: List[SourceConcept] #Annotated[list, operator.add]
     reformatted_txt: Annotated[list, operator.add]
     collapsed_reformatted_txt: List[Document]
@@ -93,8 +93,13 @@ class ProcessTextConfig(TypedDict):
 
 # Here we generate a summary, given a document
 async def split_content(state: ProcessTextState, config: RunnableConfig):
-    text = ''
-    if config["configurable"]["update_rag"] and ("category" not in state.keys() or state["category"] is None or state["category"] == [] or state["category"] == ""):
+    text = ""
+    if config["configurable"]["update_rag"] and (
+        "category" not in state.keys()
+        or state["category"] is None
+        or state["category"] == []
+        or state["category"] == ""
+    ):
         raise ValueError("Category must be provided if update_rag is set True")
     if "filename" in state.keys() and state["filename"] is not None:
         if state["file"] is None or len(state["file"].getvalue()) == 0:
@@ -119,10 +124,23 @@ async def split_content(state: ProcessTextState, config: RunnableConfig):
         )
         text = await loader.aload()
     else:
-        if config["configurable"]["update_rag"] and ("source" not in state.keys() or state["source"] is None or state["source"] == ""):
+        if config["configurable"]["update_rag"] and (
+            "source" not in state.keys()
+            or state["source"] is None
+            or state["source"] == ""
+        ):
             raise ValueError("Source must be provided if update_rag is set True")
         if isinstance(state["contents"], List):
-            text = "\n".join([(doc.page_content.strip() if isinstance(doc, Document) else doc.strip()) for doc in state["contents"]])
+            text = "\n".join(
+                [
+                    (
+                        doc.page_content.strip()
+                        if isinstance(doc, Document)
+                        else doc.strip()
+                    )
+                    for doc in state["contents"]
+                ]
+            )
         else:
             text = state["contents"]
 
@@ -158,11 +176,24 @@ async def reformat_content(state: SummaryState):
     response = ""
     if state["instructions"] is not None:
         response = await get_chain("text_formatter_guided").ainvoke(
-            {"context": state["content"].page_content if isinstance(state["content"], Document) else state["content"], "instructions": state["instructions"]}
+            {
+                "context": (
+                    state["content"].page_content
+                    if isinstance(state["content"], Document)
+                    else state["content"]
+                ),
+                "instructions": state["instructions"],
+            }
         )
     else:
         response = await get_chain("text_formatter").ainvoke(
-            {"context": state["content"].page_content if isinstance(state["content"], Document) else state["content"]}
+            {
+                "context": (
+                    state["content"].page_content
+                    if isinstance(state["content"], Document)
+                    else state["content"]
+                )
+            }
         )
     metadata = {}
     if isinstance("content", Document):
@@ -193,7 +224,9 @@ def map_reformat(state: ProcessTextState):
             "reformat_content",
             {
                 "content": content,
-                "instructions": state["instructions"] if "instructions" in state else None,
+                "instructions": (
+                    state["instructions"] if "instructions" in state else None
+                ),
                 "page": page if "page" in state and page != -1 else None,
                 "filename": state["filename"] if "filename" in state else None,
                 "url": state["url"] if "url" in state else None,
@@ -212,17 +245,21 @@ def map_reformat(state: ProcessTextState):
 #             )
 #         )
 
+
 async def concat_reformat(state: ProcessTextState, config: RunnableConfig):
     return {
         "reformat_complete": True,
-        "reformat_contents": [get_text_from_completion(txt) for txt in state["reformatted_txt"]],
+        "reformat_contents": [
+            get_text_from_completion(txt) for txt in state["reformatted_txt"]
+        ],
         "collapsed_reformatted_txt": [
             Document(
                 get_text_from_completion(txt),
             )
             for txt in state["reformatted_txt"]
-        ]
+        ],
     }
+
 
 def should_conceptualize(
     state: ProcessTextState,
@@ -232,6 +269,7 @@ def should_conceptualize(
         return "concept_content"
     else:
         return should_collapse(state=state)
+
 
 async def concept_content(state: ProcessTextState, config: RunnableConfig):
     concepts: List[SourceConcept] = []
@@ -251,7 +289,12 @@ async def concept_content(state: ProcessTextState, config: RunnableConfig):
                             )
 
             params = {
-                "context": (f"File: {state["filename"]}\nPage: {i}\n" if state["filename"] else f"URL: {state["url"]}\n") + f"Content: {get_text_from_completion(txt)}"
+                "context": (
+                    f"File: {state['filename']}\nPage: {i}\n"
+                    if state["filename"]
+                    else f"URL: {state['url']}\n"
+                )
+                + f"Content: {get_text_from_completion(txt)}"
             }
             if len(existing_categories.keys()):
                 params["chat_history"] = [
@@ -315,10 +358,7 @@ async def collapse_content(state: ProcessTextState):
 
     await asyncio.gather(*tasks)
 
-    return {
-        "collapse_complete": True,
-        "collapsed_reformatted_txt": results
-    }
+    return {"collapse_complete": True, "collapsed_reformatted_txt": results}
 
 
 # This represents a conditional edge in the graph that determines
@@ -353,7 +393,10 @@ async def finalize_content(state: ProcessTextState, config: RunnableConfig):
     if config["configurable"]["summarize"]:
         if instructions is not None:
             response = await get_chain("summary_guided").ainvoke(
-                {"context": state["collapsed_reformatted_txt"], "instructions": instructions}
+                {
+                    "context": state["collapsed_reformatted_txt"],
+                    "instructions": instructions,
+                }
             )
         else:
             response = await get_chain("summary").ainvoke(
@@ -374,7 +417,9 @@ async def finalize_content(state: ProcessTextState, config: RunnableConfig):
 
         tasks = []
         for concept_category in concepts.keys():
-            contents = "\n".join(concept.content for concept in concepts[concept_category])
+            contents = "\n".join(
+                concept.content for concept in concepts[concept_category]
+            )
             num_chars = length_function(contents)
             if num_chars > SETTINGS.default_llms.instruct_detailed.char_limit:
                 contents = semantic_splitter(contents)
@@ -382,21 +427,23 @@ async def finalize_content(state: ProcessTextState, config: RunnableConfig):
                 contents = [contents]
 
             tasks.append(
-                collapse_concept_summaries(concept_category, concept_summaries, contents)
+                collapse_concept_summaries(
+                    concept_category, concept_summaries, contents
+                )
             )
 
         await asyncio.gather(*tasks)
 
     formatted_content = "\n".join(state["reformat_contents"])
 
-    flat_contents:List[Document] = []
+    flat_contents: List[Document] = []
     for item in state["contents"]:
         if isinstance(item, Document):
             flat_contents.append(item)
         elif isinstance(item, List):
             flat_contents.extend(item)
         else:
-            print(f"{state["contents"]}")
+            # print(f"{state["contents"]}")
             raise ValueError(f"Unknown type {type(item)}: {item=}")
 
     if (
@@ -412,7 +459,7 @@ async def finalize_content(state: ProcessTextState, config: RunnableConfig):
                 summary=summary_collapsed,
                 concepts=state["collected_concepts"],
                 concept_summaries=concept_summaries,
-            )
+            ),
         }
     else:
         return {
@@ -421,14 +468,16 @@ async def finalize_content(state: ProcessTextState, config: RunnableConfig):
             "content_result": {
                 "formatted_content": formatted_content,
                 "summary": summary_collapsed,
-            }
+            },
         }
+
 
 async def should_rag(state: ProcessTextState, config: RunnableConfig):
     if config["configurable"]["update_rag"]:
         return "rag_content"
     else:
         return END
+
 
 async def rag_content(state: ProcessTextState, config: RunnableConfig):
     content = state["source_contents"]
@@ -445,9 +494,7 @@ async def rag_content(state: ProcessTextState, config: RunnableConfig):
         filetype,
     )
 
-    return {
-        "rag_complete": True
-    }
+    return {"rag_complete": True}
 
 
 # Construct the graph

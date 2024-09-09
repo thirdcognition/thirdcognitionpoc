@@ -65,6 +65,7 @@ MAINTAIN_CONTENT_AND_USER_LANGUAGE = """
         Maintain the content and the language of the input and always output in the language used in context and history.
         """
 
+
 class PromptFormatter(BaseModel):
     system: str = Field(description="The system message template")
     user: str = Field(description="The user message template")

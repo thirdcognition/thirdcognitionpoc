@@ -75,7 +75,7 @@ async def process_text_call(
     overwrite: bool = False,
     guidance: str = None,
     collect_concepts=True,
-    summarize:bool=True
+    summarize: bool = True,
 ) -> ProcessTextState:
     config = {
         "configurable": {
@@ -84,10 +84,13 @@ async def process_text_call(
             "update_rag": (source != None or file != None or url != None)
             and category != None,
             "guidance": guidance,
-            "summarize": summarize
+            "summarize": summarize,
         }
     }
-    states = {"split": "Read and analysis of document", "reformat": "Document re-formatting"}
+    states = {
+        "split": "Read and analysis of document",
+        "reformat": "Document re-formatting",
+    }
     if config["configurable"]["collect_concepts"]:
         states.update(
             {
@@ -183,16 +186,26 @@ async def process_text_call(
     return result
 
 
-async def llm_edit(texts:List[str], guidance=None, force:bool=False, show_process=True, summarize:bool=False) -> str:
+async def llm_edit(
+    texts: List[str],
+    guidance=None,
+    force: bool = False,
+    show_process=True,
+    summarize: bool = False,
+) -> str:
     if texts == None or texts[0] == None:
         raise ValueError("No text provided")
 
-    if not force and (
-        len(texts) == 1 and len(texts[0]) < 1000
-    ):
-        return texts[0] or ''
+    if not force and (len(texts) == 1 and len(texts[0]) < 1000):
+        return texts[0] or ""
 
-    result = await process_text_call(show_progress=show_process, texts=texts, guidance=guidance, collect_concepts=False, summarize=summarize)
+    result = await process_text_call(
+        show_progress=show_process,
+        texts=texts,
+        guidance=guidance,
+        collect_concepts=False,
+        summarize=summarize,
+    )
 
     contents = result["content_result"]
 
@@ -200,8 +213,6 @@ async def llm_edit(texts:List[str], guidance=None, force:bool=False, show_proces
         return contents["summary"].strip()
     else:
         return contents["formatted_content"].strip()
-
-
 
 
 # text = ""

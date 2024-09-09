@@ -230,7 +230,7 @@ async def process_source(
             url=url,
             file=file,
             overwrite=overwrite,
-            collect_concepts=True
+            collect_concepts=True,
         )
         # with st.spinner("Processing"):
 

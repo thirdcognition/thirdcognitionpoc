@@ -25,6 +25,9 @@ class ActionStructure(BaseModel):
         description="List of references to documents or resources to help with the specifics for the content.",
         title="Resources",
     )
+    guide: str = Field(
+        description="Detailed guide on how to use the content with the user", title="Guide"
+    )
     test: str = Field(
         description="Description on how to do a test to verify that the student has succeeded in learning the contents.",
         title="Test",
@@ -36,7 +39,7 @@ class SubjectStructure(BaseModel):
     intro: str = Field(description="Introduction to the class", title="Intro")
     content: str = Field(description="Detailed content of the class", title="Content")
     actions: List[ActionStructure] = Field(
-        description="List of contents to help teaching the subject.",
+        description="List of content for the subject.",
         title="Content",
     )
 
@@ -52,6 +55,7 @@ class StepModel(BaseModel):
     structured: SubjectStructure = Field(
         default=SubjectStructure(title="", subject="", intro="", content="", actions=[])
     )
+    instructions: str = Field(default=None)
 
 
 class SubjectModel(BaseModel):

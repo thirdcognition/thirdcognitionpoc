@@ -25,7 +25,9 @@ step_action_details:
 
     {journey_instructions}
 
-    {instructions}
+    {subject_instructions}
+
+    {step_instructions}
 
     instructions end
 
@@ -82,7 +84,9 @@ step_actions:
 
     {journey_instructions}
 
-    {instructions}
+    {subject_instructions}
+
+    {step_instructions}
 
     instructions end
 
@@ -153,7 +157,9 @@ step_content:
 
     {journey_instructions}
 
-    {instructions}
+    {subject_instructions}
+
+    {step_instructions}
 
     instructions end
 
@@ -226,7 +232,9 @@ step_intro:
 
     {journey_instructions}
 
-    {instructions}
+    {subject_instructions}
+
+    {step_instructions}
 
     instructions end
 
@@ -274,7 +282,7 @@ steps:
 
     {journey_instructions}
 
-    {instructions}
+    {subject_instructions}
 
     instructions end
 

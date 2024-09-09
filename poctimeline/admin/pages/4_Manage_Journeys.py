@@ -8,7 +8,13 @@ from langchain_core.messages import BaseMessage
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
-from lib.models.journey import ActionStructure, JourneyModel, StepModel, SubjectModel, SubjectStructure
+from lib.models.journey import (
+    ActionStructure,
+    JourneyModel,
+    StepModel,
+    SubjectModel,
+    SubjectStructure,
+)
 from lib.chains.init import get_chain
 from lib.journey_shared import (
     create_subject_prompt_editor,
@@ -149,7 +155,10 @@ def journey_subject_details_ui(
             height=200,
         )
         journey.subjects[subject_index].db_sources = get_files_for_journey(
-            journey.chroma_collection[0], journey_name, subject_index, subject.db_sources
+            journey.chroma_collection[0],
+            journey_name,
+            subject_index,
+            subject.db_sources,
         )
         # if st.button("Regenerate", key=f"regenerate_button_{journey_name}_{subject_index}"):
         #     journey.subjects[subject_index] = await gen_journey_subject((journey, subject)
@@ -317,7 +326,8 @@ def journey_subject_step_actions_ui(
                         {
                             "context": step.content,
                             "journey_instructions": journey.instructions,
-                            "instructions": subject.instructions,
+                            "subject_instructions": subject.instructions,
+                            "step_instructions": step.instructions,
                             "subject": f"Title: {step.title}\nSubject: {step.subject}",
                             "amount": (
                                 len(step.structured.actions)
@@ -616,7 +626,9 @@ def remove_resource(
 
 
 @st.fragment
-async def journey_subjects_ui(journey_name: str, journey_index: int, journey: JourneyModel):
+async def journey_subjects_ui(
+    journey_name: str, journey_index: int, journey: JourneyModel
+):
     col1, col2 = st.columns([1, 1], vertical_alignment="center")
     subject_titles = [subject.title for subject in journey.subjects]
     subject_title = col1.selectbox(
@@ -624,7 +636,14 @@ async def journey_subjects_ui(journey_name: str, journey_index: int, journey: Jo
         options=subject_titles,
         key=f"subject_select_{journey_name}_subject",
         index=(
-            min(int(st.session_state.subject_index if "subject_index" in st.session_state else 0), len(subject_titles))
+            min(
+                int(
+                    st.session_state.subject_index
+                    if "subject_index" in st.session_state
+                    else 0
+                ),
+                len(subject_titles),
+            )
         ),
     )
     st.session_state.subject_index = subject_titles.index(subject_title)
@@ -647,8 +666,10 @@ async def journey_subjects_ui(journey_name: str, journey_index: int, journey: Jo
                 key=f"generate_subject_button_{journey_name}",
                 use_container_width=True,
             ):
-                journey.subjects[st.session_state.subject_index] = await gen_journey_subject(
-                    journey, subject, st.session_state.subject_index
+                journey.subjects[st.session_state.subject_index] = (
+                    await gen_journey_subject(
+                        journey, subject, st.session_state.subject_index
+                    )
                 )
                 save_journey_command(journey_name, journey_index, journey)
 
@@ -686,10 +707,12 @@ async def journey_subjects_ui(journey_name: str, journey_index: int, journey: Jo
                 key=f"generate_step_button_{journey_name}",
                 use_container_width=True,
             ):
-                journey.subjects[st.session_state.subject_index] = await gen_journey_subject(
-                    journey,
-                    subject,
-                    step_index=step_index,
+                journey.subjects[st.session_state.subject_index] = (
+                    await gen_journey_subject(
+                        journey,
+                        subject,
+                        step_index=step_index,
+                    )
                 )
                 save_journey_command(journey_name, journey_index, journey)
         with mod_col3.popover(":x:", use_container_width=True):

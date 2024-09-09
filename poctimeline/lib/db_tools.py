@@ -14,10 +14,19 @@ from lib.chains.init import get_embeddings
 from lib.document_tools import get_rag_chunks
 from lib.load_env import SETTINGS
 from lib.models.journey import JourneyModel
-from lib.models.sqlite_tables import Base, SourceContents, SourceData, SourceDataTable, JourneyDataTable, SourceType
+from lib.models.sqlite_tables import (
+    Base,
+    SourceContents,
+    SourceData,
+    SourceDataTable,
+    JourneyDataTable,
+    SourceType,
+)
 from lib.chains.prompt_generator import CustomPrompt, CustomPromptContainer
+
 chroma_client = None
 database_session = None
+
 
 def init_db():
     global database_session
@@ -79,12 +88,20 @@ def delete_db_file(filename: str):
     database_session.commit()
     get_db_sources(reset=True)
 
+
 def db_file_exists(filename: str) -> bool:
     return database_session.query(
         sqla.exists().where(SourceDataTable.source == filename)
     ).scalar()
 
-def save_db_file(filename, texts:List[str], category:List[str]=None, collections:List[str]=None, uploaded_file:io.BytesIO=None):
+
+def save_db_file(
+    filename,
+    texts: List[str],
+    category: List[str] = None,
+    collections: List[str] = None,
+    uploaded_file: io.BytesIO = None,
+):
     if db_file_exists(filename):
         # If the file exists, get the row and update its text field
         existing_file = (
@@ -93,9 +110,7 @@ def save_db_file(filename, texts:List[str], category:List[str]=None, collections
             .first()
         )
 
-        existing_file.texts = (
-            texts  # Update the text field with the new content
-        )
+        existing_file.texts = texts  # Update the text field with the new content
         existing_file.category_tag = category or existing_file.category_tag
         existing_file.last_updated = datetime.now()
         existing_file.file_data = uploaded_file.getvalue() or existing_file.file_data
@@ -115,15 +130,20 @@ def save_db_file(filename, texts:List[str], category:List[str]=None, collections
 
     database_session.commit()
 
+
 def update_rag(
-    category:List[str],
-    rag_ids:List[str],
-    rag_split:List[str],
-    rag_metadatas:List[str],
-    existing_ids:List[str]=None,
-    existing_collections:List[str]=None,
+    category: List[str],
+    rag_ids: List[str],
+    rag_split: List[str],
+    rag_metadatas: List[str],
+    existing_ids: List[str] = None,
+    existing_collections: List[str] = None,
 ):
-    if existing_ids is not None and existing_collections is not None and len(existing_ids) > 0:
+    if (
+        existing_ids is not None
+        and existing_collections is not None
+        and len(existing_ids) > 0
+    ):
         for collection in existing_collections:
             vectorstore = get_chroma_collection(collection)
             vectorstore.delete(existing_ids)
@@ -132,31 +152,36 @@ def update_rag(
 
     for cat in category:
         collections.append("rag_" + cat)
-        vectorstore = get_chroma_collection("rag_" + cat) #get_vectorstore("rag_" + cat)
+        vectorstore = get_chroma_collection(
+            "rag_" + cat
+        )  # get_vectorstore("rag_" + cat)
         store_complete = False
         retries = 0
         while not store_complete and retries < 3:
-            if (retries > 0):
+            if retries > 0:
                 vectorstore.delete(rag_ids)
             retries += 1
-            vectorstore.add(
-                ids=rag_ids, documents=rag_split, metadatas=rag_metadatas
-            )
+            vectorstore.add(ids=rag_ids, documents=rag_split, metadatas=rag_metadatas)
             rag_items = vectorstore.get(
-                    rag_ids,
-                    include=["embeddings", "documents", "metadatas"],
-                )
+                rag_ids,
+                include=["embeddings", "documents", "metadatas"],
+            )
             store_complete = True
 
             for rag_id in rag_ids:
                 if rag_id not in rag_items["ids"]:
                     store_complete = False
-                    print(f"{rag_id} not in {rag_items["ids"]} - retrying...")
+                    print(f"{rag_id} not in {rag_items['ids']} - retrying...")
                     break
 
 
-
-def update_db_file_and_rag(source:str, category:List[str], texts:List[str], contents:SourceContents, filetype="txt"):
+def update_db_file_and_rag(
+    source: str,
+    category: List[str],
+    texts: List[str],
+    contents: SourceContents,
+    filetype="txt",
+):
     existing_source = (
         database_session.query(SourceDataTable)
         .filter(SourceDataTable.source == source)
@@ -166,11 +191,20 @@ def update_db_file_and_rag(source:str, category:List[str], texts:List[str], cont
     if existing_source is None:
         raise ValueError(f"Source {source} not found in the database.")
 
-    rag_chunks, rag_ids, rag_metadatas = get_rag_chunks(texts, source, category, contents, filetype)
+    rag_chunks, rag_ids, rag_metadatas = get_rag_chunks(
+        texts, source, category, contents, filetype
+    )
 
     # print(f"\n\n\n{source=}\n\n{rag_chunks=}\n\n{rag_ids=}\n\n{rag_metadatas=}\n\n")
 
-    update_rag(category, rag_ids, rag_chunks, rag_metadatas, existing_source.chroma_ids if existing_source is not None else None, existing_source.chroma_collection if existing_source is not None else None)
+    update_rag(
+        category,
+        rag_ids,
+        rag_chunks,
+        rag_metadatas,
+        existing_source.chroma_ids if existing_source is not None else None,
+        existing_source.chroma_collection if existing_source is not None else None,
+    )
 
     existing_source.texts = texts  # Update the text field with the new content
     existing_source.source_contents = contents
@@ -180,6 +214,7 @@ def update_db_file_and_rag(source:str, category:List[str], texts:List[str], cont
     existing_source.last_updated = datetime.now()
 
     database_session.commit()
+
 
 def get_db_journey(
     journey_name: str = None, chroma_collections=None, reset=False

@@ -35,6 +35,7 @@ This is an *extremely* cool admin tool!
     },
 )
 
+
 @st.fragment
 async def manage_file(filename):
     database_session = init_db()
@@ -158,7 +159,14 @@ async def manage_file(filename):
                     #     )
                     with st.spinner("Rewriting"):
                         if instance.texts is not None:
-                            text = await llm_edit([contents.formatted_content] if len(contents.formatted_content)>1000 else instance.texts, summarize=True)
+                            text = await llm_edit(
+                                (
+                                    [contents.formatted_content]
+                                    if len(contents.formatted_content) > 1000
+                                    else instance.texts
+                                ),
+                                summarize=True,
+                            )
                             # split_texts = split_text("\n".join(texts), CHAR_LIMIT)
                             # if len(summary_texts) == 1:
                             #     shorter_text = llm_edit(
@@ -206,10 +214,14 @@ async def manage_file(filename):
 
             with tab2:
                 update = False
-                col1, col2, col3, col4 = st.columns([3, 1, 1, 1], vertical_alignment="bottom")
+                col1, col2, col3, col4 = st.columns(
+                    [3, 1, 1, 1], vertical_alignment="bottom"
+                )
                 with col1:
                     guidance = st.text_input(
-                        "Guidance for the rewriter:", key=f"llm_md_guidance_{filename}", value=''
+                        "Guidance for the rewriter:",
+                        key=f"llm_md_guidance_{filename}",
+                        value="",
                     )
 
                 with col2:
@@ -239,7 +251,9 @@ async def manage_file(filename):
                     text = None
                     with st.spinner("Rewriting"):
                         if raw is not None and filetype != "md":
-                            text = await llm_edit(raw, guidance if 0 < len(guidance) else None)
+                            text = await llm_edit(
+                                raw, guidance if 0 < len(guidance) else None
+                            )
                         elif filetype == "md":
                             if len(raw) > 1 or len(raw[0]) > 1000:
                                 text = await llm_edit(
@@ -277,7 +291,11 @@ async def manage_file(filename):
                     st.write(f"### {concept_tag}:")
                     st.write(file_entry.source_contents.concept_summaries[concept_tag])
                     with st.expander("Concept instances"):
-                        concepts = [concept.__dict__ for concept in file_entry.source_contents.concepts if concept_tag in [cat.tag for cat in concept.category]]
+                        concepts = [
+                            concept.__dict__
+                            for concept in file_entry.source_contents.concepts
+                            if concept_tag in [cat.tag for cat in concept.category]
+                        ]
                         st.write(concepts)
 
             with tab5:

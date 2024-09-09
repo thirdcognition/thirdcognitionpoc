@@ -9,7 +9,12 @@ import fitz
 from rapidocr_onnxruntime import RapidOCR
 
 from lib.db_tools import db_file_exists, get_db_sources, save_db_file
-from lib.document_tools import a_semantic_splitter, semantic_splitter, split_markdown, split_text
+from lib.document_tools import (
+    a_semantic_splitter,
+    semantic_splitter,
+    split_markdown,
+    split_text,
+)
 from lib.load_env import SETTINGS
 
 ocr = None
@@ -117,7 +122,10 @@ def extract_images_from_page(
         imgs, start + substep_total, step - substep_total, ocrs, progress_cb=progress_cb
     )
 
-def process_page(page, doc, page_percentage_total, total, i, step, xrefs, ocrs, progress_cb):
+
+def process_page(
+    page, doc, page_percentage_total, total, i, step, xrefs, ocrs, progress_cb
+):
     if progress_cb:
         progress_cb(
             page_percentage_total / total * i + i * step,
@@ -136,6 +144,7 @@ def process_page(page, doc, page_percentage_total, total, i, step, xrefs, ocrs, 
     )
 
     return page_string
+
 
 # Function to convert PDF to text using PyMuPDFLoader
 def load_pymupdf(file: io.BytesIO, filetype, progress_cb=None):
@@ -156,7 +165,9 @@ def load_pymupdf(file: io.BytesIO, filetype, progress_cb=None):
     text = ""
 
     for i, page in enumerate(doc):
-        text += process_page(page, doc, page_percentage_total, total, i, step, xrefs, ocrs, progress_cb)
+        text += process_page(
+            page, doc, page_percentage_total, total, i, step, xrefs, ocrs, progress_cb
+        )
 
     if progress_cb:
         progress_cb(0.6, "Splitting text...")
@@ -172,8 +183,12 @@ def load_pymupdf(file: io.BytesIO, filetype, progress_cb=None):
 
     return chunks
 
+
 async def process_file_contents(
-    uploaded_file: io.BytesIO, filename:str, category:List[str]=None, overwrite=False
+    uploaded_file: io.BytesIO,
+    filename: str,
+    category: List[str] = None,
+    overwrite=False,
 ):
     filetype = os.path.basename(filename).split(".")[-1]
     file_exists = db_file_exists(filename)
@@ -218,6 +233,7 @@ async def process_file_contents(
 
     return texts
 
+
 async def process_document_filetype(file: io.BytesIO, filetype=None, progress_cb=None):
     doc = fitz.open(stream=file.read(), filetype=filetype)
     text = ""
@@ -238,7 +254,20 @@ async def process_document_filetype(file: io.BytesIO, filetype=None, progress_cb
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = []
         for i, page in enumerate(doc):
-            futures.append(executor.submit(process_page, page, doc, page_percentage_total, total, i, step, xrefs, ocrs, progress_cb))
+            futures.append(
+                executor.submit(
+                    process_page,
+                    page,
+                    doc,
+                    page_percentage_total,
+                    total,
+                    i,
+                    step,
+                    xrefs,
+                    ocrs,
+                    progress_cb,
+                )
+            )
 
         for future in concurrent.futures.as_completed(futures):
             text += future.result()
@@ -254,5 +283,3 @@ async def process_document_filetype(file: io.BytesIO, filetype=None, progress_cb
             else None
         ),
     )
-
-

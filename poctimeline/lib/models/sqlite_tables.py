@@ -10,9 +10,11 @@ from lib.load_env import SETTINGS
 
 Base = declarative_base()
 
+
 class SourceType(Enum):
     url = "url"
     file = "file"
+
 
 class Reference(BaseModel):
     source: str = Field(
@@ -25,29 +27,33 @@ class Reference(BaseModel):
         description="The page number of the file", title="Page Number"
     )
 
+
 class CategoryTag(BaseModel):
-    tag: str = Field(
-        description="The tag for the category", title="Tag"
-    )
+    tag: str = Field(description="The tag for the category", title="Tag")
     description: str = Field(
         description="The description of the category", title="Description"
     )
 
+
 class SourceConcept(BaseModel):
     id: str = Field(
-        description="An human readable id for this concept using letters and _", title="Id"
+        description="An human readable id for this concept using letters and _",
+        title="Id",
     )
     title: str = Field(
         description="A human readable title for this concept", title="Title"
     )
     content: str = Field(
-        description="Detailed and descriptive content in written format based on the context and identified concept. Should contain all relevant information in a readable format.", title="Contents"
+        description="Detailed and descriptive content in written format based on the context and identified concept. Should contain all relevant information in a readable format.",
+        title="Contents",
     )
     reference: Reference = Field(
-        description= "A reference to the file and page number where this concept was identified", title="Reference"
+        description="A reference to the file and page number where this concept was identified",
+        title="Reference",
     )
     category: List[CategoryTag] = Field(
-        description="A list of category tags that can be used to group this concept with similar concepts", title="Category"
+        description="A list of category tags that can be used to group this concept with similar concepts",
+        title="Category",
     )
 
 
@@ -56,13 +62,16 @@ class SourceConceptList(BaseModel):
         description="A list of concepts identified in the context", title="Concepts"
     )
 
+
 class SourceContents(BaseModel):
     formatted_content: str
     summary: str
     concepts: List[SourceConcept]
     concept_summaries: Dict[str, str] = Field(
-        description="A dictionary of summaries for each concept where key is the concept id and value is the summary of all contents related to that concept", title="Summaries"
+        description="A dictionary of summaries for each concept where key is the concept id and value is the summary of all contents related to that concept",
+        title="Summaries",
     )
+
 
 class SourceData(BaseModel):
     source: str
@@ -76,6 +85,7 @@ class SourceData(BaseModel):
     edited_content: Optional[str] = None
     file_data: Optional[bytes] = None
     source_contents: Optional[SourceContents] = None
+
 
 class SourceDataTable(Base):
     __tablename__ = SETTINGS.file_tablename

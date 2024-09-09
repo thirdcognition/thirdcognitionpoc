@@ -7,6 +7,7 @@ from langchain_core.messages import BaseMessage
 
 from lib.prompts.base import PromptFormatter
 
+
 class HallucinationParser(BaseOutputParser[tuple[bool, BaseMessage]]):
     """Custom parser to check for hallucinations"""
 

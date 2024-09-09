@@ -7,9 +7,10 @@ from langchain_core.runnables import (
     RunnableParallel,
     RunnablePassthrough,
     RunnableLambda,
-    RunnableBranch
+    RunnableBranch,
 )
 from lib.db_tools import get_vectorstore_as_retriever
+
 # from langchain_core.messages import (
 #     AIMessage,
 # )
@@ -21,6 +22,8 @@ from lib.prompts.base import PromptFormatter
 from lib.prompts.chat import question
 
 compressor = None
+
+
 def rerank_documents(list_of_documents: list[Document], query: str, amount=5):
     global compressor
 
@@ -56,6 +59,7 @@ def rerank_rag(params: Dict):
 
     return new_content
 
+
 def extract_documents(params) -> list:
     if isinstance(params, list):
         return params
@@ -68,15 +72,18 @@ def extract_documents(params) -> list:
     else:
         return []
 
+
 def set_metadata(params):
     print_params("metadata", params)
     return extract_documents(params)
+
 
 def store_documents(params):
     if isinstance(params, List):
         return {"documents": params}
 
     return params
+
 
 def remove_duplicates(documents: Dict[Any, Document]) -> List[str]:
     if isinstance(documents, Dict):
@@ -89,9 +96,13 @@ def remove_duplicates(documents: Dict[Any, Document]) -> List[str]:
     return documents
 
 
-
 class RagChain(BaseChain):
-    def __init__(self, retrievers: List[BaseRetriever], prompt:PromptFormatter=question, **kwargs):
+    def __init__(
+        self,
+        retrievers: List[BaseRetriever],
+        prompt: PromptFormatter = question,
+        **kwargs,
+    ):
         self.retrievers = retrievers
         super().__init__(prompt=prompt, **kwargs)
 
@@ -110,10 +121,7 @@ class RagChain(BaseChain):
         retriever = self.retrievers[0]
         if len(self.retrievers) > 1:
             retrievers = {i: retriever for i, retriever in enumerate(self.retrievers)}
-            retriever = (
-                RunnableParallel(retrievers) |
-                remove_duplicates
-            )
+            retriever = RunnableParallel(retrievers) | remove_duplicates
 
         self.chain = (
             keep_chain_params
@@ -138,17 +146,19 @@ class RagChain(BaseChain):
                     ),
                 }
             )
-            | RunnableParallel({
-                "answer": self.chain,
-                "documents": RunnableLambda(extract_documents),
-                "question": RunnableLambda(lambda x: x["question"]),
-                "metadata": RunnableLambda(set_metadata)
-            })
+            | RunnableParallel(
+                {
+                    "answer": self.chain,
+                    "documents": RunnableLambda(extract_documents),
+                    "question": RunnableLambda(lambda x: x["question"]),
+                    "metadata": RunnableLambda(set_metadata),
+                }
+            )
             | log_chain_params
-
         )
 
         return self.chain
+
 
 class RagChatChain(RagChain):
     # def __init__(self, retriever: BaseRetriever, prompt:PromptFormatter=question, **kwargs):
@@ -168,15 +178,15 @@ class RagChatChain(RagChain):
 
         chat_chain = get_chain("chat")
 
-        self.chain = (
-            RunnableParallel({
-                "is_question": get_chain("question_classification") | RunnableLambda(lambda x: x[0] if isinstance(x, tuple) else x),
-                "orig_params": RunnablePassthrough()
-            }) |
-            RunnableBranch(
-                (lambda x: x["is_question"], self.chain),
-                keep_chain_params | chat_chain | RunnableLambda(lambda x: {"answer": x})
-            )
+        self.chain = RunnableParallel(
+            {
+                "is_question": get_chain("question_classification")
+                | RunnableLambda(lambda x: x[0] if isinstance(x, tuple) else x),
+                "orig_params": RunnablePassthrough(),
+            }
+        ) | RunnableBranch(
+            (lambda x: x["is_question"], self.chain),
+            keep_chain_params | chat_chain | RunnableLambda(lambda x: {"answer": x}),
         )
 
         return self.chain
@@ -184,18 +194,30 @@ class RagChatChain(RagChain):
 
 rag_chains = {}
 
-def get_rag_chain(store_ids:List[str], embedding_id="hyde", reset=False, amount_of_documents=5, chat=False) -> RunnableSequence:
+
+def get_rag_chain(
+    store_ids: List[str],
+    embedding_id="hyde",
+    reset=False,
+    amount_of_documents=5,
+    chat=False,
+) -> RunnableSequence:
     global rag_chains
 
     chain_type = "chat" if chat else "search"
-    chain_id = f"{"+".join(store_ids)}-{embedding_id}-{chain_type}-#{amount_of_documents}"
+    chain_id = (
+        f"{','.join(store_ids)}-{embedding_id}-{chain_type}-#{amount_of_documents}"
+    )
 
     if chain_id in rag_chains and not reset:
         return rag_chains[chain_id]
 
     print(f"Initializing RAG {chain_type} chain: {chain_id}")
 
-    retrievers = [get_vectorstore_as_retriever(store_id, embedding_id, amount_of_documents) for store_id in store_ids]
+    retrievers = [
+        get_vectorstore_as_retriever(store_id, embedding_id, amount_of_documents)
+        for store_id in store_ids
+    ]
 
     if chat:
         rag_chain = RagChatChain(retrievers, llm=get_llm("chat"))()

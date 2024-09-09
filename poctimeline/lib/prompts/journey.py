@@ -21,7 +21,8 @@ class JourneyStep(BaseModel):
         description="Describes the subject in one sentence", title="Subject"
     )
     summary: str = Field(
-        description="Summary of what the subject is about and concepts it uses", title="Summary"
+        description="Summary of what the subject is about and concepts it uses",
+        title="Summary",
     )
     concept_ids: List[str] = Field(
         description="List of concepts id used by the subject", title="Concepts IDs"
@@ -29,6 +30,7 @@ class JourneyStep(BaseModel):
     concept_tags: List[CategoryTag] = Field(
         description="List of concepts tags used by the subject", title="Concept Tags"
     )
+
 
 class JourneyStepList(BaseModel):
     steps: List[JourneyStep] = Field(description="List of subjects", title="Subjects")
@@ -53,7 +55,7 @@ journey_steps = PromptFormatter(
         """
         instuctions start
         {journey_instructions}
-        {instructions}
+        {subject_instructions}
         instructions end
 
         context start
@@ -103,7 +105,8 @@ journey_step_content = PromptFormatter(
         """
         instuctions start
         {journey_instructions}
-        {instructions}
+        {subject_instructions}
+        {step_instructions}
         instructions end
 
         context start
@@ -151,7 +154,8 @@ journey_step_intro = PromptFormatter(
         """
         instuctions start
         {journey_instructions}
-        {instructions}
+        {subject_instructions}
+        {step_instructions}
         instructions end
 
         Subject:
@@ -190,7 +194,8 @@ journey_step_actions = PromptFormatter(
         """
         instuctions start
         {journey_instructions}
-        {instructions}
+        {subject_instructions}
+        {step_instructions}
         instructions end
 
         Amount:
@@ -230,7 +235,8 @@ journey_step_action_details = PromptFormatter(
         """
         instuctions start
         {journey_instructions}
-        {instructions}
+        {subject_instructions}
+        {step_instructions}
         instructions end
 
         Resource description:
@@ -277,11 +283,12 @@ class JourneyPrompts(BaseModel):
         )
     )
 
+
 def convert_to_journey_prompts(container: CustomPromptContainer) -> JourneyPrompts:
     return JourneyPrompts(
         steps=container.steps,
         step_content=container.step_content,
         step_intro=container.step_intro,
         step_actions=container.step_actions,
-        step_action_details=container.step_action_details
+        step_action_details=container.step_action_details,
     )

@@ -2,7 +2,13 @@ import textwrap
 from typing import List
 from langchain_core.output_parsers import PydanticOutputParser
 from lib.models.sqlite_tables import SourceConcept, SourceConceptList
-from lib.prompts.base import KEEP_PRE_THINK_TOGETHER, MAINTAIN_CONTENT_AND_USER_LANGUAGE, PRE_THINK_INSTRUCT, PromptFormatter, TagsParser
+from lib.prompts.base import (
+    KEEP_PRE_THINK_TOGETHER,
+    MAINTAIN_CONTENT_AND_USER_LANGUAGE,
+    PRE_THINK_INSTRUCT,
+    PromptFormatter,
+    TagsParser,
+)
 from lib.prompts.actions import structured
 
 text_formatter = PromptFormatter(
@@ -154,7 +160,8 @@ md_formatter_guided = PromptFormatter(
 )
 md_formatter_guided.parser = TagsParser(min_len=100)
 
-concept_structured = structured.customize(user=textwrap.dedent(
+concept_structured = structured.customize(
+    user=textwrap.dedent(
         """
         context start
         {context}

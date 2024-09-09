@@ -27,10 +27,32 @@ from lib.load_env import (
     ProviderSettings,
 )
 from lib.prompts.base import PromptFormatter
-from lib.prompts.journey import journey_steps, journey_step_intro, journey_step_action_details, journey_step_actions, journey_step_content, journey_step_content_redo
+from lib.prompts.journey import (
+    journey_steps,
+    journey_step_intro,
+    journey_step_action_details,
+    journey_step_actions,
+    journey_step_content,
+    journey_step_content_redo,
+)
 from lib.prompts.journey_structured import journey_structured
-from lib.prompts.actions import action, summary, summary_guided, question_classifier, check, grader, combine_description
-from lib.prompts.formatters import text_formatter, text_formatter_compress, text_formatter_guided, md_formatter, md_formatter_guided, concept_structured
+from lib.prompts.actions import (
+    action,
+    summary,
+    summary_guided,
+    question_classifier,
+    check,
+    grader,
+    combine_description,
+)
+from lib.prompts.formatters import (
+    text_formatter,
+    text_formatter_compress,
+    text_formatter_guided,
+    md_formatter,
+    md_formatter_guided,
+    concept_structured,
+)
 from lib.prompts.chat import chat, question, helper
 from lib.prompts.hyde import hyde, hyde_document
 from lib.chains.prompt_generator import journey_prompts
@@ -224,29 +246,55 @@ def init_chain(
         llm=get_llm(id),
         retry_llm=get_llm(retry_id),
         prompt=prompt,
-        validation_llm=(get_llm(validate_id) if (check_for_hallucinations and not DEVMODE) else None),
+        validation_llm=(
+            get_llm(validate_id) if (check_for_hallucinations and not DEVMODE) else None
+        ),
     )
 
 
 CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
     "combine_bullets": ("instruct", combine_description, False),
     "summary": ("instruct_detailed" if not DEVMODE else "instruct", summary, True),
-    "summary_guided": ("instruct_detailed" if not DEVMODE else "instruct", summary_guided, True),
+    "summary_guided": (
+        "instruct_detailed" if not DEVMODE else "instruct",
+        summary_guided,
+        True,
+    ),
     "action": ("instruct_0", action, False),
     "grader": ("structured", grader, False),
     "check": ("instruct_0", check, False),
     "text_formatter": ("instruct", text_formatter, False),
     "text_formatter_compress": ("instruct", text_formatter_compress, False),
-    "text_formatter_guided": ("instruct_detailed_0" if not DEVMODE else "instruct_0", text_formatter_guided, True),
+    "text_formatter_guided": (
+        "instruct_detailed_0" if not DEVMODE else "instruct_0",
+        text_formatter_guided,
+        True,
+    ),
     "md_formatter": ("instruct", md_formatter, False),
-    "md_formatter_guided": ("instruct_detailed_0" if not DEVMODE else "instruct_0", md_formatter_guided, True),
+    "md_formatter_guided": (
+        "instruct_detailed_0" if not DEVMODE else "instruct_0",
+        md_formatter_guided,
+        True,
+    ),
     "concept_structured": ("structured", concept_structured, True),
-    "journey_prompt_generator": ("structured_detailed" if not DEVMODE else "structured", journey_prompts, True),
+    "journey_prompt_generator": (
+        "structured_detailed" if not DEVMODE else "structured",
+        journey_prompts,
+        True,
+    ),
     "journey_structured": ("structured", journey_structured, False),
-    "journey_steps": ("structured_detailed" if not DEVMODE else "structured", journey_steps, True),
+    "journey_steps": (
+        "structured_detailed" if not DEVMODE else "structured",
+        journey_steps,
+        True,
+    ),
     "journey_step_content": ("instruct_detailed_warm", journey_step_content, True),
     "journey_step_intro": ("instruct_warm", journey_step_intro, True),
-    "journey_step_actions": ("instruct_detailed" if not DEVMODE else "instruct", journey_step_actions, True),
+    "journey_step_actions": (
+        "instruct_detailed" if not DEVMODE else "instruct",
+        journey_step_actions,
+        True,
+    ),
     "journey_step_action_details": ("instruct_warm", journey_step_action_details, True),
     "question": ("chat", question, True),
     "helper": ("chat", helper, False),
@@ -280,9 +328,7 @@ def get_base_chain(chain) -> Union[BaseChain, RunnableSequence]:
         return chains[chain]
 
     if "summary_documents" == chain:
-        chains[chain] = (
-            get_chain("stuff_documents") | get_chain("summary")
-        )
+        chains[chain] = get_chain("stuff_documents") | get_chain("summary")
         return chains[chain]
 
     raise ValueError(f"Unknown chain: {chain}")

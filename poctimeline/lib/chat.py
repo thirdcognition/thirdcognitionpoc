@@ -11,6 +11,7 @@ from lib.helpers import get_chain_with_history, get_session_history
 
 DELIMITER = "±~"
 
+
 def send_message(message, journey_name, chat_state):
     if journey_name:
         # chain_id = st.session_state.journey_chain_ids[journey_name]
@@ -40,10 +41,12 @@ def get_stream_data(message: str, chat_state: str):
 
     return stream_data
 
+
 def get_journey_chat(journey_name: str = "ThirdCognition", rag_collection: str = None):
     if "chains" not in st.session_state:
         init_journey_chat(journey_name, rag_collection)
     return st.session_state.chains[journey_name]
+
 
 def init_journey_chat(journey_name: str = "ThirdCognition", rag_collection: str = None):
     init_db()
@@ -60,13 +63,17 @@ def init_journey_chat(journey_name: str = "ThirdCognition", rag_collection: str 
         chains = {}
         if journey_name and journey_name in st.session_state.journey_list.keys():
             collections = st.session_state.journey_list[journey_name].chroma_collection
-            chains[journey_name] = get_chain_with_history(journey_name, get_rag_chain(collections, chat=True))
+            chains[journey_name] = get_chain_with_history(
+                journey_name, get_rag_chain(collections, chat=True)
+            )
         else:
             journey_name = journey_name or "ThirdCognition"
             collection = (
                 "rag_ThirdCognition" if rag_collection is None else rag_collection
             )
-            chains[journey_name] = get_chain_with_history(journey_name, get_rag_chain([collection], chat=True))
+            chains[journey_name] = get_chain_with_history(
+                journey_name, get_rag_chain([collection], chat=True)
+            )
 
         print(f"New chains {chains.keys()=}")
         # st.session_state.journey_chain_ids = journey_chain_ids
@@ -76,6 +83,7 @@ def init_journey_chat(journey_name: str = "ThirdCognition", rag_collection: str 
         return False
 
     return True
+
 
 def chat_elements(chat_state, journey_name=None):
     st.session_state.chat_history_seen = (
@@ -90,7 +98,11 @@ def chat_elements(chat_state, journey_name=None):
     subject_index = None
     step_index = None
 
-    if "chat_journey" in st.session_state and st.session_state.chat_journey is not None and st.session_state.chat_journey != "":
+    if (
+        "chat_journey" in st.session_state
+        and st.session_state.chat_journey is not None
+        and st.session_state.chat_journey != ""
+    ):
         # print(f"{ chat_state = }")
         subject_index = int(chat_state.split(DELIMITER)[1])
         step_index = int(chat_state.split(DELIMITER)[2])
@@ -192,7 +204,6 @@ you can do so by selecting any of the subjects provided for you from the menu on
                     """,
             )
         st.rerun()
-
 
     if journey is not None and len(history.messages) == 0:
         history.add_ai_message(

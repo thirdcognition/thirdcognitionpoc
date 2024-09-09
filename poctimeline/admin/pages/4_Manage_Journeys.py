@@ -619,7 +619,7 @@ async def main():
         st.header("First, choose a category.")
         return
 
-    db_journey = get_db_journey(chroma_collections=["rag_" + category for category in categories])
+    db_journey = get_db_journey(chroma_collections=["rag_" + category for category in categories], reset=True)
 
     if db_journey is not None and len(db_journey.keys()) > 0:
         st.header("Journey database")

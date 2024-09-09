@@ -33,6 +33,7 @@ from lib.prompts.actions import action, summary, summary_guided, question_classi
 from lib.prompts.formatters import text_formatter, text_formatter_compress, text_formatter_guided, md_formatter, md_formatter_guided, concept_structured
 from lib.prompts.chat import chat, question, helper
 from lib.prompts.hyde import hyde, hyde_document
+from chains.prompt_generator import journey_prompts
 
 CHAT_RATE_LIMITER = None
 
@@ -240,6 +241,7 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
     "md_formatter": ("instruct" if not DEVMODE else "instruct", md_formatter, False),
     "md_formatter_guided": ("instruct_detailed_0", md_formatter_guided, True),
     "concept_structured": ("structured", concept_structured, True),
+    "journey_prompt_generator": ("structured_detailed", journey_prompts, True),
     "journey_structured": ("structured", journey_structured, False),
     "journey_steps": ("structured_detailed" if not DEVMODE else "structured", journey_steps, True),
     "journey_step_content": ("instruct_detailed_warm", journey_step_content, True),

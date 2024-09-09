@@ -15,7 +15,7 @@ from lib.document_tools import get_rag_chunks
 from lib.load_env import SETTINGS
 from lib.models.journey import JourneyModel
 from lib.models.sqlite_tables import Base, SourceContents, SourceData, SourceDataTable, JourneyDataTable, SourceType
-
+from chains.prompt_generator import CustomPrompt, CustomPromptContainer
 chroma_client = None
 database_session = None
 
@@ -280,5 +280,5 @@ def get_vectorstore_as_retriever(store_id, embedding_id="base", amount_of_docume
     vectorstore = get_vectorstore(store_id, embedding_id)
     return vectorstore.as_retriever(
         search_type="similarity_score_threshold",
-        search_kwargs={"k": amount_of_documents, "score_threshold": 0.3},
+        search_kwargs={"k": amount_of_documents, "score_threshold": 0.15},
     )

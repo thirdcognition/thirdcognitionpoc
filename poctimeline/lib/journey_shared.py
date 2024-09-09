@@ -5,6 +5,7 @@ import time
 import streamlit as st
 from typing import Any, Callable, Dict, List, Union
 from langchain_core.messages import BaseMessage, AIMessage
+import yaml
 
 from lib.chains.init import get_base_chain, get_chain
 from lib.chains.rag_chain import get_rag_chain
@@ -416,80 +417,51 @@ def create_subject_prompt_editor(id:str, subject: SubjectModel, edit_mode: bool 
         return prompt
 
     with st.expander(f"Prompts for {id}", expanded=False):
-        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Subsections", "Subsection\nIntro", "Subsection\nPrelim content", "Subsection\nFinal content", "Subsection\nModules", "Subsection\nModule Details", "Bulk"])
+
+        tab0, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Prompt generator", "Subsections", "Subsection\nIntro", "Subsection\n content", "Subsection\nModules", "Subsection\nModule Details", "Bulk"])
         try:
+            with tab0:
+                actor = st.text_input("Actor", value="Teacher", key=f"prompt_actor_{id}", help="Actor string, e.g.: 'Teacher' or 'HR Representative'")
+                target = st.text_input("Use case", value="Create a class curriculum for students.", key=f"prompt_target_{id}", help="Actor string, e.g.: 'Create a class curriculum for students.'")
+
+                if st.button("Generate new prompts" , key=f"generate_prompts_{id}"):
+                    with st.spinner("Generating prompts..."):
+                        new_prompts = get_chain("journey_prompt_generator").invoke({"actor": actor, "target": target})
+                        subject.prompts=convert_to_journey_prompts(new_prompts)
+
             subject.prompts.steps = edit_prompt(1, subject.prompts.steps, tab1)
             subject.prompts.step_content = edit_prompt(2, subject.prompts.step_content, tab2)
+            # subject.prompts.step_content_redo = edit_prompt(3, subject.prompts.step_content_redo, tab3)
             subject.prompts.step_intro = edit_prompt(3, subject.prompts.step_intro, tab3)
             subject.prompts.step_actions = edit_prompt(4, subject.prompts.step_actions, tab4)
             subject.prompts.step_action_details = edit_prompt(5, subject.prompts.step_action_details, tab5)
 
-            with tab7:
+            with tab6:
                 if edit_mode:
-                    bulk_prompt = (
-                        "Prompt: steps\n"
-                        "--system--\n"
-                        f"{subject.prompts.steps.system}\n"
-                        "--system--\n"
-                        "--user--\n"
-                        f"{subject.prompts.steps.user}\n"
-                        "--user--\n\n"
-
-                        "Prompt: step_intro\n"
-                        "--system--\n"
-                        f"{subject.prompts.step_intro.system}\n"
-                        "--system--\n"
-                        "--user--\n"
-                        f"{subject.prompts.step_intro.user}\n"
-                        "--user--\n\n"
-
-                        "Prompt: step_content\n"
-                        "--system--\n"
-                        f"{subject.prompts.step_content.system}\n"
-                        "--system--\n"
-                        "--user--\n"
-                        f"{subject.prompts.step_content.user}\n"
-                        "--user--\n\n"
-
-                        "Prompt: step_actions\n"
-                        "--system--\n"
-                        f"{subject.prompts.step_actions.system}\n"
-                        "--system--\n"
-                        "--user--\n"
-                        f"{subject.prompts.step_actions.user}\n"
-                        "--user--\n\n"
-
-                        "Prompt: step_action_details\n"
-                        "--system--\n"
-                        f"{subject.prompts.step_action_details.system}\n"
-                        "--system--\n"
-                        "--user--\n"
-                        f"{subject.prompts.step_action_details.user}\n"
-                        "--user--"
-                    )
-                    bulk = st.text_area("Bulk prompt", value=bulk_prompt, height=300, key=f"bulk_prompt_{id}")
+                    yaml_prompts = yaml.dump(subject.prompts.model_dump(), default_flow_style=False)
+                    yaml_prompts = st.text_area("Prompts as YAML", value=yaml_prompts, height=300, key=f"yaml_prompts_{id}")
 
                     if st.button("Update prompts", key=f"update_prompts_{id}"):
-                        update_subject_prompts(subject, bulk)
+                        update_subject_prompts(subject, yaml_prompts)
                         st.rerun()
         except Exception as e:
             st.error(f"An error occurred: {e}")
 
     return subject.prompts
 
-def separate_prompts(bulk_prompt) -> Dict[str, Dict[str, str]]:
-    prompts = {}
-    pattern = r'Prompt: (\w+)\s*--system--\s*(.*?)\s*--system--\s*--user--\s*(.*?)\s*--user--'
-    matches = re.findall(pattern, bulk_prompt, re.DOTALL)
-    for match in matches:
-        prompt_name = match[0]
-        system_prompt = match[1].strip()
-        user_prompt = match[2].strip()
-        prompts[prompt_name] = {'system': system_prompt, 'user': user_prompt}
-    return prompts
+# def separate_prompts(bulk_prompt) -> Dict[str, Dict[str, str]]:
+#     prompts = {}
+#     pattern = r'Prompt: (\w+)\s*--system--\s*(.*?)\s*--system--\s*--user--\s*(.*?)\s*--user--'
+#     matches = re.findall(pattern, bulk_prompt, re.DOTALL)
+#     for match in matches:
+#         prompt_name = match[0]
+#         system_prompt = match[1].strip()
+#         user_prompt = match[2].strip()
+#         prompts[prompt_name] = {'system': system_prompt, 'user': user_prompt}
+#     return prompts
 
 def update_subject_prompts(subject: SubjectModel, bulk: str):
-    prompts = separate_prompts(bulk)
+    prompts = yaml.safe_load(bulk)
     subject.prompts.steps.system = prompts['steps']['system']
     subject.prompts.steps.user = prompts['steps']['user']
     subject.prompts.step_intro.system = prompts['step_intro']['system']

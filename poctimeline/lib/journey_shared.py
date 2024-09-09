@@ -452,9 +452,9 @@ def create_subject_prompt_editor(id:str, subject: SubjectModel, edit_mode: bool 
                         subject.prompts=convert_to_journey_prompts(new_prompts)
 
             subject.prompts.steps = edit_prompt(1, subject.prompts.steps, tab1)
-            subject.prompts.step_content = edit_prompt(2, subject.prompts.step_content, tab2)
+            subject.prompts.step_intro = edit_prompt(2, subject.prompts.step_intro, tab2)
+            subject.prompts.step_content = edit_prompt(3, subject.prompts.step_content, tab3)
             # subject.prompts.step_content_redo = edit_prompt(3, subject.prompts.step_content_redo, tab3)
-            subject.prompts.step_intro = edit_prompt(3, subject.prompts.step_intro, tab3)
             subject.prompts.step_actions = edit_prompt(4, subject.prompts.step_actions, tab4)
             subject.prompts.step_action_details = edit_prompt(5, subject.prompts.step_action_details, tab5)
 

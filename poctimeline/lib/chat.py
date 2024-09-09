@@ -61,6 +61,7 @@ def init_journey_chat(journey_name: str = "ThirdCognition", rag_collection: str 
             collections = st.session_state.journey_list[journey_name].chroma_collection
             chains[journey_name] = get_chain_with_history(journey_name, get_rag_chain(collections, chat=True))
         else:
+            journey_name = "ThirdCognition"
             collection = (
                 "rag_ThirdCognition" if rag_collection is None else rag_collection
             )
@@ -74,7 +75,7 @@ def init_journey_chat(journey_name: str = "ThirdCognition", rag_collection: str 
 
     return True
 
-def chat_elements(chat_state, journey_name=None):
+def chat_elements(chat_state, journey_name="ThirdCognition"):
     st.session_state.chat_history_seen = (
         st.session_state.chat_history_seen
         if "chat_history_seen" in st.session_state

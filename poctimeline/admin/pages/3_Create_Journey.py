@@ -78,7 +78,7 @@ def create_subject(
 
     return subject
 
-
+@st.fragment
 def get_journey_gen(journey_name):
     st.subheader("Journey generator")
     if (
@@ -163,7 +163,7 @@ def get_journey_gen(journey_name):
                     )
                 )
                 st.session_state.journey_get_details[journey_name] = journey_details
-                st.rerun()
+                st.rerun(scope="fragment")
 
     # Check that all subjects have files defined
     def check_subject_files(subjects: List[SubjectModel]):
@@ -221,7 +221,7 @@ def get_journey_gen(journey_name):
             st.session_state.journey_generator_running = False
             time.sleep(0.1)
             # get_db_journey(reset=True)
-            st.rerun()
+            st.rerun(scope="fragment")
         else:
             st.error("Journey save failed.")
     return journey_details

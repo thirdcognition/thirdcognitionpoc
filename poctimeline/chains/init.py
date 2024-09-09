@@ -255,7 +255,7 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
     "check": ("instruct_0", check, False),
     "text_formatter": ("instruct", text_formatter, False),
     "text_formatter_compress": ("instruct", text_formatter_compress, False),
-    "text_formatter_guided_0": ("instruct_detailed", text_formatter_guided, True),
+    "text_formatter_guided": ("instruct_detailed_0", text_formatter_guided, True),
     "md_formatter": ("instruct", md_formatter, False),
     "md_formatter_guided": ("instruct_0", md_formatter_guided, False),
     "journey_prompt_generator": ("structured_detailed", journey_prompts, True),

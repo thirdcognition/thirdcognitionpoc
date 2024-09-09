@@ -2,9 +2,11 @@ import textwrap
 from typing import List
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
+from lib.chains.prompt_generator import CustomPromptContainer
 from lib.models.prompts import CustomPrompt
 from lib.models.sqlite_tables import CategoryTag
 from lib.prompts.base import (
+    ACTOR_INTRODUCTIONS,
     KEEP_PRE_THINK_TOGETHER,
     MAINTAIN_CONTENT_AND_USER_LANGUAGE,
     PRE_THINK_INSTRUCT,
@@ -35,13 +37,14 @@ class JourneyStepList(BaseModel):
 journey_steps = PromptFormatter(
     system=textwrap.dedent(
         f"""
+        {ACTOR_INTRODUCTIONS}
         Act as a teacher who is planning a curriculum.
         Using the content between context start and end write a list
         with the specified format structure.
         If instructions are provided follow them exactly.
         Only use the information available within the context.
-        If there's a history with previous titles, subjects or actions,
-        use them to make sure you don't repeat the same subjects or actions.
+        If there's a history with previous titles or subjects,
+        use them to make sure you don't repeat the same subjects.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         Return only the properly formatted JSON object with the formatted data.
         """
@@ -70,8 +73,8 @@ journey_steps = PromptFormatter(
         Format the context data using the format structure.
         Do not add any information to the context or come up with subjects
         not defined within the context.
-        If there's a history with previous titles, subjects or actions,
-        use them to make sure you don't repeat the same subjects or actions.
+        If there's a history with previous titles or subjects,
+        use them to make sure you don't repeat the same subjects.
         Return only the properly formatted JSON object with the formatted data.
         """
     ),
@@ -81,7 +84,7 @@ journey_steps.parser = PydanticOutputParser(pydantic_object=JourneyStepList)
 journey_step_content = PromptFormatter(
     system=textwrap.dedent(
         f"""
-        You are ThirdCognition Virtual Buddy.
+        {ACTOR_INTRODUCTIONS}
         Act as a teacher who is writing study material for a class with a specific subject.
         Do not use code, or any markup, markdown or html. Just use natural spoken language divided
         into a clear structure.
@@ -91,8 +94,7 @@ journey_step_content = PromptFormatter(
         {KEEP_PRE_THINK_TOGETHER}
         Create the study material for the student with the following information between context start and end.
         Only use the information available within the context. Do not add or remove information from the context.
-        If instructions are provided follow them exactly. The material should be clearly divided into sections
-        with titles and sections generated from the content.
+        If there's a history with previous titles or subjects, use them to make sure you don't repeat the same subjects.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         If instructions are provided follow them exactly.
         """
@@ -129,7 +131,7 @@ journey_step_content.parser = TagsParser(min_len=10)
 journey_step_intro = PromptFormatter(
     system=textwrap.dedent(
         f"""
-        You are ThirdCognition Virtual Buddy.
+        {ACTOR_INTRODUCTIONS}
         Act as a teacher who is explaining the class with a specific subject for the student at the
         beginning of the class. Use an informal style and 3 sentences maximum.
         Do not use code, or any markup, markdown or html. Just use natural spoken language.
@@ -138,8 +140,8 @@ journey_step_intro = PromptFormatter(
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         {PRE_THINK_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
-        If there's a history with previous titles, subjects or actions,
-        use them to make sure you don't repeat the same subjects or actions.
+        If there's a history with previous titles or subjects,
+        use them to make sure you don't repeat the same subjects.
         Use the content for the class available between content start and end.
         """
     ),
@@ -170,15 +172,15 @@ journey_step_intro.parser = TagsParser(min_len=10)
 journey_step_actions = PromptFormatter(
     system=textwrap.dedent(
         f"""
-        You are ThirdCognition Virtual Buddy.
-        Act as a teacher who planning actions for teaching the student a specific subject and actions to verify that the student has learned the subject.
-        You only have one student you're tutoring so don't have to address more than one person. Also add a section to each action for support document resources
+        {ACTOR_INTRODUCTIONS}
+        Act as a teacher who planning sections of content for teaching the student a specific subject.
+        You only have one student you're tutoring so don't have to address more than one person. Also add references to support documents
         with their summary and material to use when teaching the student about the subject.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         {PRE_THINK_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
-        If there's a history with previous titles, subjects or actions,
-        use them to make sure you don't repeat the same subjects or actions.
+        If there's a history with previous titles or subjects,
+        use them to make sure you don't repeat the same subjects.
         Use the content for the class available between content start and end.
         """
     ),
@@ -199,11 +201,11 @@ journey_step_actions = PromptFormatter(
         {context}
         content end
 
-        Write a list of actions to take to teach the subject to the student and how to verify that the student has learned the subject.
-        Prepare also a list of document resources and their summary to use with each action when teaching the student about the subject.
+        Write a list of sections with their content to teach the subject to the student.
+        Prepare also a list of reference documents and their summary to use with each section when teaching the student about the subject.
         If instructions are provided, follow them exactly. If instructions specify a topic or subject, make sure the list includes only
         items which fall within within that topic. Create at maximum the specified amount of items.
-        If there's a history with previous titles, subjects or actions, use them to make sure you don't repeat the same subjects or actions.
+        If there's a history with previous titles or subjects, use them to make sure you don't repeat the same subjects.
         """
     ),
 )
@@ -212,13 +214,13 @@ journey_step_actions.parser = TagsParser(min_len=10)
 journey_step_action_details = PromptFormatter(
     system=textwrap.dedent(
         f"""
-        You are ThirdCognition Virtual Buddy.
+        {ACTOR_INTRODUCTIONS}
         Act as a teacher who is creating resources and content to support teaching in class
         to use as a base for the discussion and lesson with the student.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         {PRE_THINK_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
-        If there's a history with previous titles, subjects or actions, use them to make sure you don't repeat the same subjects or actions.
+        If there's a history with previous titles or subjects, use them to make sure you don't repeat the same subjects.
         Use the provided resource description and the content available between content start and end to create the resources.
         """
     ),
@@ -239,8 +241,8 @@ journey_step_action_details = PromptFormatter(
         Prepare max 10 sentences of material as the resource described to be used while teaching a student.
         If instructions are provided, follow them exactly. If instructions specify a topic or subject, make sure the list includes only
         items which fall within within that topic.
-        If there's a history with previous titles, subjects or actions,
-        use them to make sure you don't repeat the same subjects or actions.
+        If there's a history with previous titles or subjects,
+        use them to make sure you don't repeat the same subjects.
         """
     ),
 )
@@ -271,4 +273,13 @@ class JourneyPrompts(BaseModel):
             system=journey_step_action_details.system,
             user=journey_step_action_details.user,
         )
+    )
+
+def convert_to_journey_prompts(container: CustomPromptContainer) -> JourneyPrompts:
+    return JourneyPrompts(
+        steps=container.steps,
+        step_content=container.step_content,
+        step_intro=container.step_intro,
+        step_actions=container.step_actions,
+        step_action_details=container.step_action_details
     )

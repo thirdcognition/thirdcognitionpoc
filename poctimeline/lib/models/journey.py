@@ -17,17 +17,16 @@ class ResourceStructure(BaseModel):
     )
 
 class ActionStructure(BaseModel):
-    title: str = Field(description="Title for the step", title="Title")
+    title: str = Field(description="Title for the content", title="Title")
     description: str = Field(
-        description="Objective, task, or target for what to do on the step",
-        title="Description",
+        description="Objective, or target for the content", title="Description"
     )
     resources: List[ResourceStructure] = Field(
-        description="List of content to help the Teacher to perform the step.",
+        description="List of references to documents or resources to help with the specifics for the content.",
         title="Resources",
     )
     test: str = Field(
-        description="Description on how to do a test to verify that the student has succeeded in learning the contents for the step.",
+        description="Description on how to do a test to verify that the student has succeeded in learning the contents.",
         title="Test",
     )
 
@@ -37,8 +36,8 @@ class SubjectStructure(BaseModel):
     intro: str = Field(description="Introduction to the class", title="Intro")
     content: str = Field(description="Detailed content of the class", title="Content")
     actions: List[ActionStructure] = Field(
-        description="List steps for the teacher to take within the class to teach the subject.",
-        title="Actions",
+        description="List of contents to help teaching the subject.",
+        title="Content",
     )
 
 

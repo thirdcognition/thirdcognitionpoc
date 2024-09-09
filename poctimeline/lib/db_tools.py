@@ -15,7 +15,7 @@ from lib.document_tools import get_rag_chunks
 from lib.load_env import SETTINGS
 from lib.models.journey import JourneyModel
 from lib.models.sqlite_tables import Base, SourceContents, SourceData, SourceDataTable, JourneyDataTable, SourceType
-from chains.prompt_generator import CustomPrompt, CustomPromptContainer
+from lib.chains.prompt_generator import CustomPrompt, CustomPromptContainer
 chroma_client = None
 database_session = None
 

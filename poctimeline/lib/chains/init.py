@@ -33,7 +33,7 @@ from lib.prompts.actions import action, summary, summary_guided, question_classi
 from lib.prompts.formatters import text_formatter, text_formatter_compress, text_formatter_guided, md_formatter, md_formatter_guided, concept_structured
 from lib.prompts.chat import chat, question, helper
 from lib.prompts.hyde import hyde, hyde_document
-from chains.prompt_generator import journey_prompts
+from lib.chains.prompt_generator import journey_prompts
 
 CHAT_RATE_LIMITER = None
 

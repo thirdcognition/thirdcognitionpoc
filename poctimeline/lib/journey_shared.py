@@ -21,7 +21,7 @@ from lib.streamlit_tools import llm_edit
 from lib.models.journey import ActionStructure, JourneyModel, ResourceStructure, StepModel, SubjectModel, SubjectStructure
 from lib.models.prompts import CustomPrompt
 from lib.models.sqlite_tables import SourceContents, SourceData, JourneyDataTable
-from lib.prompts.journey import JourneyStep, JourneyStepList
+from lib.prompts.journey import JourneyStep, JourneyStepList, convert_to_journey_prompts
 
 def save_journey(journey_name, journey:JourneyModel) -> bool:
     print(f"Save journey {journey_name}")

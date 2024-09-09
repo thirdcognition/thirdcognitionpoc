@@ -5,7 +5,8 @@ from pydantic import BaseModel, Field
 import yaml
 from langchain_core.output_parsers import PydanticOutputParser
 
-from chains.prompts import PromptFormatter
+from lib.prompts.base import PromptFormatter
+
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 

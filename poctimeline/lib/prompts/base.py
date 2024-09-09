@@ -23,6 +23,7 @@ PRE_THINK_INSTRUCT = """
         Before starting plan how to proceed step by step and place your thinking between
         [thinking_start] and [thinking_end]-tags. Then follow your plan and return only the expected output.
         """
+ACTOR_INTRODUCTIONS = "You are a helpful and efficient AI assistant Virtual Buddy."
 # For example:
 
 # Example 1:

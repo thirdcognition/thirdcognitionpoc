@@ -48,9 +48,10 @@ Select 👈 a the section from sidebar to edit the content!
             journey_found = init_journey_chat(
                 rag_collection=f"rag_{selected_category}"
             )
-            if "chat_state" not in st.session_state:
-                st.session_state.chat_state = "default"
+            # if "chat_state" not in st.session_state:
+            #     st.session_state.chat_state = "default"
 
+            # if journey_found:
             chat_elements("default")
         else:
             st.write("Please select a category to start chatting.")

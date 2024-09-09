@@ -233,7 +233,7 @@ def get_db_journey(journey_name: str = None, chroma_collections = None, reset=Fa
     if chroma_collections:
         new_db_journeys = {}
         for cat in chroma_collections:
-            print(f"{cat=} {[f"{name}: {journey.chroma_collection=}" for name, journey in db_journey.items()]}")
+            # print(f"{cat=} {[f"{name}: {journey.chroma_collection=}" for name, journey in db_journey.items()]}")
             new_db_journeys.update(
                 {k: v for k, v in db_journey.items() if cat in v.chroma_collection}
             )

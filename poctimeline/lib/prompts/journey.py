@@ -86,8 +86,8 @@ journey_step_content = PromptFormatter(
         f"""
         {ACTOR_INTRODUCTIONS}
         Act as a teacher who is writing study material for a class with a specific subject.
-        Do not use code, or any markup, markdown or html. Just use natural spoken language divided
-        into a clear structure.
+        Use blog content style and structure starting with an introduction and synopsis and
+        continuing with clearly sectioned content. Use markdown syntax for formatting.
         Your student is a business graduate who is interested in learning about the subject.
         You only have one student you're tutoring and you are making study materials for them.
         {PRE_THINK_INSTRUCT}
@@ -114,7 +114,9 @@ journey_step_content = PromptFormatter(
         {subject}
 
 
-        Create study materials for the student defined by the subject. Don't include any other content outside of the subject.
+        Create study materials for the student defined by the subject.
+        Use blog content style and structure starting with an introduction and synopsis and continuing with
+        clearly sectioned content. Don't include any other content outside of the subject.
         Only use the information available within the context. Do not add or remove information from the context.
         If instructions are provided, follow them exactly. If instructions specify a topic or subject, make sure the
         output includes only items which fall within them.
@@ -132,9 +134,9 @@ journey_step_intro = PromptFormatter(
     system=textwrap.dedent(
         f"""
         {ACTOR_INTRODUCTIONS}
-        Act as a teacher who is explaining the class with a specific subject for the student at the
-        beginning of the class. Use an informal style and 3 sentences maximum.
-        Do not use code, or any markup, markdown or html. Just use natural spoken language.
+        Act as a teacher who is writing a brief introduction and a synopsis to a specific subject
+        for the student. Use an informal style and 3 sentences maximum.
+        Do not use code, lists, or any markup, markdown or html. Just use natural spoken language.
         Your student is a business graduate who is interested in learning about the subject.
         You only have one student you're tutoring so don't have to address more than one person.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
@@ -159,7 +161,7 @@ journey_step_intro = PromptFormatter(
         {context}
         content end
 
-        Add an introduction to the class and explain the content of the class briefly.
+        Write an introduction and a synopsis to the subject for the student using only natural language.
         If instructions are provided, follow them exactly. If instructions specify
         a topic or subject, make sure the list includes only items which fall within
         within that topic.

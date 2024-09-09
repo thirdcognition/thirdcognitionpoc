@@ -1,3 +1,6 @@
+Actor: Startup founder
+Use case: Create content for customers and investors to understand ThirdCognition as a company, why they're going to succeed and what they can offer.
+
 Focus on ThirdCognition as a company. Don't focus on the products, but only focus on the startup journey, values and goals
 
 Focus on Journey Builder, what is it used for and what are it's benefits. Don't focus on the company, but only focus on the product.

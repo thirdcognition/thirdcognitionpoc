@@ -42,7 +42,7 @@ This is an *extremely* cool admin tool!
 )
 
 
-def save_journey_command(journey_name, id, journey: JourneyModel):
+def save_journey_command(journey_name, id, journey: JourneyModel, scope="fragment"):
     if save_journey(journey_name, journey):
         st.session_state.editing_journey = None
         st.session_state.editing_journey_details = None
@@ -50,7 +50,7 @@ def save_journey_command(journey_name, id, journey: JourneyModel):
         st.session_state.editing_journey_step = None
         st.session_state.edit_mode[id] = False
         time.sleep(0.1)
-        st.rerun()
+        st.rerun(scope=scope)
     else:
         st.error("Error saving journey")
 
@@ -58,7 +58,7 @@ def save_journey_command(journey_name, id, journey: JourneyModel):
 def save_journey_ui(id, journey_name, journey: JourneyModel):
     subcol1, subcol2, _ = st.columns([1, 1, 5])
     if subcol1.button("Save", key=f"save_button_{id}", use_container_width=True):
-        save_journey_command(journey_name, id, journey)
+        save_journey_command(journey_name, id, journey, scope="app")
     if subcol2.button("Cancel", key=f"cancel_button_{id}", use_container_width=True):
         st.session_state.editing_journey = None
         st.session_state.editing_journey_details = None
@@ -284,7 +284,10 @@ def journey_subject_step_actions_ui(
                         "Module",
                         [i + 1 for i, action in enumerate(step.structured.actions)],
                         key=f"journey_step_action_index_{journey_name}_{subject_index}_{step_index}",
-                        captions=[action.title for i, action in enumerate(step.structured.actions)],
+                        captions=[
+                            action.title
+                            for i, action in enumerate(step.structured.actions)
+                        ],
                         index=0,
                     )
                     - 1
@@ -339,7 +342,7 @@ def journey_subject_step_actions_ui(
                     )
                     journey.subjects[subject_index].steps[step_index] = step
 
-                    st.rerun()
+                    st.rerun(scope="fragment")
 
                 st.write(
                     "This will regenerate the modules for this subsection. This may take a few minutes.\n\nYou'll need to manually save after regeneration."
@@ -368,7 +371,7 @@ def journey_subject_step_actions_ui(
                         new_structured,
                     )
                     journey.subjects[subject_index].steps[step_index] = step
-                    st.rerun()
+                    st.rerun(scope="fragment")
 
                 st.write(
                     "This will regenerate the structured modules for this step. This may take a few minutes.\n\nYou'll need to manually save after regeneration."
@@ -398,7 +401,7 @@ def journey_subject_step_actions_ui(
                     col2.write("##### Resources:")
                     for resource in action.resources:
                         with col2.expander(resource.title):
-                        # col2.write(f"###### {resource.title}")
+                            # col2.write(f"###### {resource.title}")
                             st.write(f"{resource.summary}")
                             st.write(f"_Ref: {resource.reference}_")
                 # col2.write(
@@ -480,7 +483,7 @@ def edit_action_ui(
                 resource_index,
             ),
         ):
-            st.rerun()
+            st.rerun(scope="fragment")
         resource.reference = st.text_area(
             f"Resource {resource_index+1} reference",
             value=resource.reference,
@@ -516,7 +519,14 @@ def edit_action_ui(
 
 
 def add_subject(journey_name: str, journey: JourneyModel):
-    journey.subjects.append(SubjectModel(title="New section", summary="", steps=[]))
+    journey.subjects.append(
+        SubjectModel(
+            title="New section",
+            summary="",
+            steps=[StepModel(title="New subsection", actions="")],
+            prompts=journey.subjects[-1].prompts.model_copy(),
+        )
+    )
 
 
 def remove_subject(journey_name: str, journey: JourneyModel, subject_index: int):
@@ -605,7 +615,136 @@ def remove_resource(
     ].resources.pop(resource_index)
 
 
-async def main():
+@st.fragment
+def journey_subjects_ui(journey_name: str, journey_index: int, journey: JourneyModel):
+    col1, col2 = st.columns([1, 1], vertical_alignment="center")
+    subject_titles = [subject.title for subject in journey.subjects]
+    subject_title = col1.selectbox(
+        "Section",
+        options=subject_titles,
+        key=f"subject_select_{journey_name}_subject",
+        index=(
+            min(int(st.session_state.subject_index if "subject_index" in st.session_state else 0), len(subject_titles))
+        ),
+    )
+    st.session_state.subject_index = subject_titles.index(subject_title)
+    subject = journey.subjects[st.session_state.subject_index]
+    if st.session_state.edit_mode[journey_index]:
+        mod_col1, mod_col2, mod_col3 = col1.columns([1, 1, 1])
+        if mod_col1.button(
+            "**+**",
+            key=f"add_subject_button_{journey_name}",
+            on_click=add_subject,
+            args=(journey_name, journey),
+            use_container_width=True,
+        ):
+            st.session_state.subject_index = len(journey.subjects) - 1
+            st.rerun(scope="fragment")
+
+        with mod_col2.popover(":sparkle:", use_container_width=True):
+            if st.button(
+                f"Are you sure you want regenerate {journey_name}: {subject_title}?",
+                key=f"generate_subject_button_{journey_name}",
+                use_container_width=True,
+            ):
+                journey.subjects[st.session_state.subject_index] = gen_journey_subject(
+                    journey, subject, st.session_state.subject_index
+                )
+                save_journey_command(journey_name, journey_index, journey)
+
+        with mod_col3.popover(":x:", use_container_width=True):
+            st.button(
+                f"Are you sure you want to remove {journey_name}: {subject_title}?",
+                key=f"delete_subject_button_{journey_name}",
+                use_container_width=True,
+                on_click=remove_subject,
+                args=(journey_name, journey, st.session_state.subject_index),
+            )
+    step_titles = [step.title for step in subject.steps]
+    step_title = col2.selectbox(
+        "Subsection",
+        options=step_titles,
+        key=f"step_select_{journey_name}_step",
+        index=0,
+    )
+    step_index = None
+    if step_title is not None:
+        step_index = step_titles.index(step_title) if 0 < len(step_titles) else []
+    # step = subject.steps[step_index]
+    if st.session_state.edit_mode[journey_index]:
+        mod_col1, mod_col2, mod_col3 = col2.columns([1, 1, 1])
+        mod_col1.button(
+            "**+**",
+            key=f"add_step_button_{journey_name}",
+            on_click=add_step,
+            args=(journey_name, journey, st.session_state.subject_index),
+            use_container_width=True,
+        )
+        with mod_col2.popover(":sparkle:", use_container_width=True):
+            if st.button(
+                f"Are you sure you want regenerate {journey_name}: {subject_title} - {step_title}?",
+                key=f"generate_step_button_{journey_name}",
+                use_container_width=True,
+            ):
+                journey.subjects[st.session_state.subject_index] = gen_journey_subject(
+                    journey,
+                    subject,
+                    step_index=step_index,
+                )
+                save_journey_command(journey_name, journey_index, journey)
+        with mod_col3.popover(":x:", use_container_width=True):
+            st.button(
+                f"Are you sure you want to remove {journey_name}: {subject_title} - {step_title}?",
+                key=f"delete_step_button_{journey_name}",
+                use_container_width=True,
+                on_click=remove_step,
+                args=(
+                    journey_name,
+                    journey,
+                    st.session_state.subject_index,
+                    step_index,
+                ),
+            )
+
+    # for st.session_state.subject_index, subject in enumerate(journey.subjects):
+    tab1, tab2, tab4, tab5 = st.tabs(
+        [
+            "Section details",
+            "Subsection details",
+            "Modules as text",
+            "Modules structured",
+        ]
+    )
+
+    with tab1:
+        journey_subject_details_ui(
+            journey_name,
+            st.session_state.subject_index,
+            journey,
+            st.session_state.edit_mode[journey_index],
+        )
+
+    if 0 < len(step_titles) and step_index is not None:
+        journey_subject_step_ui(
+            journey_name,
+            st.session_state.subject_index,
+            step_index,
+            journey,
+            st.session_state.edit_mode[journey_index],
+            tab2,
+        )
+        journey_subject_step_actions_ui(
+            journey_name,
+            st.session_state.subject_index,
+            step_index,
+            journey,
+            st.session_state.edit_mode[journey_index],
+            tab4,
+            tab5,
+        )
+
+
+def main():
     init_db()
     st.title("Manage Journeys")
 
@@ -619,7 +758,14 @@ async def main():
         st.header("First, choose a category.")
         return
 
-    db_journey = get_db_journey(chroma_collections=["rag_" + category for category in categories], reset=True)
+    db_journey = get_db_journey(
+        chroma_collections=["rag_" + category for category in categories]
+    )
+    if len(db_journey.keys()) == 0:
+        db_journey = get_db_journey(
+            chroma_collections=["rag_" + category for category in categories],
+            reset=True,
+        )
 
     if db_journey is not None and len(db_journey.keys()) > 0:
         st.header("Journey database")
@@ -629,7 +775,6 @@ async def main():
     if "edit_mode" not in st.session_state or len(st.session_state.edit_mode) == 0:
         st.session_state.edit_mode = [False for _ in db_journey.keys()]
     for journey_index, journey_name in enumerate(db_journey.keys()):
-
         journey: JourneyModel = db_journey[journey_name]
         col_edit, col_delete, col2, col3 = st.columns(
             [2, 2, 12, 3], vertical_alignment="center"
@@ -660,124 +805,8 @@ async def main():
                 journey_name, journey, st.session_state.edit_mode[journey_index]
             )
         with tab2:
-            col1, col2 = st.columns([1, 1], vertical_alignment="center")
-            subject_titles = [subject.title for subject in journey.subjects]
-            subject_title = col1.selectbox(
-                "Section",
-                options=subject_titles,
-                key=f"subject_select_{journey_name}_subject",
-                index=0,
-            )
-            subject_index = subject_titles.index(subject_title)
-            subject = journey.subjects[subject_index]
-            if st.session_state.edit_mode[journey_index]:
-                mod_col1, mod_col2, mod_col3 = col1.columns([1, 1, 1])
-                mod_col1.button(
-                    "**+**",
-                    key=f"add_subject_button_{journey_name}",
-                    on_click=add_subject,
-                    args=(journey_name, journey),
-                    use_container_width=True,
-                )
-                with mod_col2.popover(":sparkle:", use_container_width=True):
-                    if st.button(
-                        f"Are you sure you want regenerate {journey_name}: {subject_title}?",
-                        key=f"generate_subject_button_{journey_name}",
-                        use_container_width=True,
-                    ):
-                        journey.subjects[subject_index] = await gen_journey_subject(
-                            journey, subject, subject_index=subject_index
-                        )
-                        save_journey_command(journey_name, journey_index, journey)
+            journey_subjects_ui(journey_name, journey_index, journey)
 
-                with mod_col3.popover(":x:", use_container_width=True):
-                    st.button(
-                        f"Are you sure you want to remove {journey_name}: {subject_title}?",
-                        key=f"delete_subject_button_{journey_name}",
-                        use_container_width=True,
-                        on_click=remove_subject,
-                        args=(journey_name, journey, subject_index),
-                    )
-
-            step_titles = [step.title for step in subject.steps]
-            step_title = col2.selectbox(
-                "Subsection",
-                options=step_titles,
-                key=f"step_select_{journey_name}_step",
-                index=0,
-            )
-            step_index = None
-            if step_title is not None:
-                step_index = (
-                    step_titles.index(step_title) if 0 < len(step_titles) else []
-                )
-            # step = subject.steps[step_index]
-            if st.session_state.edit_mode[journey_index]:
-                mod_col1, mod_col2, mod_col3 = col2.columns([1, 1, 1])
-                mod_col1.button(
-                    "**+**",
-                    key=f"add_step_button_{journey_name}",
-                    on_click=add_step,
-                    args=(journey_name, journey, subject_index),
-                    use_container_width=True,
-                )
-                with mod_col2.popover(":sparkle:", use_container_width=True):
-                    if st.button(
-                        f"Are you sure you want regenerate {journey_name}: {subject_title} - {step_title}?",
-                        key=f"generate_step_button_{journey_name}",
-                        use_container_width=True,
-                    ):
-                        journey.subjects[subject_index] = await gen_journey_subject(
-                            journey,
-                            subject,
-                            step_index=step_index,
-                        )
-                        save_journey_command(journey_name, journey_index, journey)
-                with mod_col3.popover(":x:", use_container_width=True):
-                    st.button(
-                        f"Are you sure you want to remove {journey_name}: {subject_title} - {step_title}?",
-                        key=f"delete_step_button_{journey_name}",
-                        use_container_width=True,
-                        on_click=remove_step,
-                        args=(journey_name, journey, subject_index, step_index),
-                    )
-
-            # for subject_index, subject in enumerate(journey.subjects):
-            tab1, tab2, tab4, tab5 = st.tabs(
-                [
-                    "Section details",
-                    "Subsection details",
-                    "Modules as text",
-                    "Modules structured",
-                ]
-            )
-
-            with tab1:
-                journey_subject_details_ui(
-                    journey_name,
-                    subject_index,
-                    journey,
-                    st.session_state.edit_mode[journey_index],
-                )
-
-            if 0 < len(step_titles) and step_index is not None:
-                journey_subject_step_ui(
-                    journey_name,
-                    subject_index,
-                    step_index,
-                    journey,
-                    st.session_state.edit_mode[journey_index],
-                    tab2,
-                )
-                journey_subject_step_actions_ui(
-                    journey_name,
-                    subject_index,
-                    step_index,
-                    journey,
-                    st.session_state.edit_mode[journey_index],
-                    tab4,
-                    tab5,
-                )
         if st.session_state.edit_mode[journey_index]:
             save_journey_ui(journey_index, journey_name, journey)
 

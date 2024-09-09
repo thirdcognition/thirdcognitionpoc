@@ -35,7 +35,7 @@ This is an *extremely* cool admin tool!
     },
 )
 
-
+@st.fragment
 async def manage_file(filename):
     database_session = init_db()
     file_categories = get_all_categories()
@@ -57,7 +57,7 @@ async def manage_file(filename):
             use_container_width=True,
         ):
             delete_db_file(filename)
-            st.rerun()
+            st.rerun(scope="fragment")
     header_col1, header_col2 = st.columns([1, 4], vertical_alignment="bottom")
     with header_col1:
         show_details = st.toggle("Extend", key=f"show_{filename}")
@@ -115,7 +115,7 @@ async def manage_file(filename):
             if changes:
                 database_session.commit()
                 get_db_sources(reset=True)
-                st.rerun()
+                st.rerun(scope="fragment")
 
     if show_details:
         with st.container(border=True):
@@ -199,7 +199,7 @@ async def manage_file(filename):
                         instance.source_contents = contents
                         database_session.commit()
                         get_db_sources(reset=True)
-                    st.rerun()
+                    st.rerun(scope="fragment")
                 else:
                     with st.container():
                         st.write(summary, unsafe_allow_html=True)

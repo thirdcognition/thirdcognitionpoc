@@ -237,7 +237,7 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
     "check": ("instruct_0", check, False),
     "text_formatter": ("instruct" if not DEVMODE else "instruct", text_formatter, False),
     "text_formatter_compress": ("instruct" if not DEVMODE else "instruct", text_formatter_compress, False),
-    "text_formatter_guided_0": ("instruct_detailed" if not DEVMODE else "instruct", text_formatter_guided, True),
+    "text_formatter_guided": ("instruct_detailed_0" if not DEVMODE else "instruct", text_formatter_guided, True),
     "md_formatter": ("instruct" if not DEVMODE else "instruct", md_formatter, False),
     "md_formatter_guided": ("instruct_detailed_0", md_formatter_guided, True),
     "concept_structured": ("structured", concept_structured, True),

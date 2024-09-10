@@ -18,14 +18,21 @@ from langchain_community.document_loaders.url_playwright import PlaywrightURLLoa
 
 from lib.chains.base_parser import get_text_from_completion
 from lib.chains.init import get_chain
-from lib.db_tools import update_db_file_and_rag
+from lib.db_tools import update_db_file_rag_concepts
 from lib.document_parse import process_file_contents
-from lib.document_tools import a_semantic_splitter, markdown_to_text, semantic_splitter
+from lib.document_tools import (
+    a_semantic_splitter,
+    markdown_to_text,
+    semantic_splitter,
+    split_text,
+)
 from lib.load_env import SETTINGS
+from lib.models.prompts import TitledSummary
 from lib.models.sqlite_tables import (
+    ParsedConceptList,
     SourceConcept,
-    SourceConceptList,
     SourceContents,
+    SourceReference,
 )
 
 
@@ -59,7 +66,7 @@ class ProcessTextState(TypedDict):
     # This is because we want combine all the summaries we generate
     # from individual nodes back into one list - this is essentially
     # the "reduce" part
-    category: List[str]
+    categories: List[str]
     file: io.BytesIO
     filename: str
     url: str
@@ -67,7 +74,7 @@ class ProcessTextState(TypedDict):
     contents: List[Union[Document, str]]  # Annotated[list[Document], operator.add]
     final_contents: List[Document]
     reformat_contents: List[Document]  # Annotated[list[Document], operator.add]
-    # concepts: List[SourceConcept] #Annotated[list, operator.add]
+    concepts: List[SourceConcept]  # Annotated[list, operator.add]
     reformatted_txt: Annotated[list, operator.add]
     collapsed_reformatted_txt: List[Document]
     collected_concepts: List[SourceConcept]
@@ -95,10 +102,10 @@ class ProcessTextConfig(TypedDict):
 async def split_content(state: ProcessTextState, config: RunnableConfig):
     text = ""
     if config["configurable"]["update_rag"] and (
-        "category" not in state.keys()
-        or state["category"] is None
-        or state["category"] == []
-        or state["category"] == ""
+        "categories" not in state.keys()
+        or state["categories"] is None
+        or state["categories"] == []
+        or state["categories"] == ""
     ):
         raise ValueError("Category must be provided if update_rag is set True")
     if "filename" in state.keys() and state["filename"] is not None:
@@ -110,7 +117,7 @@ async def split_content(state: ProcessTextState, config: RunnableConfig):
         texts = await process_file_contents(
             state["file"],
             filename,
-            state["category"],
+            state["categories"],
             overwrite=config["configurable"]["overwrite_sources"],
         )
         text = "\n\n".join(texts)
@@ -272,20 +279,16 @@ def should_conceptualize(
 
 
 async def concept_content(state: ProcessTextState, config: RunnableConfig):
-    concepts: List[SourceConcept] = []
-    if (
-        config is not None
-        and "configurable" in config
-        and config["configurable"]["collect_concepts"] is True
-    ):
+    concepts: List[SourceConcept] = state["concepts"] if "concepts" in state else []
+    if config["configurable"]["collect_concepts"] is True:
         for i, txt in enumerate(state["reformatted_txt"]):
             existing_categories = {}
             if len(concepts) > 0:
                 for concept in concepts:
-                    for category in concept.category:
-                        if category.tag not in existing_categories.keys():
-                            existing_categories[category.tag] = (
-                                f"{category.tag}: {category.description}"
+                    for categories in concept.tags:
+                        if categories.tag not in existing_categories.keys():
+                            existing_categories[categories.tag] = (
+                                f"{categories.tag}: {categories.description}"
                             )
 
             params = {
@@ -304,15 +307,59 @@ async def concept_content(state: ProcessTextState, config: RunnableConfig):
                     )
                 ]
 
-            newConcepts: SourceConceptList = await get_chain(
+            newConcepts: ParsedConceptList = await get_chain(
                 "concept_structured"
             ).ainvoke(params)
+
             newConcepts.concepts = [
                 concept
                 for concept in newConcepts.concepts
-                if len(concept.content.strip()) > 10
+                if len("\n".join(concept.content).strip()) > 10
             ]
-            concepts += newConcepts.concepts
+            if len(newConcepts.concepts) > 0:
+                concepts.extend(
+                    [
+                        SourceConcept(
+                            id=parsed_concept.id,
+                            title=parsed_concept.title,
+                            contents=[parsed_concept.content],
+                            tags=parsed_concept.tags,
+                            references=[
+                                SourceReference(
+                                    source=(
+                                        state["filename"]
+                                        if "filename" in state
+                                        else state["url"]
+                                    ),
+                                    page_number=i,
+                                )
+                            ],
+                        )
+                        for parsed_concept in newConcepts.concepts
+                    ]
+                )
+
+            filtered_concepts: Dict[str, SourceConcept] = {}
+            for concept in concepts:
+                if concept.id not in filtered_concepts.keys():
+                    filtered_concepts[concept.id] = concept
+                else:
+                    filtered_concepts[concept.id].contents = list(
+                        set(filtered_concepts[concept.id].contents + concept.contents)
+                    )
+                    for new_tag in concept.tags:
+                        if new_tag.tag not in [
+                            tag.tag for tag in filtered_concepts[concept.id].tags
+                        ]:
+                            filtered_concepts[concept.id].tags.append(new_tag)
+                    for ref in concept.references:
+                        if f"{ref.source}_{(ref.page_number or 0)}" not in [
+                            f"{ref.source}_{(ref.page_number or 0)}"
+                            for ref in filtered_concepts[concept.id].references
+                        ]:
+                            filtered_concepts[concept.id].references.append(ref)
+
+            concepts = list(filtered_concepts.values())
 
     return {
         "concept_complete": True,
@@ -373,17 +420,34 @@ def should_collapse(
         return "finalize_content"
 
 
-async def collapse_concept_summaries(category, concept_summaries, contents):
-    joined = "\n".join(contents)
+async def collapse_concept(
+    i: int, concepts: List[SourceConcept], concept: SourceConcept
+):
+    joined = "\n".join(concept.contents)
+
+    if len(concept.contents) > 1:
+        reformat = get_text_from_completion(
+            await get_chain("text_formatter").ainvoke({"context": joined})
+        )
+        concept.contents = [reformat]
+        joined = reformat
 
     if len(joined) < 200:
-        concept_summaries[category] = joined
+        concept.summary = concept.summary or joined
     else:
-        concept_summaries[category] = get_text_from_completion(
-            await get_chain("summary").ainvoke({"context": joined})
-            if len(contents) == 1
-            else await get_chain("summary_documents").ainvoke({"context": contents})
-        )
+        contents = split_text(joined)
+        if len(concept.contents) > 1 or concept.summary is None:
+            summary: TitledSummary = get_text_from_completion(
+                await get_chain("summary_with_title").ainvoke({"context": joined})
+                if len(contents) == 1
+                else await get_chain("summary_documents_with_title").ainvoke(
+                    {"context": contents}
+                )
+            )
+            concept.title = summary.title
+            concept.summary = summary.summary
+
+    concepts[i] = concept
 
 
 # Here we will generate the final summary
@@ -404,35 +468,36 @@ async def finalize_content(state: ProcessTextState, config: RunnableConfig):
             )
         summary_collapsed = get_text_from_completion(response)
 
-    concept_summaries = defaultdict(list)
-    if (
-        config is not None
-        and "configurable" in config
-        and config["configurable"]["collect_concepts"] is True
-    ):
-        concepts = defaultdict(list[SourceConcept])
-        for concept in state["collected_concepts"]:
-            for category in concept.category:
-                concepts[category.tag].append(concept)
-
+    # summaries = defaultdict(list)
+    if config["configurable"]["collect_concepts"] is True:
+        collected_concepts = state["collected_concepts"]
+        # concepts = defaultdict(list[SourceConcept])
         tasks = []
-        for concept_category in concepts.keys():
-            contents = "\n".join(
-                concept.content for concept in concepts[concept_category]
-            )
-            num_chars = length_function(contents)
-            if num_chars > SETTINGS.default_llms.instruct_detailed.char_limit:
-                contents = semantic_splitter(contents)
-            else:
-                contents = [contents]
+        for i, concept in enumerate[collected_concepts]:
+            tasks.append(collapse_concept(i, collected_concepts, concept))
+            # for concept_tag in concept.tags:
+            #     concepts[concept_tag.tag].append(concept)
 
-            tasks.append(
-                collapse_concept_summaries(
-                    concept_category, concept_summaries, contents
-                )
-            )
+        # for tag in concepts.keys():
+        #     contents = "\n".join(
+        #         ["\n".join(concept.contents) for concept in concepts[tag]]
+        #     )
+        #     num_chars = length_function(contents)
+        #     if num_chars > SETTINGS.default_llms.instruct_detailed.char_limit:
+        #         contents = semantic_splitter(contents)
+        #     else:
+        #         contents = [contents]
+
+        #     tasks.append(
+        #         collapse_concept_summaries(
+        #             tag, summaries, contents
+        #         )
+        #     )
+        # for concept in collected_concepts.concepts:
 
         await asyncio.gather(*tasks)
+
+        # collected_concepts.summaries = summaries
 
     formatted_content = "\n".join(state["reformat_contents"])
 
@@ -446,20 +511,17 @@ async def finalize_content(state: ProcessTextState, config: RunnableConfig):
             # print(f"{state["contents"]}")
             raise ValueError(f"Unknown type {type(item)}: {item=}")
 
-    if (
-        config is not None
-        and "configurable" in config
-        and config["configurable"]["collect_concepts"] is True
-    ):
+    if config["configurable"]["collect_concepts"] is True:
         return {
             "final_contents_complete": True,
             "final_contents": flat_contents,
             "source_contents": SourceContents(
                 formatted_content=formatted_content,
                 summary=summary_collapsed,
-                concepts=state["collected_concepts"],
-                concept_summaries=concept_summaries,
+                # concepts=state["collected_concepts"],
+                # concept_summaries=summaries,
             ),
+            "collected_concepts": collected_concepts,
         }
     else:
         return {
@@ -486,12 +548,13 @@ async def rag_content(state: ProcessTextState, config: RunnableConfig):
         filetype = os.path.basename(state["filename"]).split(".")[-1]
 
     texts = [page.page_content for page in state["final_contents"]]
-    update_db_file_and_rag(
+    update_db_file_rag_concepts(
         state["filename"] or state["url"],
-        state["category"],
+        state["categories"],
         texts,
         content,
-        filetype,
+        concepts=state["collected_concepts"] if "collected_concepts" in state else None,
+        filetype=filetype,
     )
 
     return {"rag_complete": True}

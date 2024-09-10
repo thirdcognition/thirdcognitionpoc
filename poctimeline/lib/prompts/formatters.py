@@ -1,7 +1,7 @@
 import textwrap
 from typing import List
 from langchain_core.output_parsers import PydanticOutputParser
-from lib.models.sqlite_tables import SourceConcept, SourceConceptList
+from lib.models.sqlite_tables import ParsedConceptList
 from lib.prompts.base import (
     KEEP_PRE_THINK_TOGETHER,
     MAINTAIN_CONTENT_AND_USER_LANGUAGE,
@@ -182,4 +182,4 @@ concept_structured = structured.customize(
     )
 )
 
-concept_structured.parser = PydanticOutputParser(pydantic_object=SourceConceptList)
+concept_structured.parser = PydanticOutputParser(pydantic_object=ParsedConceptList)

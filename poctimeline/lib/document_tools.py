@@ -17,7 +17,7 @@ from langchain.schema.document import Document
 
 from lib.load_env import SETTINGS
 from lib.chains.init import get_embeddings
-from lib.models.sqlite_tables import SourceContents
+from lib.models.sqlite_tables import SourceConcept, SourceConceptList, SourceContents
 
 
 @cache
@@ -222,10 +222,10 @@ def create_document_lists(
     return doc_list
 
 
-def get_rag_chunks(
+def get_source_rag_chunks(
     texts: List[str],
     source: str,
-    category: List[str],
+    categories: List[str],
     content: SourceContents,
     filetype: str = "txt",
 ) -> tuple[List[str], List[Dict[str, Dict]], List[Dict]]:
@@ -246,7 +246,7 @@ def get_rag_chunks(
     rag_metadatas = [
         {
             "source": source,
-            "category": ", ".join(category),
+            "categories": ", ".join(categories),
             "filetype": filetype,
             "split": i,
         }
@@ -273,46 +273,53 @@ def get_rag_chunks(
         rag_metadatas = rag_metadatas + [
             {
                 "source": "formatted_" + source,
-                "category": ", ".join(category),
+                "categories": ", ".join(categories),
                 "filetype": filetype,
                 "split": i,
             }
             for i in range(len(formatted_split))
         ]
 
-    if content.concepts is not None and len(content.concepts) > 0:
-        concept_split = []
-        concept_ids = []
-        concept_metadatas = []
-        for i, concept in enumerate(content.concepts):
-            cur_concept_split = split_text(
-                concept.content,
-                SETTINGS.default_embeddings.default.char_limit,
-                SETTINGS.default_embeddings.default.overlap,
-            )
-            concept_split += cur_concept_split
-            concept_ids += [
-                (
-                    source + "_concept_" + concept.id + "_" + str(i) + "_" + str(j)
-                ).replace(" ", "_")
-                for j in range(len(cur_concept_split))
-            ]
-
-            concept_metadatas += [
-                {
-                    "concept_id": concept.id,
-                    "concept_category": ", ".join(
-                        [category.tag for category in concept.category]
-                    ),
-                    "split": str(i) + "_" + str(j),
-                    "source": concept.reference.source,
-                    "page": concept.reference.page_number or -1,
-                }
-                for j in range(len(cur_concept_split))
-            ]
-
-        rag_split = rag_split + concept_split
-        rag_ids = rag_ids + concept_ids
-        rag_metadatas = rag_metadatas + concept_metadatas
-
     return rag_split, rag_ids, rag_metadatas
+
+
+def get_concept_rag_chunks(
+    source: str,
+    content: List[SourceConcept],
+) -> List[SourceConcept, tuple[List[str], List[Dict[str, Dict]], List[Dict]]]:
+    response = []
+    for i, concept in enumerate(content):
+        # concept_split = []
+        # concept_ids = []
+        # concept_metadatas = []
+        concept_split = split_text(
+            "\n".join(concept.contents),
+            SETTINGS.default_embeddings.default.char_limit,
+            SETTINGS.default_embeddings.default.overlap,
+        )
+        # concept_split += concept_split
+        concept_ids = [
+            (source + "_concept_" + concept.id + "_" + str(i) + "_" + str(j)).replace(
+                " ", "_"
+            )
+            for j in range(len(concept_split))
+        ]
+
+        concept_metadatas = [
+            {
+                "concept_id": concept.id,
+                "concept_tags": ", ".join(
+                    [tag.tag for tag in concept.tags]
+                ),
+                "split": str(i) + "_" + str(j),
+                "sources": "\n".join(
+                    [
+                        f"{reference.source}{(' page: ' + reference.page_number) if reference.page_number else ''}"
+                        for reference in concept.references
+                    ]
+                ),
+            }
+            for j in range(len(concept_split))
+        ]
+        response.append((concept, concept_split, concept_ids, concept_metadatas))
+    return response

@@ -11,11 +11,13 @@ from chromadb.utils.embedding_functions import create_langchain_embedding
 from chromadb.config import Settings as ChromaSettings
 import streamlit as st
 from lib.chains.init import get_embeddings
-from lib.document_tools import get_rag_chunks
+from lib.document_tools import get_source_rag_chunks, get_concept_rag_chunks
 from lib.load_env import SETTINGS
 from lib.models.journey import JourneyModel
 from lib.models.sqlite_tables import (
     Base,
+    ConceptDataTable,
+    SourceConcept,
     SourceContents,
     SourceData,
     SourceDataTable,
@@ -72,7 +74,7 @@ def get_db_sources(reset=False, source=None, categories=None) -> Dict[str, Sourc
         new_db_sources = {}
         for cat in categories:
             new_db_sources.update(
-                {k: v for k, v in db_sources.items() if cat in v.category_tag}
+                {k: v for k, v in db_sources.items() if cat in v.category_tags}
             )
         db_sources = new_db_sources
     return db_sources
@@ -98,7 +100,7 @@ def db_file_exists(filename: str) -> bool:
 def save_db_file(
     filename,
     texts: List[str],
-    category: List[str] = None,
+    categories: List[str] = None,
     collections: List[str] = None,
     uploaded_file: io.BytesIO = None,
 ):
@@ -111,18 +113,20 @@ def save_db_file(
         )
 
         existing_file.texts = texts  # Update the text field with the new content
-        existing_file.category_tag = category or existing_file.category_tag
+        existing_file.category_tags = categories or existing_file.category_tags
         existing_file.last_updated = datetime.now()
         existing_file.file_data = uploaded_file.getvalue() or existing_file.file_data
-        existing_file.chroma_collection = collections or existing_file.chroma_collection
+        existing_file.chroma_collections = (
+            collections or existing_file.chroma_collections
+        )
     else:
         # If the file does not exist, create a new row
         file = SourceDataTable(
             source=filename,
             type=SourceType.file,
             texts=texts,
-            category_tag=category,
-            chroma_collection=collections,
+            category_tags=categories,
+            chroma_collections=collections,
             last_updated=datetime.now(),
             file_data=uploaded_file.getvalue() if uploaded_file else None,
         )
@@ -132,7 +136,7 @@ def save_db_file(
 
 
 def update_rag(
-    category: List[str],
+    categories: List[str],
     rag_ids: List[str],
     rag_split: List[str],
     rag_metadatas: List[str],
@@ -145,14 +149,14 @@ def update_rag(
         and len(existing_ids) > 0
     ):
         for collection in existing_collections:
-            vectorstore = get_chroma_collection(collection)
+            vectorstore = get_chroma_collections(collection)
             vectorstore.delete(existing_ids)
 
     collections = []
 
-    for cat in category:
+    for cat in categories:
         collections.append("rag_" + cat)
-        vectorstore = get_chroma_collection(
+        vectorstore = get_chroma_collections(
             "rag_" + cat
         )  # get_vectorstore("rag_" + cat)
         store_complete = False
@@ -175,11 +179,12 @@ def update_rag(
                     break
 
 
-def update_db_file_and_rag(
+def update_db_file_rag_concepts(
     source: str,
-    category: List[str],
+    categories: List[str],
     texts: List[str],
     contents: SourceContents,
+    concepts: List[SourceConcept] = None,
     filetype="txt",
 ):
     existing_source = (
@@ -188,29 +193,94 @@ def update_db_file_and_rag(
         .first()
     )
 
+    existing_concepts = (
+        database_session.query(ConceptDataTable)
+        .filter(SourceDataTable.source == source)
+        .all()
+    )
+
     if existing_source is None:
         raise ValueError(f"Source {source} not found in the database.")
 
-    rag_chunks, rag_ids, rag_metadatas = get_rag_chunks(
-        texts, source, category, contents, filetype
+    rag_chunks = []
+    rag_ids = []
+    rag_metadatas = []
+
+    source_rag_chunks, source_rag_ids, source_rag_metadatas = get_source_rag_chunks(
+        texts, source, categories, contents, filetype
     )
+
+    rag_chunks.extend(source_rag_chunks)
+    rag_ids.extend(source_rag_ids)
+    rag_metadatas.extend(source_rag_metadatas)
+
+    concepts_by_id = {}
+    if concepts is not None:
+        resp = get_concept_rag_chunks(source=source, concepts=concepts)
+        for concept, concept_chunks, concept_ids, concept_metadatas in resp:
+            rag_chunks.extend(concept_chunks)
+            rag_ids.extend(concept_ids)
+            rag_metadatas.extend(concept_metadatas)
+            concepts_by_id[str(concept.id)] = {"concept": concept, "rag_ids": rag_ids}
 
     # print(f"\n\n\n{source=}\n\n{rag_chunks=}\n\n{rag_ids=}\n\n{rag_metadatas=}\n\n")
 
+    existing_chroma_ids = (
+        existing_source.chroma_ids if existing_source is not None else []
+    )
+    existing_chroma_collections = (
+        existing_source.chroma_collections if existing_source is not None else []
+    )
+
+    handled_concepts = []
+    if existing_concepts is not None:
+        for concept in existing_concepts:
+            existing_chroma_ids.extend(concept.chroma_ids)
+            existing_chroma_collections.extend(concept.chroma_collections)
+
+            if concept.id in concepts_by_id:
+                concept.concept_contents = concepts_by_id[str(concept.id)]["concept"]
+                concept.chroma_ids = concepts_by_id[str(concept.id)]["rag_ids"]
+                concept.chroma_collections = ["rag_" + cat for cat in categories]
+                concept.category_tags = categories
+                concept.last_updated = datetime.now()
+                handled_concepts.append(concept.id)
+
+        # filter unique from existing chroma ids and collections
+        existing_chroma_ids = list(set(existing_chroma_ids))
+        existing_chroma_collections = list(set(existing_chroma_collections))
+    if concepts is not None:
+        for concept in concepts:
+            if concept.id not in handled_concepts:
+                new_concept = ConceptDataTable(
+                    id=concept.id,
+                    concept_contents=concept,
+                    category_tags=categories,
+                    chroma_ids=concepts_by_id[str(concept.id)]["rag_ids"],
+                    chroma_collections=["rag_" + cat for cat in categories],
+                    last_updated=datetime.now(),
+                )
+                database_session.add(new_concept)
+
+    existing_chroma_ids = None if len(existing_chroma_ids) == 0 else existing_chroma_ids
+    existing_chroma_collections = (
+        None if len(existing_chroma_collections) == 0 else existing_chroma_collections
+    )
+
     update_rag(
-        category,
+        categories,
         rag_ids,
         rag_chunks,
         rag_metadatas,
-        existing_source.chroma_ids if existing_source is not None else None,
-        existing_source.chroma_collection if existing_source is not None else None,
+        existing_chroma_ids,
+        existing_chroma_collections,
     )
 
     existing_source.texts = texts  # Update the text field with the new content
     existing_source.source_contents = contents
-    existing_source.category_tag = category
+    existing_source.category_tags = categories
     existing_source.chroma_ids = rag_ids
-    existing_source.chroma_collection = ["rag_" + cat for cat in category]
+    existing_source.chroma_collections = ["rag_" + cat for cat in categories]
     existing_source.last_updated = datetime.now()
 
     database_session.commit()
@@ -244,7 +314,7 @@ def get_db_journey(
         new_db_journeys = {}
         for cat in chroma_collections:
             new_db_journeys.update(
-                {k: v for k, v in db_journey.items() if cat in v.chroma_collection}
+                {k: v for k, v in db_journey.items() if cat in v.chroma_collections}
             )
         db_journey = new_db_journeys
 
@@ -254,7 +324,7 @@ def get_db_journey(
 collections = {}
 
 
-def get_chroma_collection(
+def get_chroma_collections(
     name, update=False, path=SETTINGS.chroma_path, embedding_id=None
 ) -> chromadb.Collection:
     global collections

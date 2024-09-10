@@ -163,6 +163,7 @@ class Settings(BaseModel):
     sqlite_db: str
     file_tablename: str
     journey_tablename: str
+    concepts_tablename: str
 
 
 SETTINGS = Settings(
@@ -172,6 +173,7 @@ SETTINGS = Settings(
     sqlite_db=os.getenv("SQLITE_DB", "db/files.db"),
     file_tablename="files",
     journey_tablename="journey",
+    concepts_tablename="concepts"
 )
 
 SETTINGS.default_llms = ModelDefaults()

@@ -1,8 +1,14 @@
 import textwrap
 from typing import Union
 from langchain_core.exceptions import OutputParserException
-from langchain_core.output_parsers import JsonOutputParser, BaseOutputParser
+from langchain_core.output_parsers import (
+    JsonOutputParser,
+    BaseOutputParser,
+    PydanticOutputParser,
+)
 from langchain_core.messages import BaseMessage
+from pydantic import BaseModel, Field
+from lib.models.prompts import TitledSummary
 from lib.prompts.base import (
     MAINTAIN_CONTENT_AND_USER_LANGUAGE,
     PromptFormatter,
@@ -11,7 +17,7 @@ from lib.prompts.base import (
     TagsParser,
 )
 
-task = PromptFormatter(
+action = PromptFormatter(
     system=textwrap.dedent(
         f"""
         Act as a task completing machine.
@@ -24,7 +30,7 @@ task = PromptFormatter(
     ),
     user=textwrap.dedent(
         """
-        Task: {task}
+        Task: {action}
 
         Context start
         {context}
@@ -34,7 +40,7 @@ task = PromptFormatter(
         """
     ),
 )
-task.parser = TagsParser(min_len=10)
+action.parser = TagsParser(min_len=10)
 
 grader = PromptFormatter(
     system=textwrap.dedent(
@@ -130,6 +136,34 @@ question_classifier = PromptFormatter(
     ),
 )
 question_classifier.parser = QuestionClassifierParser()
+
+
+summary_with_title = PromptFormatter(
+    system=textwrap.dedent(
+        f"""
+        Act as a structured data formatter for titling and summarizing texts and use specified format instructions exactly
+        to format the context data.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
+        Title and summarize the text between the context start and context end using natural language.
+        Return only the JSON object with the formatted data.
+        """
+    ),
+    user=textwrap.dedent(
+        """
+        context start
+        {context}
+        context end
+        ----------------
+        format instructions start
+        {format_instructions}
+        format instructions end
+        ----------------
+        Title and summarize the text and return the result using specified JSON structure.
+        Return only the properly formatted JSON object with the formatted data.
+        """
+    ),
+)
+summary_with_title.parser = PydanticOutputParser(pydantic_object=TitledSummary)
 
 summary = PromptFormatter(
     system=textwrap.dedent(

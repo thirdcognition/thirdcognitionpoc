@@ -35,9 +35,10 @@ from lib.prompts.journey import (
 )
 from lib.prompts.journey_structured import plan, step_structured
 from lib.prompts.actions import (
-    task,
+    action,
     summary,
     summary_guided,
+    summary_with_title,
     question_classifier,
     check,
     grader,
@@ -258,7 +259,8 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
         summary_guided,
         True,
     ),
-    "task": ("instruct_0", task, False),
+    "summary_with_title": ("structured_detailed" if not DEVMODE else "structured", summary_with_title, True),
+    "task": ("instruct_0", action, False),
     "grader": ("structured", grader, False),
     "check": ("instruct_0", check, False),
     "text_formatter": ("instruct", text_formatter, False),
@@ -327,6 +329,10 @@ def get_base_chain(chain) -> Union[BaseChain, RunnableSequence]:
 
     if "summary_documents" == chain:
         chains[chain] = get_chain("stuff_documents") | get_chain("summary")
+        return chains[chain]
+
+    if "summary_documents_with_title" == chain:
+        chains[chain] = get_chain("stuff_documents") | get_chain("summary_with_title")
         return chains[chain]
 
     raise ValueError(f"Unknown chain: {chain}")

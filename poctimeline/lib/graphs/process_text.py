@@ -30,7 +30,7 @@ from lib.load_env import SETTINGS
 from lib.models.prompts import TitledSummary
 from lib.models.sqlite_tables import (
     ParsedConceptList,
-    SourceConcept,
+    ConceptData,
     SourceContents,
     SourceReference,
 )
@@ -74,10 +74,10 @@ class ProcessTextState(TypedDict):
     contents: List[Union[Document, str]]  # Annotated[list[Document], operator.add]
     final_contents: List[Document]
     reformat_contents: List[Document]  # Annotated[list[Document], operator.add]
-    concepts: List[SourceConcept]  # Annotated[list, operator.add]
+    concepts: List[ConceptData]  # Annotated[list, operator.add]
     reformatted_txt: Annotated[list, operator.add]
     collapsed_reformatted_txt: List[Document]
-    collected_concepts: List[SourceConcept]
+    collected_concepts: List[ConceptData]
     source_contents: SourceContents
     content_result: Dict
     instructions: str
@@ -279,7 +279,7 @@ def should_conceptualize(
 
 
 async def concept_content(state: ProcessTextState, config: RunnableConfig):
-    concepts: List[SourceConcept] = state["concepts"] if "concepts" in state else []
+    concepts: List[ConceptData] = state["concepts"] if "concepts" in state else []
     all_concept_ids = get_existing_concept_ids(refresh=True)
     if config["configurable"]["collect_concepts"] is True:
         for i, txt in enumerate(state["reformatted_txt"]):
@@ -323,9 +323,9 @@ async def concept_content(state: ProcessTextState, config: RunnableConfig):
             if len(newConcepts.concepts) > 0:
                 concepts.extend(
                     [
-                        SourceConcept(
+                        ConceptData(
                             id=parsed_concept.id,
-                            parent_id=parsed_concept.parent_id,
+                            parent_id=parsed_concept.parent_id or None,
                             title=parsed_concept.title,
                             contents=[parsed_concept.content],
                             tags=parsed_concept.tags,
@@ -344,7 +344,7 @@ async def concept_content(state: ProcessTextState, config: RunnableConfig):
                     ]
                 )
 
-            filtered_concepts: Dict[str, SourceConcept] = {}
+            filtered_concepts: Dict[str, ConceptData] = {}
             for concept in concepts:
                 id = str(concept.id)
                 if id not in filtered_concepts.keys():
@@ -433,7 +433,7 @@ def should_collapse(
 
 
 async def collapse_concept(
-    i: int, concepts: List[SourceConcept], concept: SourceConcept
+    i: int, concepts: List[ConceptData], concept: ConceptData
 ):
     joined = "\n".join(concept.contents)
 
@@ -449,7 +449,7 @@ async def collapse_concept(
     else:
         contents = split_text(joined)
         if len(concept.contents) > 1 or concept.summary is None:
-            summary: TitledSummary = get_text_from_completion(
+            summary: TitledSummary = (
                 await get_chain("summary_with_title").ainvoke({"context": joined})
                 if len(contents) == 1
                 else await get_chain("summary_documents_with_title").ainvoke(
@@ -483,9 +483,9 @@ async def finalize_content(state: ProcessTextState, config: RunnableConfig):
     # summaries = defaultdict(list)
     if config["configurable"]["collect_concepts"] is True:
         collected_concepts = state["collected_concepts"]
-        # concepts = defaultdict(list[SourceConcept])
+        # concepts = defaultdict(list[ConceptData])
         tasks = []
-        for i, concept in enumerate[collected_concepts]:
+        for i, concept in enumerate(collected_concepts):
             tasks.append(collapse_concept(i, collected_concepts, concept))
             # for concept_tag in concept.tags:
             #     concepts[concept_tag.tag].append(concept)
@@ -525,6 +525,8 @@ async def finalize_content(state: ProcessTextState, config: RunnableConfig):
 
     if config["configurable"]["collect_concepts"] is True:
         return {
+            "summarize_complete": True,
+            "collapse_complete": True,
             "final_contents_complete": True,
             "final_contents": flat_contents,
             "source_contents": SourceContents(
@@ -537,6 +539,8 @@ async def finalize_content(state: ProcessTextState, config: RunnableConfig):
         }
     else:
         return {
+            "summarize_complete": True,
+            "collapse_complete": True,
             "final_contents_complete": True,
             "final_contents": flat_contents,
             "content_result": {

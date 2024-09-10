@@ -28,12 +28,13 @@ from lib.load_env import (
 )
 from lib.prompts.base import PromptFormatter
 from lib.prompts.journey import (
+    plan,
     step_intro,
     task_details,
     step_tasks,
     step_content,
 )
-from lib.prompts.journey_structured import plan, step_structured
+from lib.prompts.journey_structured import step_structured
 from lib.prompts.actions import (
     action,
     summary,

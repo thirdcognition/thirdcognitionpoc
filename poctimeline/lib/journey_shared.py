@@ -29,7 +29,7 @@ from lib.models.journey import (
 from lib.models.prompts import CustomPrompt
 from lib.models.sqlite_tables import SourceContents, SourceData, JourneyDataTable
 from lib.prompts.journey import convert_to_journey_prompts
-from lib.prompts.journey_structured import Step, Plan
+from lib.prompts.journey import Step, Plan
 
 def save_journey(journey_name, journey: JourneyModel) -> bool:
     print(f"Save journey {journey_name}")

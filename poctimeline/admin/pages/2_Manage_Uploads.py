@@ -1,6 +1,8 @@
 import asyncio
+from collections import defaultdict
 import os
 import sys
+from typing import Dict, List
 import streamlit as st
 
 from langchain_core.messages import BaseMessage
@@ -9,7 +11,7 @@ from langchain_core.messages import BaseMessage
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
-from lib.models.sqlite_tables import SourceContents
+from lib.models.sqlite_tables import ConceptData, ConceptDataTable, ConceptTag, SourceContents
 from lib.chains.init import get_chain
 from lib.document_tools import create_document_lists, split_text
 from lib.load_env import SETTINGS
@@ -17,6 +19,7 @@ from lib.db_tools import (
     SourceDataTable,
     delete_db_file,
     get_chroma_collections,
+    get_concept_by_id,
     get_db_sources,
     init_db,
 )
@@ -287,16 +290,21 @@ async def manage_file(filename):
                     st.write(text, unsafe_allow_html=True)
 
             with tab4:
-                for concept_tag in file_entry.source_contents.concept_summaries.keys():
+                tagged_concepts: Dict[str, List[ConceptData]] = defaultdict(list)
+                tags:Dict[str, str] = {}
+                for concept_id in file_entry.source_concepts:
+                    concept:ConceptData = get_concept_by_id(concept_id).concept_contents
+                    for tag in concept.tags:
+                        tagged_concepts[tag.tag].append(concept)
+                        if tag.tag not in tags:
+                            tags[tag.tag] = tag.description
+
+                for concept_tag, concepts in tagged_concepts.items():
                     st.write(f"### {concept_tag}:")
-                    st.write(file_entry.source_contents.concept_summaries[concept_tag])
+                    st.write(tags[concept_tag])
                     with st.expander("Concept instances"):
-                        concepts = [
-                            concept.__dict__
-                            for concept in file_entry.source_contents.concepts
-                            if concept_tag in [cat.tag for cat in concept.tags]
-                        ]
-                        st.write(concepts)
+                        for concept in tagged_concepts[concept_tag]:
+                            st.write(concept)
 
             with tab5:
                 # print(f"{file_entry.chroma_collections=}")
@@ -331,6 +339,30 @@ async def manage_file(filename):
                                 st.write(rag_items["embeddings"][index])
                         except Exception as e:
                             st.write(f"Error: {e}")
+
+                    for concept_id in file_entry.source_concepts:
+                        concept:ConceptDataTable = get_concept_by_id(concept_id)
+                        if any(collection in file_entry.chroma_collections for collection in concept.chroma_collections):
+                            st.write(concept.id)
+                            [sub_col1, sub_col2] = st.columns([1, 3])
+                            rag_items = chroma_collections.get(
+                                concept.chroma_ids,
+                                include=["embeddings", "documents", "metadatas"],
+                            )
+                            for i, id in enumerate(concept.chroma_ids):
+                                [sub_col1, sub_col2] = st.columns([1, 3])
+                                try:
+                                    index = rag_items["ids"].index(id)
+                                    with sub_col1:
+                                        st.write(id)
+                                        st.write(rag_items["metadatas"][index])
+                                    with sub_col2:
+                                        st.write("*Text:*")
+                                        st.write(rag_items["documents"][index])
+                                        st.write("_Embeddings:_")
+                                        st.write(rag_items["embeddings"][index])
+                                except Exception as e:
+                                    st.write(f"Error: {e}")
                 else:
                     st.write("Select RAG DB first.")
 

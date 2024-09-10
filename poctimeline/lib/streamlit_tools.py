@@ -112,6 +112,7 @@ async def process_text_call(
     if show_progress:
         for state in states.keys():
             state_status[state] = st.empty()
+            state_status[state].warning(f"{states[state]}: Not started")
     events = []
 
     params = {}
@@ -173,6 +174,7 @@ async def process_text_call(
                     state_status[state].info(
                         f"{states[state]} in progress"
                     )  # , state="running")
+
 
             # print(f"\n\n\n{event["name"]=}: {event["event"]}\n\n\n")
         events.append(event)

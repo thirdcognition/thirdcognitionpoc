@@ -26,7 +26,7 @@ from typing import Annotated, List, TypedDict
 from lib.models.journey import TaskStructure, SubjectModel, StepStructure
 from lib.models.teaching import TeachingTask, TeachingItemPlan, UserData
 from lib.prompts.journey import JourneyPrompts
-from lib.prompts.journey_structured import plan
+from lib.prompts.journey import plan
 
 journey_teaching_plan_parser = PydanticOutputParser(pydantic_object=TeachingItemPlan)
 

@@ -17,7 +17,7 @@ from langchain.schema.document import Document
 
 from lib.load_env import SETTINGS
 from lib.chains.init import get_embeddings
-from lib.models.sqlite_tables import SourceConcept, SourceConceptList, SourceContents
+from lib.models.sqlite_tables import ConceptData, SourceContents
 
 
 @cache
@@ -285,10 +285,10 @@ def get_source_rag_chunks(
 
 def get_concept_rag_chunks(
     category_id: str,
-    content: List[SourceConcept],
-) -> List[tuple[SourceConcept, List[str], List[Dict[str, Dict]], List[Dict]]]:
+    concepts: List[ConceptData],
+) -> List[tuple[ConceptData, List[str], List[Dict[str, Dict]], List[Dict]]]:
     response = []
-    for i, concept in enumerate(content):
+    for i, concept in enumerate(concepts):
         # concept_split = []
         # concept_ids = []
         # concept_metadatas = []

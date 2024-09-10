@@ -15,7 +15,7 @@ class SourceType(Enum):
     url = "url"
     file = "file"
 
-class CategoryTag(BaseModel):
+class ConceptTag(BaseModel):
     tag: str = Field(description="The tag for the category", title="Tag")
     description: str = Field(
         description="The description of the category", title="Description"
@@ -26,8 +26,8 @@ class ParsedConcept(BaseModel):
         description="An human readable id for this concept using letters and _",
         title="Id",
     )
-    parent_id: str = Field(
-        description="An human readable id for the parent concept using letters and _",
+    parent_id: Optional[str]  = Field(
+        description="An human readable id for the parent concept using letters and _ if there is one",
         title="Parent Id",
     )
     title: str = Field(
@@ -37,7 +37,7 @@ class ParsedConcept(BaseModel):
         description="Detailed and descriptive content in written format based on the context and identified concept. Should contain all relevant information in a readable format.",
         title="Contents",
     )
-    tags: List[CategoryTag] = Field(
+    tags: List[ConceptTag] = Field(
         description="A list of categories tag ids that can be used to group this concept with similar concepts",
         title="Tags",
     )
@@ -55,21 +55,22 @@ class SourceReference(BaseModel):
         description="The page number of the file", title="Page Number"
     )
 
-class SourceConcept(BaseModel):
+class ConceptData(BaseModel):
     id: str = Field(
         description="An human readable id for this concept using letters and _",
         title="Id",
     )
-    parent_id: str = Field(
+    parent_id: Optional[str] = Field(
         description="An human readable id for the parent concept using letters and _",
         title="Parent Id",
     )
-    title: str = Field(
+    title: Optional[str] = Field(
         description="A human readable title for this concept", title="Title"
     )
-    summary: str = Field(
+    summary: Optional[str] = Field(
         description="A summary of all contents related to this concept",
         title="Summary",
+        default=None
     )
     contents: List[str] = Field(
         description="List of detailed and descriptive content in written format based on the context and identified concept. Should contain all relevant information in a readable format.",
@@ -79,7 +80,7 @@ class SourceConcept(BaseModel):
         description="A reference to the source and page number where this concept was identified",
         title="Reference",
     )
-    tags: List[CategoryTag] = Field(
+    tags: List[ConceptTag] = Field(
         description="A list of categories tags that can be used to group this concept with similar concepts",
         title="Category",
     )
@@ -87,7 +88,7 @@ class SourceConcept(BaseModel):
 class SourceContents(BaseModel):
     formatted_content: str
     summary: str
-    # concepts: List[SourceConcept]
+    # concepts: List[ConceptData]
     # concept_summaries: Dict[str, str] = Field(
     #     description="A dictionary of summaries for each concept where key is the concept id and value is the summary of all contents related to that concept",
     #     title="Summaries",
@@ -106,6 +107,7 @@ class SourceData(BaseModel):
     edited_content: Optional[str] = None
     file_data: Optional[bytes] = None
     source_contents: Optional[SourceContents] = None
+    source_concepts: Optional[List[str]] = None
 
 
 class ConceptDataTable(Base):

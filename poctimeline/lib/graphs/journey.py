@@ -17,9 +17,8 @@ from lib.models.journey import (
     SubjectModel,
     StepStructure,
 )
-from lib.models.sqlite_tables import SourceConcept, SourceData
-from lib.prompts.journey import JourneyPrompts
-from lib.prompts.journey_structured import Step
+from lib.models.sqlite_tables import ConceptData, SourceData
+from lib.prompts.journey import JourneyPrompts, Step
 from lib.chains.init import get_base_chain, get_chain
 from lib.streamlit_tools import llm_edit
 
@@ -57,7 +56,7 @@ class JourneyCreationState(TypedDict):
     chroma_collections: List[str]
     categories: List[str]
     journey: JourneyModel
-    concepts: List[SourceConcept]
+    concepts: List[ConceptData]
     sources: List[SourceData]
     subjects: Annotated[list[SubjectModel], operator.add]
     subjects_sorted: List[SubjectModel]
@@ -74,7 +73,7 @@ class SujectCreationConfig(TypedDict):
 class SubjectCreationState(TypedDict):
     journey: JourneyModel
     subject: SubjectModel
-    concepts: List[SourceConcept]
+    concepts: List[ConceptData]
     initial_plan: List[Step]
     initial_plan_done: bool = False
     plan: Annotated[list[StepModel], operator.add]
@@ -92,7 +91,7 @@ class StepCreationConfig(TypedDict):
 
 class StepCreationState(TypedDict):
     journey: JourneyModel
-    # concepts: List[SourceConcept]
+    # concepts: List[ConceptData]
     step: StepModel
     concepts_content: str
     subject_title: str
@@ -477,7 +476,7 @@ async def new_plan_build(
 
 class StepBuildState(TypedDict):
     journey: JourneyModel
-    concepts: List[SourceConcept]
+    concepts: List[ConceptData]
     step: Step
     subject_index: int
     step_index: int

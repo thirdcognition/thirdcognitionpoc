@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 
-from lib.models.sqlite_tables import SourceConcept, SourceData
+from lib.models.sqlite_tables import ConceptData, SourceData
 from lib.prompts.journey import JourneyPrompts
 
 class ResourceStructure(BaseModel):
@@ -48,7 +48,7 @@ class StepModel(BaseModel):
     title: str = Field(default=None)
     subject: str = Field(default=None)
     content: str = Field(default=None)
-    concepts: List[SourceConcept] = Field(default=None)
+    concepts: List[ConceptData] = Field(default=None)
     intro: str = Field(default=None)
     summary: str = Field(default=None)
     tasks: str = Field(default=None)
@@ -66,7 +66,7 @@ class SubjectModel(BaseModel):
     instructions: str = Field(default=None)
     steps_amount: int = Field(default=None)
     task_amount: int = Field(default=None)
-    concepts: List[SourceConcept] = Field(default=None)
+    concepts: List[ConceptData] = Field(default=None)
     # files: List[str] = Field(default_factory=list)
     # db_sources: Dict[str, SourceData] = Field(default_factory=dict)
 
@@ -83,3 +83,4 @@ class JourneyModel(BaseModel):
     summary: Optional[str] = None
     instructions: Optional[str] = None
     complete: bool = False
+

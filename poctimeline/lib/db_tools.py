@@ -1,4 +1,5 @@
 from datetime import datetime
+from functools import cache
 import io
 import os
 from typing import Dict, List
@@ -17,7 +18,7 @@ from lib.models.journey import JourneyModel
 from lib.models.sqlite_tables import (
     Base,
     ConceptDataTable,
-    SourceConcept,
+    ConceptData,
     SourceContents,
     SourceData,
     SourceDataTable,
@@ -192,12 +193,20 @@ def get_existing_concept_ids(refresh: bool = False) -> List[str]:
         ]
     return existing_concept_ids
 
+@cache
+def get_concept_by_id(concept_id: str) -> ConceptDataTable:
+    return (
+        database_session.query(ConceptDataTable)
+        .filter(ConceptDataTable.id == concept_id)
+        .first()
+    )
+
 def update_db_file_rag_concepts(
     source: str,
     categories: List[str],
     texts: List[str],
     contents: SourceContents,
-    concepts: List[SourceConcept] = None,
+    concepts: List[ConceptData] = None,
     filetype="txt",
 ):
     existing_source = (
@@ -215,8 +224,8 @@ def update_db_file_rag_concepts(
     existing_concepts = (
         database_session.query(ConceptDataTable)
         .filter(
-            ConceptDataTable.category_tags.overlap(categories),
-            ConceptDataTable.id.in_(defined_concept_ids)
+            ConceptDataTable.id.in_(defined_concept_ids),
+            ConceptDataTable.category_tags.contains(set(categories))
         )
         .distinct()
         .all()
@@ -238,9 +247,12 @@ def update_db_file_rag_concepts(
     new_ids = []
     old_ids = [concept.id for concept in existing_concepts]
     if concepts is not None:
-        resp:List[tuple[SourceConcept, List, List, List]] = get_concept_rag_chunks(category_id=category_id, concepts=concepts)
+        resp:List[tuple[ConceptData, List, List, List]] = get_concept_rag_chunks(category_id=category_id, concepts=concepts)
         for concept, concept_chunks, concept_ids, concept_metadatas in resp:
             concept.id = category_id + "-" + concept.id
+            if concept.parent_id is not None:
+                concept.parent_id = category_id + "-" + concept.parent_id
+
             rag_chunks.extend(concept_chunks)
             rag_ids.extend(concept_ids)
             rag_metadatas.extend(concept_metadatas)
@@ -265,7 +277,7 @@ def update_db_file_rag_concepts(
             existing_chroma_collections.extend(concept.chroma_collections)
 
             if concept.id in concepts_by_id:
-                new_concept:SourceConcept = concepts_by_id[str(concept.id)]["concept"]
+                new_concept:ConceptData = concepts_by_id[str(concept.id)]["concept"]
                 parent_id = concept.parent_id or new_concept.parent_id
                 if parent_id is not concept.parent_id:
                     if parent_id not in old_ids or parent_id not in new_ids:
@@ -298,8 +310,17 @@ def update_db_file_rag_concepts(
                 if parent_concept or parent_id == concept.id:
                     print(f"Parent concept with id {parent_id} does not exist.")
                     parent_id = None
+                new_id = concept.id
+                if concept_id_exists(concept.id):
+                    all_concept_ids = get_existing_concept_ids(True)
+                    matching_ids = sorted(set([concept_id for concept_id in existing_concept_ids if concept.id in concept_id]))
+                    new_id = concept.id + "-" + str(len(matching_ids))
+                    print(f"Concept with id {concept.id} already exists. Changing id to {new_id}")
+                    defined_concept_ids.remove(concept.id)
+                    defined_concept_ids.append(new_id)
+
                 new_concept = ConceptDataTable(
-                    id=concept.id,
+                    id=new_id,
                     parent_id=parent_id,
                     concept_contents=concept,
                     category_tags=categories,

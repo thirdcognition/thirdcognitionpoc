@@ -17,7 +17,7 @@ from lib.models.journey import (
     SubjectModel,
     SubjectStructure,
 )
-from lib.models.sqlite_tables import SourceConcept
+from lib.models.sqlite_tables import SourceConcept, SourceData
 from lib.prompts.journey import JourneyPrompts, JourneyStep
 from lib.chains.init import get_base_chain, get_chain
 from lib.streamlit_tools import llm_edit
@@ -57,6 +57,7 @@ class JourneyCreationState(TypedDict):
     categories: List[str]
     journey: JourneyModel
     concepts: List[SourceConcept]
+    sources: List[SourceData]
     subjects: Annotated[list[SubjectModel], operator.add]
     subjects_sorted: List[SubjectModel]
     subjects_done: bool = False
@@ -117,26 +118,22 @@ def get_journey_items(
     SubjectTemplate,
     StepTemplate,
 ]:
-    journey: JourneyModel = (state["journey"] if "journey" in state else None,)
+    journey: JourneyModel = state["journey"] if "journey" in state else None
     subject: SubjectModel = (
-        (
-            journey.subjects[config["configurable"]["subject_index"]]
-            if journey is not None
-            else None
-        ),
+        journey.subjects[config["configurable"]["subject_index"]]
+        if journey is not None
+        else None
     )
     step: StepModel = (
-        (
-            state["step"]
-            if "step" in state
-            else (
-                subject.steps[config["configurable"]["step_index"]]
-                if subject is not None
-                else None
-            )
-        ),
+        state["step"]
+        if "step" in state
+        else (
+            subject.steps[config["configurable"]["step_index"]]
+            if subject is not None
+            else None
+        )
     )
-    journey_template: JourneyTemplate = (config["configurable"]["journey_template"],)
+    journey_template: JourneyTemplate = config["configurable"]["journey_template"] if "configurable" in config else None
     if "subject_index" in config["configurable"]:
         subject_template: SubjectTemplate = journey_template.subject_templates[
             config["configurable"]["subject_index"]
@@ -624,3 +621,24 @@ subject_creation_graph.add_conditional_edges(
 subject_creation_graph.add_edge("subject_step_build", "combine_mapped_steps")
 subject_creation_graph.add_edge("combine_mapped_steps", "summary_build")
 subject_creation_graph.add_edge("summary_build", END)
+
+async def journey_build(state: JourneyCreationState, config: RunnableConfig) -> JourneyCreationState:
+    journey, subject, step, journey_template, subject_template = get_journey_items(state, config)
+
+    if journey is None:
+        journey = JourneyModel(
+            journeyname=state["journey_name"],
+            chroma_collection=["rag_" + category for category in state["categories"]] if state["chroma_collections" is None] else state["chroma_collections"],
+            journey_template_id=journey_template.id if journey_template else None,
+        )
+
+    sources = state["sources"] if "sources" in state else None
+    concepts = state["concepts"] if "concepts" in state else None
+
+    if concepts is None and sources is not None:
+        concepts = []
+        for source in sources:
+            concepts.extend(source.source_contents.concepts)
+    else:
+        raise ValueError("Concepts must be provided if sources are not provided.")
+

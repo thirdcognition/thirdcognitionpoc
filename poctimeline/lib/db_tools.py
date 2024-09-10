@@ -178,6 +178,19 @@ def update_rag(
                     print(f"{rag_id} not in {rag_items['ids']} - retrying...")
                     break
 
+def concept_id_exists(concept_id: str) -> bool:
+    return database_session.query(
+        sqla.exists().where(ConceptDataTable.id == concept_id)
+    ).scalar()
+
+existing_concept_ids = []
+def get_existing_concept_ids(refresh: bool = False) -> List[str]:
+    global existing_concept_ids
+    if refresh or len(existing_concept_ids) == 0:
+        existing_concept_ids = [
+            concept.id for concept in database_session.query(ConceptDataTable).all()
+        ]
+    return existing_concept_ids
 
 def update_db_file_rag_concepts(
     source: str,
@@ -256,10 +269,10 @@ def update_db_file_rag_concepts(
                 parent_id = concept.parent_id or new_concept.parent_id
                 if parent_id is not concept.parent_id:
                     if parent_id not in old_ids or parent_id not in new_ids:
-                        parent_concept = database_session.query(ConceptDataTable).filter(ConceptDataTable.id == parent_id).first()
+                        parent_concept = concept_id_exists(parent_id)
                     else:
-                        parent_concept = parent_id
-                    if parent_concept is None or parent_id == new_concept.id:
+                        parent_concept = True
+                    if parent_concept or parent_id == new_concept.id:
                         print(f"Parent concept with id {parent_id} does not exist.")
                         parent_id = None
 
@@ -279,10 +292,10 @@ def update_db_file_rag_concepts(
             if concept.id not in handled_concepts:
                 parent_id = concept.parent_id
                 if parent_id not in old_ids or parent_id not in new_ids:
-                    parent_concept = database_session.query(ConceptDataTable).filter(ConceptDataTable.id == parent_id).first()
+                    parent_concept = concept_id_exists(parent_id)
                 else:
-                    parent_concept = parent_id
-                if parent_concept is None or parent_id == concept.id:
+                    parent_concept = True
+                if parent_concept or parent_id == concept.id:
                     print(f"Parent concept with id {parent_id} does not exist.")
                     parent_id = None
                 new_concept = ConceptDataTable(

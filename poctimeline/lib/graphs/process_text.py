@@ -18,7 +18,7 @@ from langchain_community.document_loaders.url_playwright import PlaywrightURLLoa
 
 from lib.chains.base_parser import get_text_from_completion
 from lib.chains.init import get_chain
-from lib.db_tools import update_db_file_rag_concepts
+from lib.db_tools import get_existing_concept_ids, update_db_file_rag_concepts
 from lib.document_parse import process_file_contents
 from lib.document_tools import (
     a_semantic_splitter,
@@ -280,8 +280,10 @@ def should_conceptualize(
 
 async def concept_content(state: ProcessTextState, config: RunnableConfig):
     concepts: List[SourceConcept] = state["concepts"] if "concepts" in state else []
+    all_concept_ids = get_existing_concept_ids(refresh=True)
     if config["configurable"]["collect_concepts"] is True:
         for i, txt in enumerate(state["reformatted_txt"]):
+            existing_ids = set([concept.id for concept in concepts] + all_concept_ids)
             existing_categories = {}
             if len(concepts) > 0:
                 for concept in concepts:
@@ -302,6 +304,8 @@ async def concept_content(state: ProcessTextState, config: RunnableConfig):
             if len(existing_categories.keys()):
                 params["chat_history"] = [
                     AIMessage(
+                        "Existing concept ids: " + ", ".join(existing_ids)
+                        + "\n\n"
                         "Existing categories (tag: description):\n"
                         + "\n".join(existing_categories.values()),
                     )

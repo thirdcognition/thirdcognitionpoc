@@ -28,16 +28,16 @@ from lib.load_env import (
 )
 from lib.prompts.base import PromptFormatter
 from lib.prompts.journey import (
-    journey_steps,
-    journey_step_intro,
-    journey_step_action_details,
-    journey_step_actions,
-    journey_step_content,
-    journey_step_content_redo,
+    plan,
+    step_intro,
+    task_details,
+    step_tasks,
+    step_content,
+    step_content_redo,
 )
 from lib.prompts.journey_structured import journey_structured
-from lib.prompts.actions import (
-    action,
+from lib.prompts.tasks import (
+    task,
     summary,
     summary_guided,
     question_classifier,
@@ -260,7 +260,7 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
         summary_guided,
         True,
     ),
-    "action": ("instruct_0", action, False),
+    "task": ("instruct_0", task, False),
     "grader": ("structured", grader, False),
     "check": ("instruct_0", check, False),
     "text_formatter": ("instruct", text_formatter, False),
@@ -283,19 +283,19 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
         True,
     ),
     "journey_structured": ("structured", journey_structured, False),
-    "journey_steps": (
+    "plan": (
         "structured_detailed" if not DEVMODE else "structured",
-        journey_steps,
+        plan,
         True,
     ),
-    "journey_step_content": ("instruct_detailed_warm", journey_step_content, True),
-    "journey_step_intro": ("instruct_warm", journey_step_intro, True),
-    "journey_step_actions": (
+    "step_content": ("instruct_detailed_warm", step_content, True),
+    "step_intro": ("instruct_warm", step_intro, True),
+    "step_tasks": (
         "instruct_detailed" if not DEVMODE else "instruct",
-        journey_step_actions,
+        step_tasks,
         True,
     ),
-    "journey_step_action_details": ("instruct_warm", journey_step_action_details, True),
+    "task_details": ("instruct_warm", task_details, True),
     "question": ("chat", question, True),
     "helper": ("chat", helper, False),
     "chat": ("chat", chat, False),

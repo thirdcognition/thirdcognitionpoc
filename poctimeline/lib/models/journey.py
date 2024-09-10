@@ -9,14 +9,14 @@ class ResourceStructure(BaseModel):
         description="Title for the content to help in the task.", title="Title"
     )
     summary: str = Field(
-        description="Most important parts of the document for the step", title="Summary"
+        description="Most important parts of the document", title="Summary"
     )
     reference: str = Field(
         description="Name of the resource, references or link if available.",
         title="Reference",
     )
 
-class ActionStructure(BaseModel):
+class TaskStructure(BaseModel):
     title: str = Field(description="Title for the content", title="Title")
     description: str = Field(
         description="Objective, or target for the content", title="Description"
@@ -38,7 +38,7 @@ class SubjectStructure(BaseModel):
     subject: str = Field(description="Subject of the class", title="Subject")
     intro: str = Field(description="Introduction to the class", title="Intro")
     content: str = Field(description="Detailed content of the class", title="Content")
-    actions: List[ActionStructure] = Field(
+    tasks: List[TaskStructure] = Field(
         description="List of content for the subject.",
         title="Content",
     )
@@ -51,9 +51,9 @@ class StepModel(BaseModel):
     concepts: List[SourceConcept] = Field(default=None)
     intro: str = Field(default=None)
     summary: str = Field(default=None)
-    actions: str = Field(default=None)
+    tasks: str = Field(default=None)
     structured: SubjectStructure = Field(
-        default=SubjectStructure(title="", subject="", intro="", content="", actions=[])
+        default=SubjectStructure(title="", subject="", intro="", content="", tasks=[])
     )
     instructions: str = Field(default=None)
 
@@ -61,11 +61,11 @@ class StepModel(BaseModel):
 class SubjectModel(BaseModel):
     title: str = Field(default=None)
     summary: str = Field(default=None)
-    steps: List[StepModel] = Field(default_factory=list)
+    plan: List[StepModel] = Field(default_factory=list)
     prompts: JourneyPrompts = Field(default=JourneyPrompts())
     instructions: str = Field(default=None)
     step_amount: int = Field(default=None)
-    action_amount: int = Field(default=None)
+    task_amount: int = Field(default=None)
     concepts: List[SourceConcept] = Field(default=None)
     # files: List[str] = Field(default_factory=list)
     # db_sources: Dict[str, SourceData] = Field(default_factory=dict)

@@ -118,7 +118,7 @@ This is an *extremely* cool app!
                 with st.expander(
                     f"{subject.title}", expanded=(f"{journey_name}{DELIMITER}{i}" in chat_state or (0 == i and chat_state == "default"))
                 ):
-                    for j, step in enumerate(subject.steps):
+                    for j, step in enumerate(subject.plan):
                         step_id = f"{journey_name}{DELIMITER}{i}{DELIMITER}{j}"
                         if st.button(
                             step.title,

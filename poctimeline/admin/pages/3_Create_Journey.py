@@ -12,7 +12,7 @@ from lib.models.journey import SubjectModel
 from lib.prompts.journey import JourneyPrompts
 from lib.journey_shared import (
     create_subject_prompt_editor,
-    gen_journey_subject,
+    gen_subject,
     get_files_for_journey,
     save_journey,
     llm_gen_title_summary,
@@ -41,14 +41,14 @@ This is an *extremely* cool admin tool!
 def create_subject(
     journey_name, subject: SubjectModel, subject_index, chroma_collection
 ) -> None:
-    st.subheader(f"Section {subject_index+1}")
+    st.subheader(f"Subject {subject_index+1}")
 
     subject.prompts = create_subject_prompt_editor(
         f"{journey_name}_subject_{subject_index + 1}", subject
     )
 
     subject.instructions = st.text_area(
-        "Instructions for section",
+        "Instructions for subject",
         key=f"journey_gen_instructions_{journey_name}_{subject_index}",
         value=subject.instructions,
     )
@@ -60,7 +60,7 @@ def create_subject(
         )
 
     subject.step_amount = col2.number_input(
-        "(approx) Subsections",
+        "(approx) Plan steps",
         min_value=1,
         max_value=20,
         value=3,
@@ -68,13 +68,13 @@ def create_subject(
         key=f"journey_gen_step_amount_{journey_name}_{subject_index}",
     )
 
-    subject.action_amount = col2.number_input(
+    subject.task_amount = col2.number_input(
         "(approx) Modules",
         min_value=1,
         max_value=20,
         value=3,
         # value=subject.step_amount or 5,
-        key=f"journey_gen_action_amount_{journey_name}_{subject_index}",
+        key=f"journey_gen_task_amount_{journey_name}_{subject_index}",
     )
 
     return subject
@@ -154,8 +154,8 @@ async def get_journey_gen(journey_name):
                 [1, 3], vertical_alignment="center"
             )
 
-            but_subcol2.write("_will copy prompts from previous section_")
-            if but_subcol1.button("Add section", use_container_width=True):
+            but_subcol2.write("_will copy prompts from previous subject_")
+            if but_subcol1.button("Add subject", use_container_width=True):
                 i = len(journey_details.subjects)
                 prompts = JourneyPrompts()
                 if i > 0 and journey_details.subjects[-1].prompts is not None:
@@ -195,7 +195,7 @@ async def get_journey_gen(journey_name):
 
         for i, subject in enumerate(journey_details.subjects):
             # print(f"Generating subject {i+1} for journey {journey_name}")
-            subject = await gen_journey_subject(
+            subject = await gen_subject(
                 journey_details, subject, subject_index=i
             )
 
@@ -208,7 +208,7 @@ async def get_journey_gen(journey_name):
         with st.spinner("Generating journey titles and summaries"):
             files = []
             for i, subject in enumerate(journey_details.subjects):
-                title, summary = await llm_gen_title_summary(subject.steps)
+                title, summary = await llm_gen_title_summary(subject.plan)
                 journey_details.subjects[i].title = title
                 journey_details.subjects[i].summary = summary
 

@@ -15,7 +15,7 @@ from lib.prompts.base import (
 )
 
 
-class JourneyStep(BaseModel):
+class Step(BaseModel):
     title: str = Field(description="Title for the subject", title="Title")
     subject: str = Field(
         description="Describes the subject in one sentence", title="Subject"
@@ -32,11 +32,11 @@ class JourneyStep(BaseModel):
     )
 
 
-class JourneyStepList(BaseModel):
-    steps: List[JourneyStep] = Field(description="List of subjects", title="Subjects")
+class Plan(BaseModel):
+    plan: List[Step] = Field(description="List of subjects", title="Subjects")
 
 
-journey_steps = PromptFormatter(
+plan = PromptFormatter(
     system=textwrap.dedent(
         f"""
         {ACTOR_INTRODUCTIONS}
@@ -81,9 +81,9 @@ journey_steps = PromptFormatter(
         """
     ),
 )
-journey_steps.parser = PydanticOutputParser(pydantic_object=JourneyStepList)
+plan.parser = PydanticOutputParser(pydantic_object=Plan)
 
-journey_step_content = PromptFormatter(
+step_content = PromptFormatter(
     system=textwrap.dedent(
         f"""
         {ACTOR_INTRODUCTIONS}
@@ -131,9 +131,9 @@ journey_step_content = PromptFormatter(
         """
     ),
 )
-journey_step_content.parser = TagsParser(min_len=10)
+step_content.parser = TagsParser(min_len=10)
 
-journey_step_intro = PromptFormatter(
+step_intro = PromptFormatter(
     system=textwrap.dedent(
         f"""
         {ACTOR_INTRODUCTIONS}
@@ -173,9 +173,9 @@ journey_step_intro = PromptFormatter(
         """
     ),
 )
-journey_step_intro.parser = TagsParser(min_len=10)
+step_intro.parser = TagsParser(min_len=10)
 
-journey_step_actions = PromptFormatter(
+step_tasks = PromptFormatter(
     system=textwrap.dedent(
         f"""
         {ACTOR_INTRODUCTIONS}
@@ -208,17 +208,17 @@ journey_step_actions = PromptFormatter(
         {context}
         content end
 
-        Write a list of sections with their content to teach the subject to the student.
-        Prepare also a list of reference documents and their summary to use with each section when teaching the student about the subject.
+        Write a list of subjects with their content to teach the subject to the student.
+        Prepare also a list of reference documents and their summary to use with each subject when teaching the student about the subject.
         If instructions are provided, follow them exactly. If instructions specify a topic or subject, make sure the list includes only
         items which fall within within that topic. Create at maximum the specified amount of items.
         If there's a history with previous titles or subjects, use them to make sure you don't repeat the same subjects.
         """
     ),
 )
-journey_step_actions.parser = TagsParser(min_len=10)
+step_tasks.parser = TagsParser(min_len=10)
 
-journey_step_action_details = PromptFormatter(
+task_details = PromptFormatter(
     system=textwrap.dedent(
         f"""
         {ACTOR_INTRODUCTIONS}
@@ -254,41 +254,41 @@ journey_step_action_details = PromptFormatter(
         """
     ),
 )
-journey_step_action_details.parser = TagsParser(min_len=20)
+task_details.parser = TagsParser(min_len=20)
 
 
 class JourneyPrompts(BaseModel):
-    steps: CustomPrompt = Field(
-        default=CustomPrompt(system=journey_steps.system, user=journey_steps.user)
+    plan: CustomPrompt = Field(
+        default=CustomPrompt(system=plan.system, user=plan.user)
     )
     step_content: CustomPrompt = Field(
         default=CustomPrompt(
-            system=journey_step_content.system, user=journey_step_content.user
+            system=step_content.system, user=step_content.user
         )
     )
     step_intro: CustomPrompt = Field(
         default=CustomPrompt(
-            system=journey_step_intro.system, user=journey_step_intro.user
+            system=step_intro.system, user=step_intro.user
         )
     )
-    step_actions: CustomPrompt = Field(
+    step_tasks: CustomPrompt = Field(
         default=CustomPrompt(
-            system=journey_step_actions.system, user=journey_step_actions.user
+            system=step_tasks.system, user=step_tasks.user
         )
     )
-    step_action_details: CustomPrompt = Field(
+    task_details: CustomPrompt = Field(
         default=CustomPrompt(
-            system=journey_step_action_details.system,
-            user=journey_step_action_details.user,
+            system=task_details.system,
+            user=task_details.user,
         )
     )
 
 
 def convert_to_journey_prompts(container: CustomPromptContainer) -> JourneyPrompts:
     return JourneyPrompts(
-        steps=container.steps,
+        plan=container.plan,
         step_content=container.step_content,
         step_intro=container.step_intro,
-        step_actions=container.step_actions,
-        step_action_details=container.step_action_details,
+        step_tasks=container.step_tasks,
+        task_details=container.task_details,
     )

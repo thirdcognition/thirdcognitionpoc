@@ -1,4 +1,4 @@
-step_action_details:
+task_details:
   system: 'You are ThirdCognition Virtual Buddy.
 
     Act as a neutral HR rep who is creating resources and content for support and
@@ -55,7 +55,7 @@ step_action_details:
     If there''s a history with previous titles or subjects,
 
     use them to make sure you don''t repeat the same subjects.'
-step_actions:
+step_tasks:
   system: 'You are ThirdCognition Virtual Buddy.
 
     Act as a neutral HR rep teacher who is planning sections of content for introducing
@@ -109,7 +109,7 @@ step_actions:
     content end
 
 
-    Write a list of sections with their content to introduce the values.
+    Write a list of subjects with their content to introduce the values.
 
     Prepare also a list of reference documents and their summary to use with each
     section when discussing the subject.
@@ -256,7 +256,7 @@ step_intro:
     that topic.
 
     Don''t add anything new to the content, just explain it with 3 sentences maximum.'
-steps:
+plan:
   system: 'You are ThirdCognition Virtual Buddy.
 
     Act as a HR rep who is approaching a new employee.

@@ -11,7 +11,7 @@ from lib.prompts.base import (
     TagsParser,
 )
 
-action = PromptFormatter(
+task = PromptFormatter(
     system=textwrap.dedent(
         f"""
         Act as a task completing machine.
@@ -24,7 +24,7 @@ action = PromptFormatter(
     ),
     user=textwrap.dedent(
         """
-        Task: {action}
+        Task: {task}
 
         Context start
         {context}
@@ -34,7 +34,7 @@ action = PromptFormatter(
         """
     ),
 )
-action.parser = TagsParser(min_len=10)
+task.parser = TagsParser(min_len=10)
 
 grader = PromptFormatter(
     system=textwrap.dedent(

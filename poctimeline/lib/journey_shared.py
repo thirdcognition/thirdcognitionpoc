@@ -19,7 +19,7 @@ from lib.document_tools import create_document_lists
 from lib.load_env import SETTINGS
 from lib.streamlit_tools import llm_edit
 from lib.models.journey import (
-    ActionStructure,
+    TaskStructure,
     JourneyModel,
     ResourceStructure,
     StepModel,
@@ -28,7 +28,7 @@ from lib.models.journey import (
 )
 from lib.models.prompts import CustomPrompt
 from lib.models.sqlite_tables import SourceContents, SourceData, JourneyDataTable
-from lib.prompts.journey import JourneyStep, JourneyStepList, convert_to_journey_prompts
+from lib.prompts.journey import Step, Plan, convert_to_journey_prompts
 
 
 def save_journey(journey_name, journey: JourneyModel) -> bool:
@@ -87,13 +87,13 @@ def delete_journey(journey_name):
 
 
 async def llm_gen_title_summary(
-    steps: List[Union[StepModel, SubjectModel]]
+    plan: List[Union[StepModel, SubjectModel]]
 ) -> tuple[str, str]:
-    if isinstance(steps[0], SubjectModel):
+    if isinstance(plan[0], SubjectModel):
         context = "\n".join(
             [
                 f"Title: {subject.title}\n Summary:\n{subject.summary}\n"
-                for subject in steps
+                for subject in plan
             ]
         )
     else:
@@ -108,13 +108,13 @@ async def llm_gen_title_summary(
                     {(step.intro or "").replace("\n", " ")}
                     """
                 )
-                for step in steps
+                for step in plan
             ]
         )
-    title = get_chain("action").invoke(
+    title = get_chain("task").invoke(
         {
             "context": context,
-            "action": "Summarize context with 10 words or less to a title",
+            "task": "Summarize context with 10 words or less to a title",
         }
     )
 
@@ -127,11 +127,11 @@ async def llm_gen_title_summary(
     return title.strip(), summary.strip()
 
 
-def llm_gen_steps(
+def llm_gen_plan(
     content, journey: JourneyModel, subject: SubjectModel
-) -> JourneyStepList:
-    return get_base_chain("journey_steps")(
-        (subject.prompts.steps.system, subject.prompts.steps.user)
+) -> Plan:
+    return get_base_chain("plan")(
+        (subject.prompts.plan.system, subject.prompts.plan.user)
     ).invoke(
         {
             "context": content,
@@ -146,23 +146,23 @@ def llm_gen_step(
     content,
     journey: JourneyModel,
     subject: SubjectModel,
-    step: Union[JourneyStep | StepModel],
-    prev_steps: List[Union[JourneyStep | StepModel]] = None,
-    action_amount=10,
+    step: Union[Step | StepModel],
+    existing_plan: List[Union[Step | StepModel]] = None,
+    task_amount=10,
     progress_cb: Callable[[float, str], None] = None,
 ) -> StepModel:
     class_content = None
     subject_string = (
         f"Title: {step.title}\nSubject: {step.description}"
-        if isinstance(step, JourneyStep)
+        if isinstance(step, Step)
         else f"Title: {step.title}\nSubject: {step.subject}"
     )
     previous_class_subjects = []
     previous_class_intros = []
-    previous_class_actions = []
-    if prev_steps != None and len(prev_steps) > 0:
-        for prev_step in prev_steps:
-            if isinstance(prev_step, JourneyStep):
+    previous_class_tasks = []
+    if existing_plan != None and len(existing_plan) > 0:
+        for prev_step in existing_plan:
+            if isinstance(prev_step, Step):
                 previous_class_subjects.append(
                     AIMessage(
                         f"Previous title and subject: {prev_step.title}: {prev_step.description.replace('\n', ' ')}"
@@ -177,20 +177,20 @@ def llm_gen_step(
                 previous_class_intros.append(
                     AIMessage(f"Previous intro: {prev_step.intro.replace('\n', ' ')}")
                 )
-                previous_class_actions.append(
+                previous_class_tasks.append(
                     AIMessage(
-                        f"Previous actions: {', '.join([f'Title: {action.title}' for action in prev_step.structured.actions])}"
+                        f"Previous tasks: {', '.join([f'Title: {task.title}' for task in prev_step.structured.tasks])}"
                     )
                 )
 
     if progress_cb is not None:
         progress_cb(
-            0, "Generating subsection `" + step.title + "` preliminary content - "
+            0, "Generating step `" + step.title + "` preliminary content - "
         )
     doc_chain = get_rag_chain(
         journey.chroma_collection, "hyde_document", amount_of_documents=10
     )
-    class_content = get_base_chain("journey_step_content")(
+    class_content = get_base_chain("step_content")(
         (subject.prompts.step_content.system, subject.prompts.step_content.user)
     ).invoke(
         {
@@ -209,10 +209,10 @@ def llm_gen_step(
         class_content, _ = class_content
 
     if progress_cb is not None:
-        progress_cb(0.1, "Generating subsection `" + step.title + "` modules - ")
+        progress_cb(0.1, "Generating step `" + step.title + "` modules - ")
 
-    class_actions = get_base_chain("journey_step_actions")(
-        (subject.prompts.step_actions.system, subject.prompts.step_actions.user)
+    class_tasks = get_base_chain("step_tasks")(
+        (subject.prompts.step_tasks.system, subject.prompts.step_tasks.user)
     ).invoke(
         {
             "context": class_content,
@@ -220,15 +220,15 @@ def llm_gen_step(
             "subject_instructions": subject.instructions,
             "step_instructions": step.instructions,
             "subject": subject_string,
-            "amount": action_amount,
-            "chat_history": previous_class_subjects + previous_class_actions,
+            "amount": task_amount,
+            "chat_history": previous_class_subjects + previous_class_tasks,
         }
     )
-    if isinstance(class_actions, tuple) and len(class_actions) == 2:
-        class_actions, _ = class_actions
+    if isinstance(class_tasks, tuple) and len(class_tasks) == 2:
+        class_tasks, _ = class_tasks
     gen_step: StepModel = None
 
-    if isinstance(step, JourneyStep):
+    if isinstance(step, Step):
         gen_step = StepModel(
             title=step.title.strip(),
             subject=step.subject.strip(),
@@ -238,10 +238,10 @@ def llm_gen_step(
                 else class_content.content.strip()
             ),
             intro="",  # class_intro.strip() if isinstance(class_intro, str) else class_intro.content.strip(),
-            actions=(
-                class_actions.strip()
-                if isinstance(class_actions, str)
-                else class_actions.content.strip()
+            tasks=(
+                class_tasks.strip()
+                if isinstance(class_tasks, str)
+                else class_tasks.content.strip()
             ),
         )
     else:
@@ -250,17 +250,17 @@ def llm_gen_step(
             subject=step.subject.strip(),
             content=class_content.strip(),
             intro="",  # class_intro.strip(),
-            actions=class_actions.strip(),
+            tasks=class_tasks.strip(),
         )
 
     if progress_cb is not None:
         progress_cb(
-            0.2, "Generating subsection `" + step.title + "` structured format - "
+            0.2, "Generating step `" + step.title + "` structured format - "
         )
 
     json_step = llm_gen_json_step(gen_step)
 
-    gen_step = llm_gen_update_actions(journey, subject, gen_step, json_step)
+    gen_step = llm_gen_update_tasks(journey, subject, gen_step, json_step)
 
     class_content = llm_gen_step_content(
         journey,
@@ -282,9 +282,9 @@ def llm_gen_step(
     gen_step.structured.content = gen_step.content
 
     if progress_cb is not None:
-        progress_cb(0.9, "Generating subsection `" + step.title + "` intro - ")
+        progress_cb(0.9, "Generating step `" + step.title + "` intro - ")
 
-    class_intro = get_base_chain("journey_step_intro")(
+    class_intro = get_base_chain("step_intro")(
         (subject.prompts.step_intro.system, subject.prompts.step_intro.user)
     ).invoke(
         {
@@ -310,24 +310,24 @@ def llm_gen_step(
     return gen_step
 
 
-def get_action_details_str(index: int, action: ActionStructure) -> str:
+def get_task_details_str(index: int, task: TaskStructure) -> str:
     return textwrap.dedent(
         f"""
-        ## Action {index+1}: {action.title.strip()}:
-        {action.description.strip()}
+        ## Task {index+1}: {task.title.strip()}:
+        {task.description.strip()}
         """
         + (
             f"""
         ##### Resources:
 
-        - {f"\n        - ".join([f"{resource.title}: {resource.summary.replace('\n', '')}" for resource in action.resources])}
+        - {f"\n        - ".join([f"{resource.title}: {resource.summary.replace('\n', '')}" for resource in task.resources])}
         """
-            if len(action.resources) > 0
+            if len(task.resources) > 0
             else ""
         )
         + f"""
         #### Test:
-        {action.test.strip()}
+        {task.test.strip()}
 
         ---
         """
@@ -346,8 +346,8 @@ def llm_gen_json_step(
             {step.intro}
             Content:
             {step.content}
-            Actions:
-            {step.actions}
+            Tasks:
+            {step.tasks}
         """
             + (
                 """
@@ -363,7 +363,7 @@ def llm_gen_json_step(
     return structured
 
 
-def llm_gen_update_actions(
+def llm_gen_update_tasks(
     journey: JourneyModel,
     subject: SubjectModel,
     gen_step: StepModel,
@@ -386,18 +386,18 @@ def llm_gen_resource(
     journey: JourneyModel,
     subject: SubjectModel,
     step: StepModel,
-    action: ActionStructure,
+    task: TaskStructure,
     resource: ResourceStructure,
 ) -> str:
-    resource_text = f"{resource.title} (from: {resource.reference}) - {resource.summary.replace('\n', '')} for {action.title} in {step.title} of {subject.title} in {journey.title}"
+    resource_text = f"{resource.title} (from: {resource.reference}) - {resource.summary.replace('\n', '')} for {task.title} in {step.title} of {subject.title} in {journey.title}"
     doc_chain = get_rag_chain(
         journey.chroma_collection, "hyde_document", amount_of_documents=5
     )
 
-    class_action_details = get_base_chain("journey_step_action_details")(
+    class_task_details = get_base_chain("task_details")(
         (
-            subject.prompts.step_action_details.system,
-            subject.prompts.step_action_details.user,
+            subject.prompts.task_details.system,
+            subject.prompts.task_details.user,
         )
     ).invoke(
         {
@@ -410,18 +410,18 @@ def llm_gen_resource(
             "resource": resource_text,
         }
     )
-    if isinstance(class_action_details, tuple):
-        class_action_details, _ = class_action_details
-    if isinstance(class_action_details, BaseMessage):
-        class_action_details = class_action_details.content
+    if isinstance(class_task_details, tuple):
+        class_task_details, _ = class_task_details
+    if isinstance(class_task_details, BaseMessage):
+        class_task_details = class_task_details.content
 
-    return class_action_details
+    return class_task_details
 
 
 def llm_gen_step_content(
     journey: JourneyModel,
     subject: SubjectModel,
-    step: Union[JourneyStep | StepModel],
+    step: Union[Step | StepModel],
     progress_cb: Callable[[float, str], None] = None,
     progress_start: float = 0,
     progress_end: float = 1,
@@ -431,45 +431,45 @@ def llm_gen_step_content(
     )
     subject_string = (
         f"Title: {step.title}\nSubject: {step.description}"
-        if isinstance(step, JourneyStep)
+        if isinstance(step, Step)
         else f"Title: {step.title}\nSubject: {step.subject}"
     )
     content = f"{subject_string.strip()}\n\n{step.content.strip()}"
     if step.structured is not None and isinstance(step.structured, SubjectStructure):
-        total_resources = len(step.structured.actions)
+        total_resources = len(step.structured.tasks)
         cur = 0
-        for action in step.structured.actions:
+        for task in step.structured.tasks:
             if progress_cb is not None:
                 progress_cb(
                     progress_start
                     + (cur / total_resources) * (progress_end - progress_start),
-                    f"Generating subsection `{step.title}` action {cur+1} `{action.title}` section content - ",
+                    f"Generating step `{step.title}` task {cur+1} `{task.title}` subject content - ",
                 )
             content += (
                 "\n\n"
-                + f"Section: {action.title.strip()}\n\nSection description: {action.description.strip()}"
+                + f"Subject: {task.title.strip()}\n\nSubject description: {task.description.strip()}"
             )
             content += (
                 "\n\n"
-                + "\n\nSection content:"
+                + "\n\nSubject content:"
                 + doc_chain.invoke(
                     {
-                        "question": f"Section: {action.title.strip()}\n\nSection description: {action.description.strip()}",
+                        "question": f"Subject: {task.title.strip()}\n\nSubject description: {task.description.strip()}",
                         "context": step.content,
                     }
                 )["answer"]
             )
             cur += 1
     else:
-        content += "\n\n" + step.actions.strip()
+        content += "\n\n" + step.tasks.strip()
 
     if progress_cb is not None:
         progress_cb(
-            progress_end, "Generating subsection `" + step.title + "` content - "
+            progress_end, "Generating step `" + step.title + "` content - "
         )
 
     # TODO: add subject.instructions
-    class_content = get_base_chain("journey_step_content")(
+    class_content = get_base_chain("step_content")(
         (subject.prompts.step_content.system, subject.prompts.step_content.user)
     ).invoke(
         {
@@ -622,11 +622,11 @@ def create_subject_prompt_editor(
         tab0, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
             [
                 "Prompt generator",
-                "Subsections",
-                "Subsection\nIntro",
-                "Subsection\n content",
-                "Subsection\nModules",
-                "Subsection\nModule Details",
+                "Plan steps",
+                "Step\nIntro",
+                "Step\n content",
+                "Step\nModules",
+                "Step\nModule Details",
                 "Bulk",
             ]
         )
@@ -652,7 +652,7 @@ def create_subject_prompt_editor(
                         )
                         subject.prompts = convert_to_journey_prompts(new_prompts)
 
-            subject.prompts.steps = edit_prompt(1, subject.prompts.steps, tab1)
+            subject.prompts.plan = edit_prompt(1, subject.prompts.plan, tab1)
             subject.prompts.step_intro = edit_prompt(
                 2, subject.prompts.step_intro, tab2
             )
@@ -660,11 +660,11 @@ def create_subject_prompt_editor(
                 3, subject.prompts.step_content, tab3
             )
             # subject.prompts.step_content_redo = edit_prompt(3, subject.prompts.step_content_redo, tab3)
-            subject.prompts.step_actions = edit_prompt(
-                4, subject.prompts.step_actions, tab4
+            subject.prompts.step_tasks = edit_prompt(
+                4, subject.prompts.step_tasks, tab4
             )
-            subject.prompts.step_action_details = edit_prompt(
-                5, subject.prompts.step_action_details, tab5
+            subject.prompts.task_details = edit_prompt(
+                5, subject.prompts.task_details, tab5
             )
 
             with tab6:
@@ -702,21 +702,21 @@ def create_subject_prompt_editor(
 
 def update_subject_prompts(subject: SubjectModel, bulk: str):
     prompts = yaml.safe_load(bulk)
-    subject.prompts.steps.system = prompts["steps"]["system"]
-    subject.prompts.steps.user = prompts["steps"]["user"]
+    subject.prompts.plan.system = prompts["plan"]["system"]
+    subject.prompts.plan.user = prompts["plan"]["user"]
     subject.prompts.step_intro.system = prompts["step_intro"]["system"]
     subject.prompts.step_intro.user = prompts["step_intro"]["user"]
     subject.prompts.step_content.system = prompts["step_content"]["system"]
     subject.prompts.step_content.user = prompts["step_content"]["user"]
-    subject.prompts.step_actions.system = prompts["step_actions"]["system"]
-    subject.prompts.step_actions.user = prompts["step_actions"]["user"]
-    subject.prompts.step_action_details.system = prompts["step_action_details"][
+    subject.prompts.step_tasks.system = prompts["step_tasks"]["system"]
+    subject.prompts.step_tasks.user = prompts["step_tasks"]["user"]
+    subject.prompts.task_details.system = prompts["task_details"][
         "system"
     ]
-    subject.prompts.step_action_details.user = prompts["step_action_details"]["user"]
+    subject.prompts.task_details.user = prompts["task_details"]["user"]
 
 
-async def gen_journey_subject(
+async def gen_subject(
     journey: JourneyModel,
     subject: SubjectModel,
     subject_index: int = 0,
@@ -724,24 +724,24 @@ async def gen_journey_subject(
 ) -> SubjectModel:
     # journey:JourneyModel = st.session_state.journey_get_details[journey_name]
     # vectorstore = get_vectorstore("rag_"+ journey["category"][0], "hyde")
-    with st.status(f"Building section {subject_index+1} document"):
+    with st.status(f"Building subject {subject_index+1} document"):
         compressed = build_journey_doc_from_files(subject.db_sources)
-        st.success("Generating section document done.")
+        st.success("Generating subject document done.")
     if step_index is None:
-        with st.status(f"Building section {subject_index+1}"):
+        with st.status(f"Building subject {subject_index+1}"):
             subject = await gen_subject(
                 compressed,
                 journey,
                 subject,
                 subject_index=subject_index,
             )
-            st.success(f"Section {subject_index+1} done.")
+            st.success(f"Subject {subject_index+1} done.")
             subject.files = list(subject.db_sources.keys())
     else:
-        with st.status(f"Building section {subject_index+1} subsection {step_index+1}"):
+        with st.status(f"Building subject {subject_index+1} step {step_index+1}"):
             bar = st.progress(
                 0,
-                text=f"Generating section {subject_index+1} subsection {step_index+1}",
+                text=f"Generating subject {subject_index+1} step {step_index+1}",
             )
             start_time = time.time()  # Start time of the process
             average_time_per_portion = 0  # Running average of time per portion
@@ -767,20 +767,20 @@ async def gen_journey_subject(
                 estimated_time_str = f"{int(minutes)}m {int(seconds)}s"
                 bar.progress(progress, text=f"{message} - ETC {estimated_time_str}")
 
-            prev_steps = subject.steps[:step_index] + subject.steps[step_index + 1 :]
-            subject.steps[step_index] = llm_gen_step(
+            existing_plan = subject.plan[:step_index] + subject.plan[step_index + 1 :]
+            subject.plan[step_index] = llm_gen_step(
                 compressed,
                 journey,
                 subject,
-                subject.steps[step_index],
-                prev_steps=prev_steps,
+                subject.plan[step_index],
+                existing_plan=existing_plan,
                 progress_cb=progress_cb,
-                action_amount=subject.action_amount or 5,
+                task_amount=subject.task_amount or 5,
             )
             bar.progress(
-                1.0, text=f"Section {subject_index+1} subsection {step_index+1} done."
+                1.0, text=f"Subject {subject_index+1} step {step_index+1} done."
             )
-            st.success(f"Section {subject_index+1} subsection {step_index+1} done.")
+            st.success(f"Subject {subject_index+1} step {step_index+1} done.")
 
     return subject
 
@@ -790,18 +790,18 @@ async def gen_subject(
 ) -> SubjectModel:
     bar = st.progress(0, text="Generating")
 
-    bar.progress(0, text=f"Generating {subject_index+1} section")
-    step_items: JourneyStepList = llm_gen_steps(content, journey, subject)
-    bar.progress(0.1, text="Generate subsections...")
+    bar.progress(0, text=f"Generating {subject_index+1} subject")
+    step_items: Plan = llm_gen_plan(content, journey, subject)
+    bar.progress(0.1, text="Generate plan...")
 
-    steps: list[StepModel] = []
+    plan: list[StepModel] = []
     start_time = time.time()  # Start time of the process
     average_time_per_portion = 0  # Running average of time per portion
-    total_items = len(step_items.steps)
-    for i, step in enumerate(step_items.steps):
+    total_items = len(step_items.plan)
+    for i, step in enumerate(step_items.plan):
         bar.progress(
             0.15 + (0.8 * i / total_items),
-            text=f"Generating subsection {i+1} of {total_items}",
+            text=f"Generating step {i+1} of {total_items}",
         )
         prog_start = 0.15 + (0.8 * i / total_items)
         prog_end = 0.15 + (0.8 * (i + 1) / total_items)
@@ -833,22 +833,22 @@ async def gen_subject(
                 text=f"{message.replace('step', 'step '+str(i+1)+':')} ETC {estimated_time_str}",
             )
 
-        prev_steps = steps + (
-            step_items.steps[i + 1 :] if i < len(step_items.steps) - 1 else []
+        existing_plan = plan + (
+            step_items.plan[i + 1 :] if i < len(step_items.plan) - 1 else []
         )
         new_step = llm_gen_step(
             content,
             journey,
             subject,
             step,
-            prev_steps=prev_steps,
+            existing_plan=existing_plan,
             progress_cb=progress_cb,
-            action_amount=subject.action_amount or 5,
+            task_amount=subject.task_amount or 5,
         )
-        steps.append(new_step)
+        plan.append(new_step)
     bar.progress(0.95, text="Generating title")
 
-    title, summary = await llm_gen_title_summary(steps)
+    title, summary = await llm_gen_title_summary(plan)
     bar.progress(1.0, text="Generation complete")
 
     bar.empty()
@@ -857,5 +857,5 @@ async def gen_subject(
     # st.write(instructions)
     subject.title = title
     subject.summary = summary
-    subject.steps = steps
+    subject.plan = plan
     return subject

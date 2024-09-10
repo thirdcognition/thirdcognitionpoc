@@ -23,9 +23,9 @@ from lib.chains.init import (
 
 from typing import Annotated, List, TypedDict
 
-from lib.models.journey import ActionStructure, SubjectModel, SubjectStructure
-from lib.models.teaching import TeachingAction, TeachingItemPlan, UserData
-from lib.prompts.journey import JourneyPrompts, journey_steps
+from lib.models.journey import TaskStructure, SubjectModel, SubjectStructure
+from lib.models.teaching import TeachingTask, TeachingItemPlan, UserData
+from lib.prompts.journey import JourneyPrompts, plan
 
 journey_teaching_plan_parser = PydanticOutputParser(pydantic_object=TeachingItemPlan)
 
@@ -37,10 +37,10 @@ def get_planner_chain(subject: SubjectModel):
 
     prompts:JourneyPrompts = subject.prompts
     prompt = None
-    if prompts and prompts.steps:
-        prompt = prompts.steps
+    if prompts and prompts.plan:
+        prompt = prompts.plan
     else:
-        prompt = journey_steps
+        prompt = plan
 
     _planner_chain[id] = Chain(
         llm=get_llm("json"),
@@ -51,25 +51,25 @@ def get_planner_chain(subject: SubjectModel):
     )
     return _planner_chain[id]
 
-def prepare_planner_input(subject_data: SubjectStructure, action_data: ActionStructure, previous_actions: List[TeachingAction], amount=5):
+def prepare_planner_input(subject_data: SubjectStructure, task_data: TaskStructure, previous_tasks: List[TeachingTask], amount=5):
 
     subject_description = textwrap.dedent(f"""
         Main subject: {subject_data.title}
-        Detailed subject: {action_data.title}
-        Detailed objective: {action_data.description}
+        Detailed subject: {task_data.title}
+        Detailed objective: {task_data.description}
         """)
 
     subject_content = textwrap.dedent(f"""
         Main content:
         {subject_data.content.replace('\n', '').strip()}
 
-        Detailed content:{ (f"\n        - {resource.title.strip()}: {resource.summary.replace('\n', '').strip()}" for resource in action_data.resources) }
+        Detailed content:{ (f"\n        - {resource.title.strip()}: {resource.summary.replace('\n', '').strip()}" for resource in task_data.resources) }
         """)
 
     chat_history:List[BaseMessage] = []
-    for teaching_action in previous_actions:
-        chat_history += teaching_action.messages
-        # chat_history += (f"\n{message.type}: {message.content.replace('\n', '').strip()}" for message in teaching_action.messages)
+    for teaching_task in previous_tasks:
+        chat_history += teaching_task.messages
+        # chat_history += (f"\n{message.type}: {message.content.replace('\n', '').strip()}" for message in teaching_task.messages)
 
     return {
         "context": subject_description + "\n" + subject_content,
@@ -87,10 +87,10 @@ class TeachingConfig(TypedDict):
 
 class TeachingState(TypedDict):
     id: str
-    current_action_index: int
+    current_task_index: int
 
-    current_action: TeachingAction
-    past_actions: Annotated[List[TeachingAction], operator.add]
+    current_task: TeachingTask
+    past_tasks: Annotated[List[TeachingTask], operator.add]
     pre_class_messages: Annotated[List[BaseMessage], add_messages]
     post_class_messages: Annotated[List[BaseMessage], add_messages]
 
@@ -101,16 +101,16 @@ def init_state(state:TeachingState, config: RunnableConfig):
     step_index:int=config["step_index"]
     init_journey_chat(config["journey_name"])
     journey:Dict[str, JourneyModel] = get_db_journey(journey_name)
-    step = journey[subject_name].subjects[sub_subject_index].steps[step_index].structured
+    step = journey[subject_name].subjects[sub_subject_index].plan[step_index].structured
 
     id = f"{journey_name}{DELIMITER}{subject_name}{DELIMITER}{sub_subject_index}{DELIMITER}{step_index}"
 
     return {
         "id": id,
         "subject_data": step,
-        "current_action_index": 0,
-        "current_action": None,
-        "past_actions": [],
+        "current_task_index": 0,
+        "current_task": None,
+        "past_tasks": [],
         "pre_class_messages": [],
         "post_class_messages": [],
     }
@@ -123,24 +123,24 @@ def introduce_class(state: TeachingState):
 
 def chat_in_class(state: TeachingState, message: str):
     subject_data:SubjectStructure = state["subject_data"]
-    current_action_index:int = state["current_action_index"] or 0
-    past_actions:List[TeachingAction] = state["past_actions"]
-    current_action:TeachingAction = state["current_action"]
+    current_task_index:int = state["current_task_index"] or 0
+    past_tasks:List[TeachingTask] = state["past_tasks"]
+    current_task:TeachingTask = state["current_task"]
 
 def continue_class(state: TeachingState):
     subject_data:SubjectStructure = state["subject_data"]
-    current_action_index:int = state["current_action_index"] or 0
-    past_actions:List[TeachingAction] = state["past_actions"]
-    current_action:TeachingAction = state["current_action"]
+    current_task_index:int = state["current_task_index"] or 0
+    past_tasks:List[TeachingTask] = state["past_tasks"]
+    current_task:TeachingTask = state["current_task"]
 
-def pre_plan_action(state: TeachingState):
+def pre_plan_task(state: TeachingState):
     subject_data:SubjectStructure = state["subject_data"]
-    current_action_index:int = state["current_action_index"]
-    past_actions:List[TeachingAction] = state["past_actions"]
+    current_task_index:int = state["current_task_index"]
+    past_tasks:List[TeachingTask] = state["past_tasks"]
 
 # State should contain:
 # Messages/History
-# Current action index
+# Current task index
 # User data
 # Subject data
 
@@ -148,19 +148,19 @@ def pre_plan_action(state: TeachingState):
 # 0. Take intro message from journey data and push it to messages
 # 1. Wait for user input/Continue
 # 1.1 while user input execute chat chain with state and history data
-# 2. While actions left
-# 2.1 Take action
-# 2.2 Take title, description, and resources from action
-# 2.3 Plan teaching actions to execute description with the help of resources and history
-# 2.4 Take teaching action and execute it
+# 2. While tasks left
+# 2.1 Take task
+# 2.2 Take title, description, and resources from task
+# 2.3 Plan teaching tasks to execute description with the help of resources and history
+# 2.4 Take teaching task and execute it
 # 2.5. Wait for user input/Continue
 # 2.5.1 while user input execute chat chain with state and history data
-# 2.6 Take test action from 2.1 and plan test and verification with the history and action resources
+# 2.6 Take test task from 2.1 and plan test and verification with the history and task resources
 # 2.6.0 While user input does not pass test verification
 # 2.6.1 Wait for user input
 # 2.6.1 Test user input against test verification. If answer assumed verify that it is correct, otherwise use chat chain
 # 2.6.2 If test fails converse with user to help them understand about their mistakes, not giving the right answer but encouraging user to think
-# 2.7 Summarize discussion and relevant details from the action.
+# 2.7 Summarize discussion and relevant details from the task.
 # 2.8. Wait for user input/Continue
 # 2.8.1 while user input execute chat chain with state and history data
 # 3. Summarize all the content from the journey and the user's learning
@@ -171,7 +171,7 @@ def pre_plan_action(state: TeachingState):
 # main loop
 # 1. Send the introduction message which is optimized to user specific details
 # 2. (wait)
-# 3. Iterate through actions with teaching loop
+# 3. Iterate through tasks with teaching loop
 
 # Wait loop
 # 1. Wait for continue or user input
@@ -181,14 +181,14 @@ def pre_plan_action(state: TeachingState):
 # Teaching loop
 # 1. Describe the next subject from the description to the user using learning material and history as context
 # 2. (wait)
-# 3. Iteratate through actions using the action loop
-# 4. Summarize all the content from the action loop
+# 3. Iteratate through tasks using the task loop
+# 4. Summarize all the content from the task loop
 # 5. (wait)
-# 6. Using the action test verify that the user has learned the content from the action
+# 6. Using the task test verify that the user has learned the content from the task
 
-# Action loop
-# 3. Take the action description and the learning material and determine approximately 3 distinct items to teach
-# 4. Iterate through these steps in following fashion:
+# Task loop
+# 3. Take the task description and the learning material and determine approximately 3 distinct items to teach
+# 4. Iterate through these plan in following fashion:
 #   4.1. Teach about the item in up to 5 sentences
 #   4.2. (wait)
 #   4.3. Give an example of the item with up to 5 sentences

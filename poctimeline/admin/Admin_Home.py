@@ -29,7 +29,7 @@ def main():
 
     st.markdown(
         """
-Select 👈 a the section from sidebar to edit the content!
+Select 👈 a the subject from sidebar to edit the content!
     """
     )
 

@@ -1,4 +1,4 @@
-step_action_details:
+task_details:
   system: 'You are a helpful and efficient AI assistant Virtual Buddy.
 
     Act as a teacher who is creating resources and content to support teaching in
@@ -56,7 +56,7 @@ step_action_details:
     If there''s a history with previous titles or subjects,
 
     use them to make sure you don''t repeat the same subjects.'
-step_actions:
+step_tasks:
   system: 'You are a helpful and efficient AI assistant Virtual Buddy.
 
     Act as a teacher who planning sections of content for teaching the student a specific
@@ -111,10 +111,10 @@ step_actions:
     content end
 
 
-    Write a list of sections with their content to teach the subject to the student.
+    Write a list of subjects with their content to teach the subject to the student.
 
     Prepare also a list of reference documents and their summary to use with each
-    section when teaching the student about the subject.
+    subject when teaching the student about the subject.
 
     If instructions are provided, follow them exactly. If instructions specify a topic
     or subject, make sure the list includes only
@@ -263,7 +263,7 @@ step_intro:
     within that topic.
 
     Don''t add anything new to the content, just explain it with 3 sentences maximum.'
-steps:
+plan:
   system: 'You are a helpful and efficient AI assistant Virtual Buddy.
 
     Act as a teacher who is planning a curriculum.

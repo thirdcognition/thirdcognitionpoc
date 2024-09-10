@@ -11,22 +11,22 @@ from langgraph.graph import END, START, StateGraph
 from lib.chains.base_parser import get_text_from_completion
 from lib.chains.rag_chain import get_rag_chain
 from lib.models.journey import (
-    ActionStructure,
+    TaskStructure,
     JourneyModel,
     StepModel,
     SubjectModel,
     SubjectStructure,
 )
 from lib.models.sqlite_tables import SourceConcept, SourceData
-from lib.prompts.journey import JourneyPrompts, JourneyStep
+from lib.prompts.journey import JourneyPrompts, Step
 from lib.chains.init import get_base_chain, get_chain
 from lib.streamlit_tools import llm_edit
 
 
 class StepTemplate(BaseModel):
     id: str
-    step_instruction: str
-    action_amount: int
+    instructions: str
+    task_amount: int
 
 
 class SubjectTemplate(BaseModel):
@@ -36,7 +36,7 @@ class SubjectTemplate(BaseModel):
     subject_prompts: JourneyPrompts
     step_templates: List[StepTemplate]
     step_amount: 3
-    default_action_amount: int = 5
+    default_task_amount: int = 5
 
 
 class JourneyTemplate(BaseModel):
@@ -74,11 +74,11 @@ class SubjectCreationState(TypedDict):
     journey: JourneyModel
     subject: SubjectModel
     concepts: List[SourceConcept]
-    initial_steps: List[JourneyStep]
-    initial_steps_done: bool = False
-    steps: Annotated[list[StepModel], operator.add]
-    steps_sorted: List[StepModel]
-    steps_done: bool = False
+    initial_plan: List[Step]
+    initial_plan_done: bool = False
+    plan: Annotated[list[StepModel], operator.add]
+    plan_sorted: List[StepModel]
+    plan_done: bool = False
     subject_done: bool = False
 
 
@@ -95,10 +95,10 @@ class StepCreationState(TypedDict):
     step: StepModel
     concepts_content: str
     subject_title: str
-    actions: str
-    actions_done: bool = False
-    actions_structured: SubjectStructure
-    actions_structured_done: bool = False
+    tasks: str
+    tasks_done: bool = False
+    tasks_structured: SubjectStructure
+    tasks_structured_done: bool = False
     content_prepare: str
     content_prepare_done: bool = False
     content: str
@@ -128,7 +128,7 @@ def get_journey_items(
         state["step"]
         if "step" in state
         else (
-            subject.steps[config["configurable"]["step_index"]]
+            subject.plan[config["configurable"]["step_index"]]
             if subject is not None
             else None
         )
@@ -150,22 +150,22 @@ def get_journey_items(
     return journey, subject, step, journey_template, subject_template, step_template
 
 
-async def actions_build(
+async def tasks_build(
     state: StepCreationState, config: RunnableConfig
 ) -> StepCreationState:
     journey, subject, step, journey_template, subject_template, step_template = (
         get_journey_items(state, config)
     )
     prompt = (
-        subject.prompts.step_actions
+        subject.prompts.step_tasks
         if subject is not None
-        else subject_template.subject_prompts.step_actions
+        else subject_template.subject_prompts.step_tasks
     )
 
-    action_amount = (
-        step_template.action_amount
-        if step_template.action_amount is not None
-        else subject_template.default_action_amount
+    task_amount = (
+        step_template.task_amount
+        if step_template.task_amount is not None
+        else subject_template.default_task_amount
     )
 
     concepts = state["concepts"] if "concepts" in state else step.concepts
@@ -176,7 +176,7 @@ async def actions_build(
         ]
     )
     subject_title = f"Title: {step.title}\nSubject: {step.subject}"
-    class_actions = await get_base_chain("journey_step_actions")(
+    class_tasks = await get_base_chain("step_tasks")(
         (prompt.system, prompt.user)
     ).ainvoke(
         {
@@ -184,20 +184,20 @@ async def actions_build(
             "journey_instructions": journey_template.journey_instruction,
             "subject_instructions": subject_template.subject_instruction,
             "subject": subject_title,
-            "amount": action_amount,
-            # "chat_history": previous_class_subjects + previous_class_actions
+            "amount": task_amount,
+            # "chat_history": previous_class_subjects + previous_class_tasks
         }
     )
 
     return {
         "subject_title": subject_title,
         "concepts_content": class_content,
-        "actions": get_text_from_completion(class_actions),
-        "actions_done": True,
+        "tasks": get_text_from_completion(class_tasks),
+        "tasks_done": True,
     }
 
 
-async def actions_structured_build(
+async def tasks_structured_build(
     state: StepCreationState, config: RunnableConfig
 ) -> StepCreationState:
     journey, subject, step, journey_template, subject_template, step_template = (
@@ -218,7 +218,7 @@ async def actions_structured_build(
         + (
             step.instructions
             if step.instructions is not None
-            else step_template.step_instruction
+            else step_template.instructions
         ).strip()
     )
 
@@ -231,8 +231,8 @@ async def actions_structured_build(
             {step.summary}
             Content:
             {state["concepts_content"]}
-            Actions:
-            {state["actions"]}
+            Tasks:
+            {state["tasks"]}
         """
             + (
                 """
@@ -246,24 +246,24 @@ async def actions_structured_build(
     )
 
     return {
-        "actions_structured": structured,
-        "actions_structured_done": True,
+        "tasks_structured": structured,
+        "tasks_structured_done": True,
     }
 
 
-async def process_action_to_content(
-    action: ActionStructure, doc_chain: RunnableSequence, context: str
+async def process_task_to_content(
+    task: TaskStructure, doc_chain: RunnableSequence, context: str
 ):
     content = (
         "\n\n"
-        + f"Section: {action.title.strip()}\n\nSection description: {action.description.strip()}"
+        + f"Subject: {task.title.strip()}\n\nSubject description: {task.description.strip()}"
     )
     content += (
         "\n\n"
-        + "\n\nSection content:"
+        + "\n\nSubject content:"
         + await doc_chain.ainvoke(
             {
-                "question": f"Section: {action.title.strip()}\n\nSection description: {action.description.strip()}",
+                "question": f"Subject: {task.title.strip()}\n\nSubject description: {task.description.strip()}",
                 "context": context,
             }
         )["answer"]
@@ -275,7 +275,7 @@ async def content_prepare_build(
     state: StepCreationState, config: RunnableConfig
 ) -> StepCreationState:
     journey = state["journey"] if "journey" in state else None
-    structured = state["actions_structured"]
+    structured = state["tasks_structured"]
 
     doc_chain = get_rag_chain(
         journey.chroma_collection,
@@ -286,13 +286,13 @@ async def content_prepare_build(
 
     if structured is not None and isinstance(structured, SubjectStructure):
         tasks = [
-            process_action_to_content(action, doc_chain, state)
-            for action in structured.actions
+            process_task_to_content(task, doc_chain, state)
+            for task in structured.tasks
         ]
         contents = await asyncio.gather(*tasks)
         return "\n\n".join(contents)
     else:
-        content += "\n\n" + state["actions"]
+        content += "\n\n" + state["tasks"]
 
     return {
         "content_prepare": get_text_from_completion(content),
@@ -314,7 +314,7 @@ async def content_build(
 
     prep_content = state["content_prepare"]
 
-    content = await get_base_chain("journey_step_content")(
+    content = await get_base_chain("step_content")(
         (prompt.system, prompt.user)
     ).ainvoke(
         {
@@ -324,7 +324,7 @@ async def content_build(
             "step_instructions": (
                 step.instructions
                 if subject is not None
-                else step_template.step_instruction
+                else step_template.instructions
             ),
             "subject": state["subject_title"],
         }
@@ -348,7 +348,7 @@ async def intro_build(
         else subject_template.subject_prompts.step_intro
     )
 
-    class_intro = await get_base_chain("journey_step_intro")(
+    class_intro = await get_base_chain("step_intro")(
         (prompt.system, prompt.user)
     ).ainvoke(
         {
@@ -366,7 +366,7 @@ async def intro_build(
             "step_instructions": (
                 step.instructions
                 if subject is not None
-                else step_template.step_instruction
+                else step_template.instructions
             ),
             "subject": state["subject_title"],
             # "chat_history": previous_class_intros
@@ -393,8 +393,8 @@ async def step_build(
         concepts=step.concepts,
         content=state["content"].strip(),
         intro=state["intro"].strip(),  # class_intro.strip(),
-        actions=state["actions"].strip(),
-        structured=state["actions_structured"],
+        tasks=state["tasks"].strip(),
+        structured=state["tasks_structured"],
     )
 
     return {
@@ -404,17 +404,17 @@ async def step_build(
 
 
 step_creation_graph = StateGraph(StepCreationState, JourneyCreationConfig)
-step_creation_graph.add_node("actions_build", actions_build)
-step_creation_graph.add_node("actions_structured_build", actions_structured_build)
-# TODO after actions_structured build ask user for files/links to use for references
+step_creation_graph.add_node("tasks_build", tasks_build)
+step_creation_graph.add_node("tasks_structured_build", tasks_structured_build)
+# TODO after tasks_structured build ask user for files/links to use for references
 step_creation_graph.add_node("content_prepare_build", content_prepare_build)
 step_creation_graph.add_node("content_build", content_build)
 step_creation_graph.add_node("intro_build", intro_build)
 step_creation_graph.add_node("step_build", step_build)
 
-step_creation_graph.add_edge(START, "actions_build")
-step_creation_graph.add_edge("actions_build", "actions_structured_build")
-step_creation_graph.add_edge("actions_structured_build", "content_prepare_build")
+step_creation_graph.add_edge(START, "tasks_build")
+step_creation_graph.add_edge("tasks_build", "tasks_structured_build")
+step_creation_graph.add_edge("tasks_structured_build", "content_prepare_build")
 step_creation_graph.add_edge("content_prepare_build", "content_build")
 step_creation_graph.add_edge("content_build", "intro_build")
 step_creation_graph.add_edge("intro_build", "step_build")
@@ -423,16 +423,16 @@ step_creation_graph.add_edge("step_build", END)
 build_step = step_creation_graph.compile()
 
 
-async def new_steps_build(
+async def new_plan_build(
     state: SubjectCreationState, config: RunnableConfig
 ) -> SubjectCreationState:
     journey, subject, step, journey_template, subject_template = get_journey_items(
         state, config
     )
     prompt = (
-        subject.prompts.steps
+        subject.prompts.plan
         if subject is not None
-        else subject_template.subject_prompts.steps
+        else subject_template.subject_prompts.plan
     )
 
     concepts = (
@@ -441,7 +441,7 @@ async def new_steps_build(
         else subject.concepts if subject is not None else None
     )
     if concepts is None:
-        raise Exception("Concepts required for building steps")
+        raise Exception("Concepts required for building plan plan")
     content = "\n".join(
         [
             f"{concept.title}:\n{concept.content}\nReference: {concept.reference}"
@@ -449,7 +449,7 @@ async def new_steps_build(
         ]
     )
 
-    steps: List[JourneyStep] = await get_base_chain("journey_steps")(
+    plan: List[Step] = await get_base_chain("plan")(
         (prompt.system, prompt.user)
     ).ainvoke(
         {
@@ -469,21 +469,21 @@ async def new_steps_build(
     )
 
     return {
-        "initial_steps": steps,
-        "initial_steps_done": True,
+        "initial_plan": plan,
+        "initial_plan_done": True,
     }
 
 
-class SubjectStepBuildState(TypedDict):
+class StepBuildState(TypedDict):
     journey: JourneyModel
     concepts: List[SourceConcept]
-    step: JourneyStep
+    step: Step
     subject_index: int
     step_index: int
 
 
-async def subject_step_build(state: SubjectStepBuildState) -> SubjectCreationState:
-    step: JourneyStep = state["step"]
+async def step_build(state: StepBuildState) -> SubjectCreationState:
+    step: Step = state["step"]
     concept_ids = step.concept_ids
     concepts = []
     for concecpt_id in concept_ids:
@@ -510,17 +510,17 @@ async def subject_step_build(state: SubjectStepBuildState) -> SubjectCreationSta
         },
     )
 
-    return {"steps": [response["step"]]}
+    return {"plan": [response["step"]]}
 
 
-async def map_subject_steps(
+async def map_plan(
     state: SubjectCreationState, config: RunnableConfig
 ) -> List[RunnableConfig]:
     return [
         Send(
-            "subject_step_build",
+            "step_build",
             {
-                "step": state["initial_steps"][i],
+                "step": state["initial_plan"][i],
                 "journey": state["journey"],
                 "concepts": state["concepts"],
                 "journey_template": config["configurable"]["journey_template"],
@@ -529,23 +529,23 @@ async def map_subject_steps(
                 "amount_of_documents": config["configurable"]["amount_of_documents"],
             },
         )
-        for i in range(len(state["initial_steps"]))
+        for i in range(len(state["initial_plan"]))
     ]
 
 
-async def combine_mapped_steps(
+async def combine_mapped_plan(
     state: SubjectCreationState, config: RunnableConfig
 ) -> SubjectCreationState:
-    steps = sorted(
-        state["steps"],
+    plan = sorted(
+        state["plan"],
         key=lambda x: next(
-            (step.title for step in state["initial_steps"] if step.title == x.title),
+            (step.title for step in state["initial_plan"] if step.title == x.title),
             None,
         ),
     )
     return {
-        "steps_sorted": steps,
-        "steps_done": True,
+        "plan_sorted": plan,
+        "plan_done": True,
     }
 
 
@@ -555,7 +555,7 @@ async def summary_build(
     journey, subject, step, journey_template, subject_template = get_journey_items(
         state, config
     )
-    steps = state["steps_sorted"]
+    plan = state["plan_sorted"]
 
     summary = await llm_edit(
         [
@@ -570,23 +570,23 @@ async def summary_build(
                 {(step.content or "").replace("\n", " ")}
                 """
             )
-            for step in state["steps"]
+            for step in state["plan"]
         ],
         "Summarize the following content into a description.",
         summarize=True,
     )
 
-    title = await get_chain("action").ainvoke(
+    title = await get_chain("task").ainvoke(
         {
             "context": summary,
-            "action": "Summarize context with 10 words or less to a title",
+            "task": "Summarize context with 10 words or less to a title",
         }
     )
 
     new_subject = SubjectModel(
         title=title,
         summary=summary,
-        steps=steps,
+        plan=plan,
         prompts=subject.prompts if subject else subject_template.subject_prompts,
         instructions=(
             subject.instructions if subject else subject_template.subject_instruction
@@ -600,8 +600,8 @@ async def summary_build(
                 else subject_template.step_amount
             )
         ),
-        action_amount=(
-            subject.action_amount if subject else subject_template.default_action_amount
+        task_amount=(
+            subject.task_amount if subject else subject_template.default_task_amount
         ),
     )
 
@@ -609,17 +609,17 @@ async def summary_build(
 
 
 subject_creation_graph = StateGraph(SubjectCreationState, SujectCreationConfig)
-subject_creation_graph.add_node("new_steps_build", new_steps_build)
-subject_creation_graph.add_node("subject_step_build", subject_step_build)
-subject_creation_graph.add_node("combine_mapped_steps", combine_mapped_steps)
+subject_creation_graph.add_node("new_plan_build", new_plan_build)
+subject_creation_graph.add_node("step_build", step_build)
+subject_creation_graph.add_node("combine_mapped_plan", combine_mapped_plan)
 subject_creation_graph.add_node("summary_build", summary_build)
 
-subject_creation_graph.add_edge(START, "new_steps_build")
+subject_creation_graph.add_edge(START, "new_plan_build")
 subject_creation_graph.add_conditional_edges(
-    "new_steps_build", map_subject_steps, ["subject_step_build"]
+    "new_plan_build", map_plan, ["step_build"]
 )
-subject_creation_graph.add_edge("subject_step_build", "combine_mapped_steps")
-subject_creation_graph.add_edge("combine_mapped_steps", "summary_build")
+subject_creation_graph.add_edge("step_build", "combine_mapped_plan")
+subject_creation_graph.add_edge("combine_mapped_plan", "summary_build")
 subject_creation_graph.add_edge("summary_build", END)
 
 async def journey_build(state: JourneyCreationState, config: RunnableConfig) -> JourneyCreationState:

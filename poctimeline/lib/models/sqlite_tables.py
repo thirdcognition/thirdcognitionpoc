@@ -136,6 +136,7 @@ class SourceDataTable(Base):
     edited_content = sqla.Column(sqla.Text)
     file_data = sqla.Column(sqla.BLOB)
     source_contents = sqla.Column(sqla.PickleType, default=None)
+    source_concepts = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
 
 
 # Define a new class for JourneyDataTable with list_name as primary key

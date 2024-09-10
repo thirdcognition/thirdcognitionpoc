@@ -210,13 +210,13 @@ def update_db_file_rag_concepts(
         raise ValueError(f"Source {source} not found in the database.")
 
     category_id = "-".join(categories)
-    concept_ids = [(category_id + "-" + concept.id) for concept in concepts] if concepts else []
+    defined_concept_ids = [(category_id + "-" + concept.id) for concept in concepts] if concepts else []
 
     existing_concepts = (
         database_session.query(ConceptDataTable)
         .filter(
             ConceptDataTable.category_tags.overlap(categories),
-            ConceptDataTable.id.in_(concept_ids)
+            ConceptDataTable.id.in_(defined_concept_ids)
         )
         .distinct()
         .all()
@@ -329,7 +329,7 @@ def update_db_file_rag_concepts(
     existing_source.chroma_ids = rag_ids
     existing_source.chroma_collections = ["rag_" + cat for cat in categories]
     existing_source.last_updated = datetime.now()
-
+    existing_source.source_concepts = defined_concept_ids
     database_session.commit()
 
 

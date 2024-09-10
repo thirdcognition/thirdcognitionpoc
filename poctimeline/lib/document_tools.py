@@ -320,7 +320,7 @@ def get_concept_rag_chunks(
                 "split": str(i) + "_" + str(j),
                 "sources": "\n".join(
                     [
-                        f"{reference.source}{(' page: ' + reference.page_number) if reference.page_number else ''}"
+                        f"{reference.source}{(' page: ' + str(reference.page_number)) if reference.page_number else ''}"
                         for reference in concept.references
                     ]
                 ),

@@ -239,7 +239,7 @@ async def process_source(
         else:
             contents = result["content_summaries"]
 
-        with st.container(height=400):
+        with st.container(height=400, border=False):
             st.write(f"### Summary")
             st.write(contents.summary)
 

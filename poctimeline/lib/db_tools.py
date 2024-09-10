@@ -193,14 +193,21 @@ def update_db_file_rag_concepts(
         .first()
     )
 
-    existing_concepts = (
-        database_session.query(ConceptDataTable)
-        .filter(SourceDataTable.source == source)
-        .all()
-    )
-
     if existing_source is None:
         raise ValueError(f"Source {source} not found in the database.")
+
+    category_id = "-".join(categories)
+    concept_ids = [(category_id + "-" + concept.id) for concept in concepts] if concepts else []
+
+    existing_concepts = (
+        database_session.query(ConceptDataTable)
+        .filter(
+            ConceptDataTable.category_tags.overlap(categories),
+            ConceptDataTable.id.in_(concept_ids)
+        )
+        .distinct()
+        .all()
+    )
 
     rag_chunks = []
     rag_ids = []
@@ -215,13 +222,18 @@ def update_db_file_rag_concepts(
     rag_metadatas.extend(source_rag_metadatas)
 
     concepts_by_id = {}
+    new_ids = []
+    old_ids = [concept.id for concept in existing_concepts]
     if concepts is not None:
-        resp = get_concept_rag_chunks(source=source, concepts=concepts)
+        resp:List[tuple[SourceConcept, List, List, List]] = get_concept_rag_chunks(category_id=category_id, concepts=concepts)
         for concept, concept_chunks, concept_ids, concept_metadatas in resp:
+            concept.id = category_id + "-" + concept.id
             rag_chunks.extend(concept_chunks)
             rag_ids.extend(concept_ids)
             rag_metadatas.extend(concept_metadatas)
             concepts_by_id[str(concept.id)] = {"concept": concept, "rag_ids": rag_ids}
+            if str(concept.id) not in old_ids:
+                new_ids.append(str(concept.id))
 
     # print(f"\n\n\n{source=}\n\n{rag_chunks=}\n\n{rag_ids=}\n\n{rag_metadatas=}\n\n")
 
@@ -233,13 +245,26 @@ def update_db_file_rag_concepts(
     )
 
     handled_concepts = []
+
     if existing_concepts is not None:
         for concept in existing_concepts:
             existing_chroma_ids.extend(concept.chroma_ids)
             existing_chroma_collections.extend(concept.chroma_collections)
 
             if concept.id in concepts_by_id:
-                concept.concept_contents = concepts_by_id[str(concept.id)]["concept"]
+                new_concept:SourceConcept = concepts_by_id[str(concept.id)]["concept"]
+                parent_id = concept.parent_id or new_concept.parent_id
+                if parent_id is not concept.parent_id:
+                    if parent_id not in old_ids or parent_id not in new_ids:
+                        parent_concept = database_session.query(ConceptDataTable).filter(ConceptDataTable.id == parent_id).first()
+                    else:
+                        parent_concept = parent_id
+                    if parent_concept is None or parent_id == new_concept.id:
+                        print(f"Parent concept with id {parent_id} does not exist.")
+                        parent_id = None
+
+                concept.concept_contents = new_concept
+                concept.parent_id = parent_id
                 concept.chroma_ids = concepts_by_id[str(concept.id)]["rag_ids"]
                 concept.chroma_collections = ["rag_" + cat for cat in categories]
                 concept.category_tags = categories
@@ -252,9 +277,17 @@ def update_db_file_rag_concepts(
     if concepts is not None:
         for concept in concepts:
             if concept.id not in handled_concepts:
+                parent_id = concept.parent_id
+                if parent_id not in old_ids or parent_id not in new_ids:
+                    parent_concept = database_session.query(ConceptDataTable).filter(ConceptDataTable.id == parent_id).first()
+                else:
+                    parent_concept = parent_id
+                if parent_concept is None or parent_id == concept.id:
+                    print(f"Parent concept with id {parent_id} does not exist.")
+                    parent_id = None
                 new_concept = ConceptDataTable(
                     id=concept.id,
-                    parent_id=concept.parent_id or None,
+                    parent_id=parent_id,
                     concept_contents=concept,
                     category_tags=categories,
                     chroma_ids=concepts_by_id[str(concept.id)]["rag_ids"],

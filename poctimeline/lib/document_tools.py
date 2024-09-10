@@ -284,9 +284,9 @@ def get_source_rag_chunks(
 
 
 def get_concept_rag_chunks(
-    source: str,
+    category_id: str,
     content: List[SourceConcept],
-) -> List[SourceConcept, tuple[List[str], List[Dict[str, Dict]], List[Dict]]]:
+) -> List[tuple[SourceConcept, List[str], List[Dict[str, Dict]], List[Dict]]]:
     response = []
     for i, concept in enumerate(content):
         # concept_split = []
@@ -299,18 +299,24 @@ def get_concept_rag_chunks(
         )
         # concept_split += concept_split
         concept_ids = [
-            (source + "_concept_" + concept.id + "_" + str(i) + "_" + str(j)).replace(
-                " ", "_"
-            )
+            (
+                (
+                    (category_id + "-" + concept.id)
+                    if category_id not in concept.id
+                    else concept.id
+                )
+                + "_"
+                + str(i)
+                + "_"
+                + str(j)
+            ).replace(" ", "_")
             for j in range(len(concept_split))
         ]
 
         concept_metadatas = [
             {
                 "concept_id": concept.id,
-                "concept_tags": ", ".join(
-                    [tag.tag for tag in concept.tags]
-                ),
+                "concept_tags": ", ".join([tag.tag for tag in concept.tags]),
                 "split": str(i) + "_" + str(j),
                 "sources": "\n".join(
                     [

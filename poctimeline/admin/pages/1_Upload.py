@@ -46,7 +46,7 @@ This is an *extremely* cool admin tool!
 database_session = init_db()
 
 
-def validate_category(category):
+def validate_category(category:str) -> bool:
     # Check length
     if not 3 <= len(category) <= 63:
         return False
@@ -73,7 +73,7 @@ def write_categories(add_new=True) -> Union[List, None]:
     st.write(f"Current categories: {', '.join(file_categories)}")
 
     cat_col1, cat_col2 = st.columns([5, 1], vertical_alignment="bottom")
-    new_categories = []
+    new_categories:List[str] = []
     valid = True
     with cat_col1:
         new_categories_input = st.text_input(
@@ -126,7 +126,7 @@ def write_categories(add_new=True) -> Union[List, None]:
 
 
 def process_file_contents(
-    uploaded_file: UploadedFile, filename, category, overwrite=False
+    uploaded_file: UploadedFile, filename, categories, overwrite=False
 ):
     filetype = os.path.basename(uploaded_file.name).split(".")[-1]
 
@@ -177,7 +177,7 @@ def process_file_contents(
 
         texts = split_texts
         collections = []
-        for cat in category:
+        for cat in categories:
             collections.append("rag_" + cat)
         with st.spinner("Saving to database..."):
             if file_exists:
@@ -191,10 +191,10 @@ def process_file_contents(
                 existing_file.texts = (
                     texts  # Update the text field with the new content
                 )
-                existing_file.category_tag = category
+                existing_file.category_tags = categories
                 existing_file.last_updated = datetime.now()
                 existing_file.file_data = uploaded_file.getvalue()
-                existing_file.chroma_collection = collections
+                existing_file.chroma_collections = collections
 
                 st.success(f"{filename} updated within database successfully.")
             else:
@@ -203,8 +203,8 @@ def process_file_contents(
                 file = SourceDataTable(
                     source=filename,
                     texts=texts,
-                    category_tag=category,
-                    chroma_collection=collections,
+                    category_tags=categories,
+                    chroma_collections=collections,
                     last_updated=datetime.now(),
                     file_data=uploaded_file.getvalue(),
                 )
@@ -216,7 +216,7 @@ def process_file_contents(
 
 
 async def process_source(
-    category, filename=None, url=None, file: io.BytesIO = None, overwrite=False
+    categories, filename=None, url=None, file: io.BytesIO = None, overwrite=False
 ):
     with st.status(f"Document generation: {filename}"):
         # file_entry = get_db_sources()[filename]
@@ -225,7 +225,7 @@ async def process_source(
         # filetype = os.path.basename(filename).split(".")[-1]
 
         result = await process_text_call(
-            category=category,
+            categories=categories,
             filename=filename,
             url=url,
             file=file,
@@ -261,8 +261,8 @@ async def main():
 
     st.subheader("File uploader")
 
-    default_category = st.multiselect(
-        "Default category",
+    default_categories = st.multiselect(
+        "Default categories",
         file_categories,
         default=(
             st.session_state.selected_new_categories
@@ -278,7 +278,7 @@ async def main():
         "Choose files",
         type=["pdf", "xps", "epub", "mobi", "fb2", "cbz", "svg", "txt", "md"],
         accept_multiple_files=True,
-        disabled=default_category is None or len(default_category) == 0,
+        disabled=default_categories is None or len(default_categories) == 0,
     )
 
     if "existing_files" not in st.session_state:
@@ -334,7 +334,7 @@ async def main():
             existing_files_details[filename] = {
                 "file": file,
                 "name": filename,
-                "category": db_sources[filename].category_tag,
+                "categories": db_sources[filename].category_tags,
             }
         file_data = existing_files_details[filename]
 
@@ -348,11 +348,11 @@ async def main():
             )
 
         with col2:
-            file_data["category"] = st.multiselect(
+            file_data["categories"] = st.multiselect(
                 "Category",
                 file_categories,
-                default=file_data["category"],
-                key=f"existing_category_{filename}",
+                default=file_data["categories"],
+                key=f"existing_categories_{filename}",
             )
 
         existing_files_details[filename] = file_data
@@ -367,7 +367,7 @@ async def main():
         if filename in new_files_details:
             file_data = new_files_details[filename]
         else:
-            file_data = {"file": file, "name": filename, "category": default_category}
+            file_data = {"file": file, "name": filename, "categories": default_categories}
 
         with col1:
             file_data["name"] = st.text_input(
@@ -377,11 +377,11 @@ async def main():
             )
 
         with col2:
-            file_data["category"] = st.multiselect(
+            file_data["categories"] = st.multiselect(
                 "Category",
                 file_categories,
-                default=file_data["category"] or default_category,
-                key=f"category_new_{filename}",
+                default=file_data["categories"] or default_categories,
+                key=f"categories_new_{filename}",
             )
 
         new_files_details[filename] = file_data
@@ -395,7 +395,7 @@ async def main():
             elif filename in new_files_details:
                 det = new_files_details[filename]
 
-            await process_source(det["category"], filename=filename, file=det["file"])
+            await process_source(det["categories"], filename=filename, file=det["file"])
 
         get_db_sources(reset=True)
 

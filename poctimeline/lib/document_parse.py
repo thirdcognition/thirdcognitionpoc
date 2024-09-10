@@ -187,7 +187,7 @@ def load_pymupdf(file: io.BytesIO, filetype, progress_cb=None):
 async def process_file_contents(
     uploaded_file: io.BytesIO,
     filename: str,
-    category: List[str] = None,
+    categories: List[str] = None,
     overwrite=False,
 ):
     filetype = os.path.basename(filename).split(".")[-1]
@@ -224,12 +224,12 @@ async def process_file_contents(
 
     texts = split_texts
     collections = None
-    if category is not None:
+    if categories is not None:
         collections = []
-        for cat in category:
+        for cat in categories:
             collections.append("rag_" + cat)
 
-    save_db_file(filename, texts, category, collections, uploaded_file)
+    save_db_file(filename, texts, categories, collections, uploaded_file)
 
     return texts
 

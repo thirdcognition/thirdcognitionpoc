@@ -62,7 +62,7 @@ def init_journey_chat(journey_name: str = "ThirdCognition", rag_collection: str 
         # journey_chain_ids = {}
         chains = {}
         if journey_name and journey_name in st.session_state.journey_list.keys():
-            collections = st.session_state.journey_list[journey_name].chroma_collection
+            collections = st.session_state.journey_list[journey_name].chroma_collections
             chains[journey_name] = get_chain_with_history(
                 journey_name, get_rag_chain(collections, chat=True)
             )

@@ -40,13 +40,13 @@ Select 👈 a the subject from sidebar to edit the content!
     with st.container():
         st.write("### Engage with the RAG:")
         categories = get_all_categories()
-        selected_category = st.selectbox(
-            "Select a category", categories, key="category", index=0
+        selected_categories = st.selectbox(
+            "Select a categories", categories, key="categories", index=0
         )
 
-        if selected_category:
+        if selected_categories:
             journey_found = init_journey_chat(
-                rag_collection=f"rag_{selected_category}"
+                rag_collection=f"rag_{selected_categories}"
             )
             # if "chat_state" not in st.session_state:
             #     st.session_state.chat_state = "default"
@@ -54,7 +54,7 @@ Select 👈 a the subject from sidebar to edit the content!
             # if journey_found:
             chat_elements("default")
         else:
-            st.write("Please select a category to start chatting.")
+            st.write("Please select a categories to start chatting.")
 
 
 if __name__ == "__main__":

@@ -279,7 +279,7 @@ async def content_prepare_build(
     structured = state["step_structured"]
 
     doc_chain = get_rag_chain(
-        journey.chroma_collection,
+        journey.chroma_collections,
         "hyde_document",
         amount_of_documents=config["configurable"]["amount_of_documents"],
     )
@@ -629,7 +629,7 @@ async def journey_build(state: JourneyCreationState, config: RunnableConfig) -> 
     if journey is None:
         journey = JourneyModel(
             journeyname=state["journey_name"],
-            chroma_collection=["rag_" + category for category in state["categories"]] if state["chroma_collections" is None] else state["chroma_collections"],
+            chroma_collections=["rag_" + categories for categories in state["categories"]] if state["chroma_collections" is None] else state["chroma_collections"],
             journey_template_id=journey_template.id if journey_template else None,
         )
 

@@ -96,9 +96,9 @@ def journey_details_ui(
             key=f"journey_summary_{journey_name}",
             height=200,
         )
-        journey.chroma_collection = st.text_input(
+        journey.chroma_collections = st.text_input(
             f"Chroma databases",
-            value=",".join(journey.chroma_collection),
+            value=",".join(journey.chroma_collections),
             key=f"journey_chroma_collections_{journey_name}",
         ).split(",")
 
@@ -106,9 +106,9 @@ def journey_details_ui(
         st.write(f"#### {journey.title.strip()}")
         st.write(journey.summary)
 
-        if journey.chroma_collection and len(journey.chroma_collection) > 0:
+        if journey.chroma_collections and len(journey.chroma_collections) > 0:
             st.write("Connected Chroma databases:")
-            st.write("* " + "\n* ".join(journey.chroma_collection))
+            st.write("* " + "\n* ".join(journey.chroma_collections))
 
 
 def subject_details_ui(
@@ -155,7 +155,7 @@ def subject_details_ui(
             height=200,
         )
         journey.subjects[subject_index].db_sources = get_files_for_journey(
-            journey.chroma_collection[0],
+            journey.chroma_collections[0],
             journey_name,
             subject_index,
             subject.db_sources,
@@ -778,15 +778,15 @@ def main():
     categories = st.multiselect("Categories", file_categories)
 
     if not categories:
-        st.header("First, choose a category.")
+        st.header("First, choose a categories.")
         return
 
     db_journey = get_db_journey(
-        chroma_collections=["rag_" + category for category in categories]
+        chroma_collections=["rag_" + categories for categories in categories]
     )
     if len(db_journey.keys()) == 0:
         db_journey = get_db_journey(
-            chroma_collections=["rag_" + category for category in categories],
+            chroma_collections=["rag_" + categories for categories in categories],
             reset=True,
         )
 

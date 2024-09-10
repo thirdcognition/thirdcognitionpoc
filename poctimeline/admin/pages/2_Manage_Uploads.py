@@ -16,7 +16,7 @@ from lib.load_env import SETTINGS
 from lib.db_tools import (
     SourceDataTable,
     delete_db_file,
-    get_chroma_collection,
+    get_chroma_collections,
     get_db_sources,
     init_db,
 )
@@ -41,7 +41,7 @@ async def manage_file(filename):
     database_session = init_db()
     file_categories = get_all_categories()
     file_entry = get_db_sources(source=filename)[filename]
-    # Add Streamlit editors to edit 'disabled' and 'category_tag' fields
+    # Add Streamlit editors to edit 'disabled' and 'category_tags' fields
 
     if "rewrite_text" not in st.session_state:
         st.session_state.rewrite_text = {}
@@ -75,13 +75,13 @@ async def manage_file(filename):
                 category_tags = st.multiselect(
                     "Category",
                     file_categories,
-                    default=file_entry.category_tag,
-                    key=f"category_{filename}",
+                    default=file_entry.category_tags,
+                    key=f"categories_{filename}",
                 )
 
-                chroma_collection = st.text_input(
+                chroma_collections = st.text_input(
                     f"Chroma collection",
-                    value=", ".join(file_entry.chroma_collection),
+                    value=", ".join(file_entry.chroma_collections),
                     key=f"chroma_{filename}",
                 )
             with col4:
@@ -90,9 +90,9 @@ async def manage_file(filename):
         if submitted:
             updates = {
                 "disabled": disable_checkbox,
-                "category_tag": category_tags,
-                "chroma_collection": [
-                    col.strip() for col in chroma_collection.split(",")
+                "category_tags": category_tags,
+                "chroma_collections": [
+                    col.strip() for col in chroma_collections.split(",")
                 ],
             }
 
@@ -108,9 +108,9 @@ async def manage_file(filename):
                     .first()
                 )
                 instance.disabled = updates["disabled"]
-                instance.category_tag = updates["category_tag"]
-                instance.chroma_collection = [
-                    col.strip() for col in updates["chroma_collection"].split(",")
+                instance.category_tags = updates["category_tags"]
+                instance.chroma_collections = [
+                    col.strip() for col in updates["chroma_collections"].split(",")
                 ]
 
             if changes:
@@ -294,25 +294,25 @@ async def manage_file(filename):
                         concepts = [
                             concept.__dict__
                             for concept in file_entry.source_contents.concepts
-                            if concept_tag in [cat.tag for cat in concept.category]
+                            if concept_tag in [cat.tag for cat in concept.tags]
                         ]
                         st.write(concepts)
 
             with tab5:
-                # print(f"{file_entry.chroma_collection=}")
+                # print(f"{file_entry.chroma_collections=}")
                 rag_id = st.selectbox(
                     "RAG DB",
-                    file_entry.chroma_collection,
+                    file_entry.chroma_collections,
                     placeholder="Choose one",
                     index=None,
                 )
                 # print("RAG ID:", rag_id)
 
                 if rag_id:
-                    chroma_collection = get_chroma_collection(rag_id)
+                    chroma_collections = get_chroma_collections(rag_id)
                     st.write("##### RAG Items:")
 
-                    rag_items = chroma_collection.get(
+                    rag_items = chroma_collections.get(
                         file_entry.chroma_ids,
                         include=["embeddings", "documents", "metadatas"],
                     )
@@ -368,7 +368,7 @@ async def main():
         for file in files.keys():
             await manage_file(file)
     else:
-        st.header("First, choose a category.")
+        st.header("First, choose a categories.")
 
 
 if __name__ == "__main__":

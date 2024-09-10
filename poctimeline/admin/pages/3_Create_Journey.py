@@ -39,7 +39,7 @@ This is an *extremely* cool admin tool!
 
 
 def create_subject(
-    journey_name, subject: SubjectModel, subject_index, chroma_collection
+    journey_name, subject: SubjectModel, subject_index, chroma_collections
 ) -> None:
     st.subheader(f"Subject {subject_index+1}")
 
@@ -56,7 +56,7 @@ def create_subject(
     col1, col2 = st.columns([4, 1], vertical_alignment="bottom")
     with col1:
         subject.db_sources = get_files_for_journey(
-            chroma_collection, journey_name, subject_index, subject.db_sources
+            chroma_collections, journey_name, subject_index, subject.db_sources
         )
 
     subject.step_amount = col2.number_input(
@@ -93,7 +93,7 @@ async def get_journey_gen(journey_name):
         st.session_state.journey_generator_generate_resources = False
 
     file_categories = get_all_categories()
-    default_category = []
+    default_categories = []
     journey_details: JourneyModel = None
     if (
         journey_name not in st.session_state.journey_get_details
@@ -101,32 +101,32 @@ async def get_journey_gen(journey_name):
     ):
         journey_details = JourneyModel(
             journeyname=journey_name,
-            chroma_collection=["rag_" + category for category in default_category],
+            chroma_collections=["rag_" + categories for categories in default_categories],
         )
-        # {"journeyname": journey_name, "category": default_category}
+        # {"journeyname": journey_name, "categories": default_categories}
         st.session_state.journey_get_details[journey_name] = journey_details
     else:
         journey_details = st.session_state.journey_get_details[journey_name]
-        default_category = [cat[4:] for cat in journey_details.chroma_collection]
+        default_categories = [cat[4:] for cat in journey_details.chroma_collections]
 
-    default_category = [
+    default_categories = [
         st.selectbox(
-            "Select category for journey",
+            "Select categories for journey",
             file_categories,
-            key=f"journey_gen_category_{journey_name}",
+            key=f"journey_gen_categories_{journey_name}",
             index=None,
         )
     ]
-    journey_details.chroma_collection = (
-        ["rag_" + category for category in default_category]
-        if default_category[0] != None
+    journey_details.chroma_collections = (
+        ["rag_" + categories for categories in default_categories]
+        if default_categories[0] != None
         else []
     )
 
     but_col1 = None
     but_col2 = None
 
-    if len(default_category) > 0 and default_category[0] != None:
+    if len(default_categories) > 0 and default_categories[0] != None:
         # col1, col2 = st.columns([5, 1], vertical_alignment="bottom")
         generate_start = False
         if not st.session_state.journey_generator_running:
@@ -146,7 +146,7 @@ async def get_journey_gen(journey_name):
             if len(journey_details.subjects) > 0:
                 for i, subject in enumerate(journey_details.subjects):
                     journey_details.subjects[i] = create_subject(
-                        journey_name, subject, i, default_category
+                        journey_name, subject, i, default_categories
                     )
             but_col1, but_col2 = st.columns([4, 1], vertical_alignment="bottom")
 
@@ -168,7 +168,7 @@ async def get_journey_gen(journey_name):
                         journey_name,
                         SubjectModel(prompts=prompts),
                         i,
-                        default_category,
+                        default_categories,
                     )
                 )
                 st.session_state.journey_get_details[journey_name] = journey_details

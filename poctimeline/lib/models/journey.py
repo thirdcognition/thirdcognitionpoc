@@ -77,7 +77,7 @@ class JourneyModel(BaseModel):
     sources: List[str] = Field(default_factory=list)
     db_sources: Dict[str, SourceData] = Field(default_factory=dict)
     subjects: List[SubjectModel] = Field(default_factory=list)
-    chroma_collection: List[str] = Field(default_factory=list)
+    chroma_collections: List[str] = Field(default_factory=list)
     disabled: Optional[bool] = False
     title: Optional[str] = None
     summary: Optional[str] = None

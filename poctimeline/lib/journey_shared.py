@@ -54,7 +54,7 @@ def save_journey(journey_name, journey: JourneyModel) -> bool:
         title=journey.title,
         summary=journey.summary,
         last_updated=datetime.now(),
-        chroma_collection=journey.chroma_collection,
+        chroma_collections=journey.chroma_collections,
     )
     try:
         database_session.add(journey_db)
@@ -188,7 +188,7 @@ def llm_gen_step(
             0, "Generating step `" + step.title + "` preliminary content - "
         )
     doc_chain = get_rag_chain(
-        journey.chroma_collection, "hyde_document", amount_of_documents=10
+        journey.chroma_collections, "hyde_document", amount_of_documents=10
     )
     class_content = get_base_chain("step_content")(
         (subject.prompts.step_content.system, subject.prompts.step_content.user)
@@ -391,7 +391,7 @@ def llm_gen_resource(
 ) -> str:
     resource_text = f"{resource.title} (from: {resource.reference}) - {resource.summary.replace('\n', '')} for {task.title} in {step.title} of {subject.title} in {journey.title}"
     doc_chain = get_rag_chain(
-        journey.chroma_collection, "hyde_document", amount_of_documents=5
+        journey.chroma_collections, "hyde_document", amount_of_documents=5
     )
 
     class_task_details = get_base_chain("task_details")(
@@ -427,7 +427,7 @@ def llm_gen_step_content(
     progress_end: float = 1,
 ) -> str:
     doc_chain = get_rag_chain(
-        journey.chroma_collection, "hyde_document", amount_of_documents=5
+        journey.chroma_collections, "hyde_document", amount_of_documents=5
     )
     subject_string = (
         f"Title: {step.title}\nSubject: {step.description}"
@@ -553,18 +553,18 @@ def build_journey_doc_from_files(db_sources: Dict[str, SourceData]) -> str:
 
 
 def get_files_for_journey(
-    default_category, journey_name, step, gen_from: Dict = None
+    default_categories, journey_name, step, gen_from: Dict = None
 ) -> List[Any]:
     db_sources = get_db_sources()
     shown_files = {}
 
-    if default_category is None or len(default_category) < 1:
-        st.write("Select category tag(s) first to see available files.")
+    if default_categories is None or len(default_categories) < 1:
+        st.write("Select categories tag(s) first to see available files.")
     else:
         for filename in db_sources.keys():
-            category_tags = db_sources[filename].category_tag
+            category_tags = db_sources[filename].category_tags
 
-            if len([i for i in category_tags if i in default_category]) > 0:
+            if len([i for i in category_tags if i in default_categories]) > 0:
                 shown_files[filename] = db_sources[filename]
 
     if gen_from is None:
@@ -723,7 +723,7 @@ async def gen_subject(
     step_index: int = None,
 ) -> SubjectModel:
     # journey:JourneyModel = st.session_state.journey_get_details[journey_name]
-    # vectorstore = get_vectorstore("rag_"+ journey["category"][0], "hyde")
+    # vectorstore = get_vectorstore("rag_"+ journey["categories"][0], "hyde")
     with st.status(f"Building subject {subject_index+1} document"):
         compressed = build_journey_doc_from_files(subject.db_sources)
         st.success("Generating subject document done.")

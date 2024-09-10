@@ -49,13 +49,13 @@ def get_all_categories():
 
     if "file_categories" not in st.session_state:
         uniq_categories = []
-        categories = database_session.query(SourceDataTable.category_tag).distinct()
+        categories = database_session.query(SourceDataTable.category_tags).distinct()
         for items in categories:
-            for category_list in items:
-                if len(category_list) > 0:
-                    for category in category_list:
-                        if category not in uniq_categories:
-                            uniq_categories.append(category)
+            for categories_list in items:
+                if len(categories_list) > 0:
+                    for categories in categories_list:
+                        if categories not in uniq_categories:
+                            uniq_categories.append(categories)
 
         st.session_state.file_categories = uniq_categories
     else:
@@ -71,7 +71,7 @@ async def process_text_call(
     filename: str = None,
     file: BytesIO = None,
     url: str = None,
-    category: List[str] = None,
+    categories: List[str] = None,
     overwrite: bool = False,
     guidance: str = None,
     collect_concepts=True,
@@ -82,7 +82,7 @@ async def process_text_call(
             "collect_concepts": collect_concepts,
             "overwrite_sources": overwrite,
             "update_rag": (source != None or file != None or url != None)
-            and category != None,
+            and categories != None,
             "guidance": guidance,
             "summarize": summarize,
         }
@@ -123,8 +123,8 @@ async def process_text_call(
         params["file"] = file
     if url is not None:
         params["url"] = url
-    if category is not None:
-        params["category"] = category
+    if categories is not None:
+        params["categories"] = categories
     if texts is not None:
         params["contents"] = texts
 

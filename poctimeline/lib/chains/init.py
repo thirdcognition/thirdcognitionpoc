@@ -35,8 +35,8 @@ from lib.prompts.journey import (
     step_content,
     step_content_redo,
 )
-from lib.prompts.journey_structured import journey_structured
-from lib.prompts.tasks import (
+from lib.prompts.journey_structured import step_structured
+from lib.prompts.actions import (
     task,
     summary,
     summary_guided,
@@ -282,7 +282,7 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
         journey_prompts,
         True,
     ),
-    "journey_structured": ("structured", journey_structured, False),
+    "step_structured": ("structured", step_structured, False),
     "plan": (
         "structured_detailed" if not DEVMODE else "structured",
         plan,

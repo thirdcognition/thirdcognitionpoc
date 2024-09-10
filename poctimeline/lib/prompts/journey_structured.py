@@ -3,5 +3,5 @@ from lib.models.journey import StepStructure
 from lib.prompts.actions import structured
 
 
-journey_structured = structured.customize()
-journey_structured.parser = PydanticOutputParser(pydantic_object=StepStructure)
+step_structured = structured.customize()
+step_structured.parser = PydanticOutputParser(pydantic_object=StepStructure)

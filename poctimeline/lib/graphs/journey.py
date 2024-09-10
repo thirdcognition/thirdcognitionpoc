@@ -222,7 +222,7 @@ async def step_structured_build(
         ).strip()
     )
 
-    structured = await get_chain("journey_structured").ainvoke(
+    structured = await get_chain("step_structured").ainvoke(
         {
             "context": f"""
             Title:

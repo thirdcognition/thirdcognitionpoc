@@ -337,7 +337,7 @@ def get_task_details_str(index: int, task: TaskStructure) -> str:
 def llm_gen_json_step(
     step: StepModel, instructions=""
 ) -> Union[StepStructure, None]:
-    structured = get_chain("journey_structured").invoke(
+    structured = get_chain("step_structured").invoke(
         {
             "context": f"""
             Title:

@@ -321,6 +321,7 @@ async def concept_content(state: ProcessTextState, config: RunnableConfig):
                     [
                         SourceConcept(
                             id=parsed_concept.id,
+                            parent_id=parsed_concept.parent_id,
                             title=parsed_concept.title,
                             contents=[parsed_concept.content],
                             tags=parsed_concept.tags,
@@ -341,23 +342,30 @@ async def concept_content(state: ProcessTextState, config: RunnableConfig):
 
             filtered_concepts: Dict[str, SourceConcept] = {}
             for concept in concepts:
-                if concept.id not in filtered_concepts.keys():
-                    filtered_concepts[concept.id] = concept
+                id = str(concept.id)
+                if id not in filtered_concepts.keys():
+                    filtered_concepts[id] = concept
                 else:
-                    filtered_concepts[concept.id].contents = list(
-                        set(filtered_concepts[concept.id].contents + concept.contents)
+                    filtered_concepts[id].contents = list(
+                        set(filtered_concepts[id].contents + concept.contents)
                     )
+                    if (
+                        concept.parent_id is not None
+                        and filtered_concepts[id].parent_id is None
+                    ):
+                        filtered_concepts[id].parent_id = concept.parent_id
+
                     for new_tag in concept.tags:
                         if new_tag.tag not in [
-                            tag.tag for tag in filtered_concepts[concept.id].tags
+                            tag.tag for tag in filtered_concepts[id].tags
                         ]:
-                            filtered_concepts[concept.id].tags.append(new_tag)
+                            filtered_concepts[id].tags.append(new_tag)
                     for ref in concept.references:
                         if f"{ref.source}_{(ref.page_number or 0)}" not in [
                             f"{ref.source}_{(ref.page_number or 0)}"
-                            for ref in filtered_concepts[concept.id].references
+                            for ref in filtered_concepts[id].references
                         ]:
-                            filtered_concepts[concept.id].references.append(ref)
+                            filtered_concepts[id].references.append(ref)
 
             concepts = list(filtered_concepts.values())
 

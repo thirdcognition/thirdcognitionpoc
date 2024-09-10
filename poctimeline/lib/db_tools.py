@@ -254,6 +254,7 @@ def update_db_file_rag_concepts(
             if concept.id not in handled_concepts:
                 new_concept = ConceptDataTable(
                     id=concept.id,
+                    parent_id=concept.parent_id or None,
                     concept_contents=concept,
                     category_tags=categories,
                     chroma_ids=concepts_by_id[str(concept.id)]["rag_ids"],

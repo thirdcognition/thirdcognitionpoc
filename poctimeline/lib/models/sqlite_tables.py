@@ -26,6 +26,10 @@ class ParsedConcept(BaseModel):
         description="An human readable id for this concept using letters and _",
         title="Id",
     )
+    parent_id: str = Field(
+        description="An human readable id for the parent concept using letters and _",
+        title="Parent Id",
+    )
     title: str = Field(
         description="A human readable title for this concept", title="Title"
     )
@@ -55,6 +59,10 @@ class SourceConcept(BaseModel):
     id: str = Field(
         description="An human readable id for this concept using letters and _",
         title="Id",
+    )
+    parent_id: str = Field(
+        description="An human readable id for the parent concept using letters and _",
+        title="Parent Id",
     )
     title: str = Field(
         description="A human readable title for this concept", title="Title"
@@ -105,6 +113,7 @@ class ConceptDataTable(Base):
 
     # id = Column(Integer, primary_key=True)
     id = sqla.Column(sqla.String, primary_key=True)
+    parent_id = sqla.Column(sqla.String)
     concept_contents = sqla.Column(sqla.PickleType, default=None)
     category_tags = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
     last_updated = sqla.Column(sqla.DateTime)

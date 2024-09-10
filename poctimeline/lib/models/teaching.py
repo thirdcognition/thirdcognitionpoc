@@ -2,7 +2,7 @@ from mailbox import BabylMessage
 from typing import Annotated, List
 from pydantic import BaseModel, Field
 
-from lib.models.journey import TaskStructure, SubjectStructure
+from lib.models.journey import TaskStructure, StepStructure
 
 class UserData(BaseModel):
     name: str
@@ -28,7 +28,7 @@ class TeachingItemPlan(BaseModel):
 class TeachingTask(BaseModel):
     """Teaching task"""
 
-    parent_subject: SubjectStructure = Field(description="Parent subject the teaching task is part of")
+    parent_subject: StepStructure = Field(description="Parent subject the teaching task is part of")
     parent_task: TaskStructure = Field(description="Parent task the teaching task is part of")
     plan: TeachingItemPlan = Field(description="Plan for teaching")
     messages: List[BabylMessage]

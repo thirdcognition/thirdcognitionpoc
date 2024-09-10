@@ -13,7 +13,7 @@ from lib.models.journey import (
     JourneyModel,
     StepModel,
     SubjectModel,
-    SubjectStructure,
+    StepStructure,
 )
 from lib.chains.init import get_chain
 from lib.journey_shared import (
@@ -183,7 +183,7 @@ def step_ui(
     container1: DeltaGenerator = None,
 ):
     step: StepModel = journey.subjects[subject_index].plan[step_index]
-    step_structured: SubjectStructure = step.structured
+    step_structured: StepStructure = step.structured
     if container1 is None:
         container1 = st.container()
 

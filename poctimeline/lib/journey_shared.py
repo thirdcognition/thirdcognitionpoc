@@ -24,7 +24,7 @@ from lib.models.journey import (
     ResourceStructure,
     StepModel,
     SubjectModel,
-    SubjectStructure,
+    StepStructure,
 )
 from lib.models.prompts import CustomPrompt
 from lib.models.sqlite_tables import SourceContents, SourceData, JourneyDataTable
@@ -336,7 +336,7 @@ def get_task_details_str(index: int, task: TaskStructure) -> str:
 
 def llm_gen_json_step(
     step: StepModel, instructions=""
-) -> Union[SubjectStructure, None]:
+) -> Union[StepStructure, None]:
     structured = get_chain("journey_structured").invoke(
         {
             "context": f"""
@@ -367,12 +367,12 @@ def llm_gen_update_tasks(
     journey: JourneyModel,
     subject: SubjectModel,
     gen_step: StepModel,
-    json_step: SubjectStructure,
+    json_step: StepStructure,
     progress_cb: Callable[[float, str], None] = None,
     progress_start: float = 0,
     progress_end: float = 1,
 ) -> StepModel:
-    if json_step is not None and isinstance(json_step, SubjectStructure):
+    if json_step is not None and isinstance(json_step, StepStructure):
         gen_step.structured = json_step
         json_step.title = gen_step.title
         json_step.subject = gen_step.subject
@@ -435,7 +435,7 @@ def llm_gen_step_content(
         else f"Title: {step.title}\nSubject: {step.subject}"
     )
     content = f"{subject_string.strip()}\n\n{step.content.strip()}"
-    if step.structured is not None and isinstance(step.structured, SubjectStructure):
+    if step.structured is not None and isinstance(step.structured, StepStructure):
         total_resources = len(step.structured.tasks)
         cur = 0
         for task in step.structured.tasks:

@@ -23,7 +23,7 @@ from lib.chains.init import (
 
 from typing import Annotated, List, TypedDict
 
-from lib.models.journey import TaskStructure, SubjectModel, SubjectStructure
+from lib.models.journey import TaskStructure, SubjectModel, StepStructure
 from lib.models.teaching import TeachingTask, TeachingItemPlan, UserData
 from lib.prompts.journey import JourneyPrompts, plan
 
@@ -51,7 +51,7 @@ def get_planner_chain(subject: SubjectModel):
     )
     return _planner_chain[id]
 
-def prepare_planner_input(subject_data: SubjectStructure, task_data: TaskStructure, previous_tasks: List[TeachingTask], amount=5):
+def prepare_planner_input(subject_data: StepStructure, task_data: TaskStructure, previous_tasks: List[TeachingTask], amount=5):
 
     subject_description = textwrap.dedent(f"""
         Main subject: {subject_data.title}
@@ -82,7 +82,7 @@ class TeachingConfig(TypedDict):
     subject_name: str
     sub_subject_index: int
     step_index: int
-    subject_data: SubjectStructure
+    subject_data: StepStructure
     user_data: UserData
 
 class TeachingState(TypedDict):
@@ -116,25 +116,25 @@ def init_state(state:TeachingState, config: RunnableConfig):
     }
 
 def introduce_class(state: TeachingState):
-    subject_data:SubjectStructure = state["subject_data"]
+    subject_data:StepStructure = state["subject_data"]
     messages = state["pre_class_messages"]
     messages = messages + [AIMessage(content=subject_data.intro)]
     return {"pre_class_messages": messages}
 
 def chat_in_class(state: TeachingState, message: str):
-    subject_data:SubjectStructure = state["subject_data"]
+    subject_data:StepStructure = state["subject_data"]
     current_task_index:int = state["current_task_index"] or 0
     past_tasks:List[TeachingTask] = state["past_tasks"]
     current_task:TeachingTask = state["current_task"]
 
 def continue_class(state: TeachingState):
-    subject_data:SubjectStructure = state["subject_data"]
+    subject_data:StepStructure = state["subject_data"]
     current_task_index:int = state["current_task_index"] or 0
     past_tasks:List[TeachingTask] = state["past_tasks"]
     current_task:TeachingTask = state["current_task"]
 
 def pre_plan_task(state: TeachingState):
-    subject_data:SubjectStructure = state["subject_data"]
+    subject_data:StepStructure = state["subject_data"]
     current_task_index:int = state["current_task_index"]
     past_tasks:List[TeachingTask] = state["past_tasks"]
 

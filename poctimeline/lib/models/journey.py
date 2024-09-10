@@ -33,7 +33,7 @@ class TaskStructure(BaseModel):
         title="Test",
     )
 
-class SubjectStructure(BaseModel):
+class StepStructure(BaseModel):
     title: str = Field(description="Title of the class", title="Title")
     subject: str = Field(description="Subject of the class", title="Subject")
     intro: str = Field(description="Introduction to the class", title="Intro")
@@ -52,8 +52,8 @@ class StepModel(BaseModel):
     intro: str = Field(default=None)
     summary: str = Field(default=None)
     tasks: str = Field(default=None)
-    structured: SubjectStructure = Field(
-        default=SubjectStructure(title="", subject="", intro="", content="", tasks=[])
+    structured: StepStructure = Field(
+        default=StepStructure(title="", subject="", intro="", content="", tasks=[])
     )
     instructions: str = Field(default=None)
 
@@ -64,7 +64,7 @@ class SubjectModel(BaseModel):
     plan: List[StepModel] = Field(default_factory=list)
     prompts: JourneyPrompts = Field(default=JourneyPrompts())
     instructions: str = Field(default=None)
-    step_amount: int = Field(default=None)
+    steps_amount: int = Field(default=None)
     task_amount: int = Field(default=None)
     concepts: List[SourceConcept] = Field(default=None)
     # files: List[str] = Field(default_factory=list)

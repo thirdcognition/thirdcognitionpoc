@@ -15,7 +15,7 @@ from lib.models.journey import (
     JourneyModel,
     StepModel,
     SubjectModel,
-    SubjectStructure,
+    StepStructure,
 )
 from lib.models.sqlite_tables import SourceConcept, SourceData
 from lib.prompts.journey import JourneyPrompts, Step
@@ -97,8 +97,8 @@ class StepCreationState(TypedDict):
     subject_title: str
     tasks: str
     tasks_done: bool = False
-    tasks_structured: SubjectStructure
-    tasks_structured_done: bool = False
+    step_structured: StepStructure
+    step_structured_done: bool = False
     content_prepare: str
     content_prepare_done: bool = False
     content: str
@@ -197,7 +197,7 @@ async def tasks_build(
     }
 
 
-async def tasks_structured_build(
+async def step_structured_build(
     state: StepCreationState, config: RunnableConfig
 ) -> StepCreationState:
     journey, subject, step, journey_template, subject_template, step_template = (
@@ -246,8 +246,8 @@ async def tasks_structured_build(
     )
 
     return {
-        "tasks_structured": structured,
-        "tasks_structured_done": True,
+        "step_structured": structured,
+        "step_structured_done": True,
     }
 
 
@@ -275,7 +275,7 @@ async def content_prepare_build(
     state: StepCreationState, config: RunnableConfig
 ) -> StepCreationState:
     journey = state["journey"] if "journey" in state else None
-    structured = state["tasks_structured"]
+    structured = state["step_structured"]
 
     doc_chain = get_rag_chain(
         journey.chroma_collection,
@@ -284,7 +284,7 @@ async def content_prepare_build(
     )
     content = state["subject_title"] + "\n\n" + state["concepts_content"].strip()
 
-    if structured is not None and isinstance(structured, SubjectStructure):
+    if structured is not None and isinstance(structured, StepStructure):
         tasks = [
             process_task_to_content(task, doc_chain, state)
             for task in structured.tasks
@@ -394,7 +394,7 @@ async def step_build(
         content=state["content"].strip(),
         intro=state["intro"].strip(),  # class_intro.strip(),
         tasks=state["tasks"].strip(),
-        structured=state["tasks_structured"],
+        structured=state["step_structured"],
     )
 
     return {
@@ -405,16 +405,16 @@ async def step_build(
 
 step_creation_graph = StateGraph(StepCreationState, JourneyCreationConfig)
 step_creation_graph.add_node("tasks_build", tasks_build)
-step_creation_graph.add_node("tasks_structured_build", tasks_structured_build)
-# TODO after tasks_structured build ask user for files/links to use for references
+step_creation_graph.add_node("step_structured_build", step_structured_build)
+# TODO after step_structured build ask user for files/links to use for references
 step_creation_graph.add_node("content_prepare_build", content_prepare_build)
 step_creation_graph.add_node("content_build", content_build)
 step_creation_graph.add_node("intro_build", intro_build)
 step_creation_graph.add_node("step_build", step_build)
 
 step_creation_graph.add_edge(START, "tasks_build")
-step_creation_graph.add_edge("tasks_build", "tasks_structured_build")
-step_creation_graph.add_edge("tasks_structured_build", "content_prepare_build")
+step_creation_graph.add_edge("tasks_build", "step_structured_build")
+step_creation_graph.add_edge("step_structured_build", "content_prepare_build")
 step_creation_graph.add_edge("content_prepare_build", "content_build")
 step_creation_graph.add_edge("content_build", "intro_build")
 step_creation_graph.add_edge("intro_build", "step_build")

@@ -246,36 +246,38 @@ async def main():
     if not check_auth():
         return
 
-    db_journey = get_db_journey()
+    st.write("NA, upgrade in progress")
 
-    with st.container(border=True):
-        journey_create: JourneyModel = None
-        if "journey_create_data" in st.session_state:
-            journey_create = st.session_state.journey_create_data
+    # db_journey = get_db_journey()
 
-        if "creating_journey" not in st.session_state:
-            st.header("Create new journey")
-            col1, col2 = st.columns([2, 1], vertical_alignment="bottom")
+    # with st.container(border=True):
+    #     journey_create: JourneyModel = None
+    #     if "journey_create_data" in st.session_state:
+    #         journey_create = st.session_state.journey_create_data
 
-            journey_name = col1.text_input("Unique name for the journey", value="test")
-            if col2.button("Create", disabled=journey_name in db_journey.keys()):
-                st.session_state.creating_journey = journey_name
-                time.sleep(0.01)
-                st.rerun()
+    #     if "creating_journey" not in st.session_state:
+    #         st.header("Create new journey")
+    #         col1, col2 = st.columns([2, 1], vertical_alignment="bottom")
 
-        if "creating_journey" in st.session_state and (
-            journey_create == None or journey_create.complete == False
-        ):
-            journey_name = st.session_state.creating_journey
-            st.header(f"Create new journey: {journey_name}")
-            st.session_state.journey_create_data = await get_journey_gen(journey_name)
-            if st.session_state.journey_create_data.complete:
-                st.session_state.journey_create_data = JourneyModel()
-                st.session_state.journey_get_details = {}
-                st.session_state.journey_create = False
-                st.session_state.journey_generator_running = False
-                time.sleep(0.01)
-                st.rerun()
+    #         journey_name = col1.text_input("Unique name for the journey", value="test")
+    #         if col2.button("Create", disabled=journey_name in db_journey.keys()):
+    #             st.session_state.creating_journey = journey_name
+    #             time.sleep(0.01)
+    #             st.rerun()
+
+    #     if "creating_journey" in st.session_state and (
+    #         journey_create == None or journey_create.complete == False
+    #     ):
+    #         journey_name = st.session_state.creating_journey
+    #         st.header(f"Create new journey: {journey_name}")
+    #         st.session_state.journey_create_data = await get_journey_gen(journey_name)
+    #         if st.session_state.journey_create_data.complete:
+    #             st.session_state.journey_create_data = JourneyModel()
+    #             st.session_state.journey_get_details = {}
+    #             st.session_state.journey_create = False
+    #             st.session_state.journey_generator_running = False
+    #             time.sleep(0.01)
+    #             st.rerun()
 
 
 if __name__ == "__main__":

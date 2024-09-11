@@ -2,7 +2,7 @@ from datetime import datetime
 from functools import cache
 import io
 import os
-from typing import Dict, List
+from typing import Dict, List, Union
 import sqlalchemy as sqla
 from sqlalchemy.orm import sessionmaker
 import chromadb
@@ -17,6 +17,8 @@ from lib.load_env import SETTINGS
 from lib.models.journey import JourneyModel
 from lib.models.sqlite_tables import (
     Base,
+    ConceptCategoryDataTable,
+    ConceptCategoryTag,
     ConceptDataTable,
     ConceptData,
     SourceContents,
@@ -80,17 +82,28 @@ def get_db_sources(reset=False, source=None, categories=None) -> Dict[str, Sourc
         db_sources = new_db_sources
     return db_sources
 
+def db_commit():
+    database_session.commit()
+    get_db_sources(reset=True)
 
-def delete_db_file(filename: str):
+def delete_db_file(filename: str, commit: bool = True):
     instance = (
         database_session.query(SourceDataTable)
         .where(SourceDataTable.source == filename)
         .first()
     )
+    chroma_collections = instance.chroma_collections
+    chroma_ids = instance.chroma_ids
+    if len(chroma_ids) > 0:
+        for collection in chroma_collections:
+            try:
+                vectorstore = get_chroma_collections(collection)
+                vectorstore.delete(chroma_ids)
+            except Exception as e:
+                print(e)
     database_session.delete(instance)
-    database_session.commit()
-    get_db_sources(reset=True)
-
+    if commit:
+        db_commit()
 
 def db_file_exists(filename: str) -> bool:
     return database_session.query(
@@ -150,8 +163,11 @@ def update_rag(
         and len(existing_ids) > 0
     ):
         for collection in existing_collections:
-            vectorstore = get_chroma_collections(collection)
-            vectorstore.delete(existing_ids)
+            try:
+                vectorstore = get_chroma_collections(collection)
+                vectorstore.delete(existing_ids)
+            except Exception as e:
+                print(e)
 
     collections = []
 
@@ -179,7 +195,7 @@ def update_rag(
                     print(f"{rag_id} not in {rag_items['ids']} - retrying...")
                     break
 
-def concept_id_exists(concept_id: str) -> bool:
+def db_concept_id_exists(concept_id: str) -> bool:
     return database_session.query(
         sqla.exists().where(ConceptDataTable.id == concept_id)
     ).scalar()
@@ -193,6 +209,76 @@ def get_existing_concept_ids(refresh: bool = False) -> List[str]:
         ]
     return existing_concept_ids
 
+def db_concept_category_tag_id_exists(tag_id: str) -> bool:
+    return database_session.query(
+        sqla.exists().where(ConceptCategoryDataTable.id == tag_id)
+    ).scalar()
+
+def get_existing_concept_categories(categories=None, reset:bool=False) -> Dict[str, ConceptCategoryTag]:
+    db_concept_categories: Dict[str, ConceptCategoryTag] = None
+    if (
+        "db_concept_categories" not in st.session_state
+        or reset
+    ):
+        found_categories = database_session.query(ConceptCategoryDataTable).filter(
+            ConceptCategoryDataTable.category_tags.contains(set(categories))
+        ).distinct().all()
+
+        if "db_concept_categories" not in st.session_state or reset:
+            db_concept_categories = {}
+        else:
+            db_concept_categories = st.session_state.db_concept_categories
+        for category in found_categories:
+            db_concept_categories[category.id] = ConceptCategoryTag(**category.concept_category_tag.__dict__)
+            db_concept_categories[category.id].id = category.id
+
+        st.session_state.db_concept_categories = db_concept_categories
+    else:
+        db_concept_categories = st.session_state.db_concept_categories
+
+    if isinstance(categories, str):
+        categories = [categories]
+    if categories:
+        new_db_concept_categories = {}
+        for cat in categories:
+            new_db_concept_categories.update(
+                {k: v for k, v in db_concept_categories.items() if cat in v.category_tags}
+            )
+        db_concept_categories = new_db_concept_categories
+    return db_concept_categories
+
+def update_concept_category(tag: ConceptCategoryTag, categories=List[str]):
+    if db_concept_category_tag_id_exists(tag.id):
+        # print(f"\n\nUpdate existing tag:\n\n{tag.model_dump_json(indent=4)}")
+        concept_category = (
+            database_session.query(ConceptCategoryDataTable)
+            .filter(ConceptCategoryDataTable.id == tag.id)
+            .first()
+        )
+        concept_category.concept_category_tag = tag
+        concept_category.category_tags = list(set(categories + concept_category.category_tags))
+        concept_category.last_updated = datetime.now()
+    else:
+        # print(f"\n\nCreate new tag:\n\n{tag.model_dump_json(indent=4)}")
+        concept_category = ConceptCategoryDataTable(
+            id=tag.id,
+            parent_id=tag.parent_id,
+            concept_category_tag=tag,
+            category_tags=categories,
+            last_updated=datetime.now(),
+        )
+        database_session.add(concept_category)
+
+    database_session.commit()
+
+@cache
+def get_concept_category_tag_by_id(concept_category_id: str) -> ConceptCategoryDataTable:
+    return (
+        database_session.query(ConceptCategoryDataTable)
+        .filter(ConceptCategoryDataTable.id == concept_category_id)
+        .first()
+    )
+
 @cache
 def get_concept_by_id(concept_id: str) -> ConceptDataTable:
     return (
@@ -200,6 +286,39 @@ def get_concept_by_id(concept_id: str) -> ConceptDataTable:
         .filter(ConceptDataTable.id == concept_id)
         .first()
     )
+
+def get_concepts(id:str=None, source:str=None) -> Union[ConceptDataTable, List[ConceptDataTable]]:
+    if id is not None:
+        return (
+            database_session.query(ConceptDataTable)
+            .filter(ConceptDataTable.id == id)
+            .first()
+        )
+    if source is not None:
+        return (
+            database_session.query(ConceptDataTable)
+            .filter(ConceptDataTable.sources.contains(source))
+            .all()
+        )
+
+def delete_db_concept(concept_id: str, commit: bool = True):
+    instance = (
+        database_session.query(ConceptDataTable)
+        .where(ConceptDataTable.id == concept_id)
+        .first()
+    )
+    chroma_collections = instance.chroma_collections
+    chroma_ids = instance.chroma_ids
+    if len(chroma_ids) > 0:
+        for collection in chroma_collections:
+            try:
+                vectorstore = get_chroma_collections(collection)
+                vectorstore.delete(chroma_ids)
+            except Exception as e:
+                print(e)
+    database_session.delete(instance)
+    if commit:
+        database_session.commit()
 
 def update_db_file_rag_concepts(
     source: str,
@@ -281,7 +400,7 @@ def update_db_file_rag_concepts(
                 parent_id = concept.parent_id or new_concept.parent_id
                 if parent_id is not concept.parent_id:
                     if parent_id not in old_ids or parent_id not in new_ids:
-                        parent_concept = concept_id_exists(parent_id)
+                        parent_concept = db_concept_id_exists(parent_id)
                     else:
                         parent_concept = True
                     if parent_concept or parent_id == new_concept.id:
@@ -304,14 +423,14 @@ def update_db_file_rag_concepts(
             if concept.id not in handled_concepts:
                 parent_id = concept.parent_id
                 if parent_id not in old_ids or parent_id not in new_ids:
-                    parent_concept = concept_id_exists(parent_id)
+                    parent_concept = db_concept_id_exists(parent_id)
                 else:
                     parent_concept = True
                 if parent_concept or parent_id == concept.id:
                     print(f"Parent concept with id {parent_id} does not exist.")
                     parent_id = None
                 new_id = concept.id
-                if concept_id_exists(concept.id):
+                if db_concept_id_exists(concept.id):
                     all_concept_ids = get_existing_concept_ids(True)
                     matching_ids = sorted(set([concept_id for concept_id in existing_concept_ids if concept.id in concept_id]))
                     new_id = concept.id + "-" + str(len(matching_ids))

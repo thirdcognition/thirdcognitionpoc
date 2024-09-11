@@ -94,16 +94,20 @@ async def process_text_call(
     if config["configurable"]["collect_concepts"]:
         states.update(
             {
-                "concept": "Concept search",
+                "split_reformatted": "Prepare content for concept search",
+                "find_concepts": "Searching for concepts",
+                "collapse_concepts": "Formatting concepts"
             }
         )
+
     states.update(
         {
             "summary": "Summary writing",
             "collapse": "Collapsing contents",
-            "final_contents": "Combining contents",
+            "finalize": "Combining contents",
         }
     )
+
 
     if config["configurable"]["update_rag"]:
         states.update({"rag": "RAG database update"})
@@ -134,6 +138,8 @@ async def process_text_call(
         config=config,
         version="v2",
     ):
+        # if event["event"] != "on_chat_model_stream":
+        #     print(f"\n\n\n{event['name']=} - {event['event']=}\n\n")
         if show_progress and (
             event["event"] == "on_chain_start" or event["event"] == "on_chain_end"
         ):
@@ -166,7 +172,7 @@ async def process_text_call(
                     state_status[state].empty()
                     state_status[state].success(f"{states[state]} complete")
                 elif (
-                    f"{state}_content" == event["name"]
+                    state == event["name"] or f"{state}_content" == event["name"]
                     and event["event"] == "on_chain_start"
                 ):
                     # if not isinstance(state_status[state], StatusContainer):

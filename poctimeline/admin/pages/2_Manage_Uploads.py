@@ -11,15 +11,17 @@ from langchain_core.messages import BaseMessage
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
-from lib.models.sqlite_tables import ConceptData, ConceptDataTable, ConceptTag, SourceContents
+from lib.models.sqlite_tables import ConceptData, ConceptDataTable, ConceptCategoryTag, SourceContents
 from lib.chains.init import get_chain
 from lib.document_tools import create_document_lists, split_text
 from lib.load_env import SETTINGS
 from lib.db_tools import (
     SourceDataTable,
+    db_commit,
     delete_db_file,
     get_chroma_collections,
     get_concept_by_id,
+    get_concept_category_tag_by_id,
     get_db_sources,
     init_db,
 )
@@ -291,20 +293,32 @@ async def manage_file(filename):
 
             with tab4:
                 tagged_concepts: Dict[str, List[ConceptData]] = defaultdict(list)
-                tags:Dict[str, str] = {}
+                tags:Dict[str, ConceptCategoryTag] = {}
                 for concept_id in file_entry.source_concepts:
-                    concept:ConceptData = get_concept_by_id(concept_id).concept_contents
-                    for tag in concept.tags:
-                        tagged_concepts[tag.tag].append(concept)
-                        if tag.tag not in tags:
-                            tags[tag.tag] = tag.description
+                    db_concept = get_concept_by_id(concept_id)
+                    concept_inst:ConceptData = db_concept.concept_contents
+                    for tag in concept_inst.tags:
+                        tagged_concepts[tag].append(concept_inst)
+                        if tag not in tags:
+                            tag_inst = get_concept_category_tag_by_id(tag)
+                            if tag_inst:
+                                tags[tag] = tag_inst.concept_category_tag
 
                 for concept_tag, concepts in tagged_concepts.items():
-                    st.write(f"### {concept_tag}:")
-                    st.write(tags[concept_tag])
-                    with st.expander("Concept instances"):
-                        for concept in tagged_concepts[concept_tag]:
-                            st.write(concept)
+                    st.write(f"### {tags[concept_tag].title}:")
+                    st.write(tags[concept_tag].description)
+                    # with st.expander("Concept instances"):
+                    for concept_inst in concepts:
+                        with st.expander(f"Concept: {concept_inst.title}"):
+                            st.write(f"#### {concept_inst.id}")
+                            st.code(concept_inst.id)
+                            sub_col1, sub_col2  = st.columns([1,2])
+                            sub_col1.write("References:")
+                            sub_col1.write(ref for ref in concept_inst.references)
+                            sub_col1.write("Tags:")
+                            sub_col1.write(concept_inst.tags)
+                            sub_col2.write(f"##### Summary:\n{concept_inst.summary}")
+                            sub_col2.write(f"##### Content:\n{'\n'.join(concept_inst.contents)}")
 
             with tab5:
                 # print(f"{file_entry.chroma_collections=}")
@@ -326,7 +340,7 @@ async def manage_file(filename):
                     )
 
                     for i, id in enumerate(file_entry.chroma_ids):
-                        [sub_col1, sub_col2] = st.columns([1, 3])
+                        sub_col1, sub_col2 = st.columns([1, 3])
                         try:
                             index = rag_items["ids"].index(id)
                             with sub_col1:
@@ -344,13 +358,13 @@ async def manage_file(filename):
                         concept:ConceptDataTable = get_concept_by_id(concept_id)
                         if any(collection in file_entry.chroma_collections for collection in concept.chroma_collections):
                             st.write(concept.id)
-                            [sub_col1, sub_col2] = st.columns([1, 3])
+                            sub_col1, sub_col2 = st.columns([1, 3])
                             rag_items = chroma_collections.get(
                                 concept.chroma_ids,
                                 include=["embeddings", "documents", "metadatas"],
                             )
                             for i, id in enumerate(concept.chroma_ids):
-                                [sub_col1, sub_col2] = st.columns([1, 3])
+                                sub_col1, sub_col2 = st.columns([1, 3])
                                 try:
                                     index = rag_items["ids"].index(id)
                                     with sub_col1:
@@ -386,7 +400,8 @@ async def main():
         ):
             files = get_db_sources(categories=categories)
             for file in files.keys():
-                delete_db_file(file)
+                delete_db_file(file, commit=False)
+            db_commit()
             st.rerun()
 
     if categories:

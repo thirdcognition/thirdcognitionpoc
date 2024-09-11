@@ -52,6 +52,10 @@ from lib.prompts.formatters import (
     md_formatter,
     md_formatter_guided,
     concept_structured,
+    concept_more,
+    concept_unique,
+    concept_hierarchy,
+    concept_categories,
 )
 from lib.prompts.chat import chat, question, helper
 from lib.prompts.hyde import hyde, hyde_document
@@ -277,7 +281,11 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
         md_formatter_guided,
         True,
     ),
-    "concept_structured": ("structured", concept_structured, True),
+    "concept_structured": ("structured_detailed", concept_structured, True),
+    "concept_more": ("structured_detailed", concept_more, True),
+    "concept_unique": ("structured_detailed", concept_unique, False),
+    "concept_hierarchy": ("structured_detailed", concept_hierarchy, False),
+    "concept_categories": ("structured_detailed", concept_categories, False),
     "journey_prompt_generator": (
         "structured_detailed" if not DEVMODE else "structured",
         journey_prompts,

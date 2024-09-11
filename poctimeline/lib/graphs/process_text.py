@@ -1,5 +1,6 @@
 import asyncio
 import io
+import json
 import os
 import re
 import operator
@@ -18,19 +19,33 @@ from langchain_community.document_loaders.url_playwright import PlaywrightURLLoa
 
 from lib.chains.base_parser import get_text_from_completion
 from lib.chains.init import get_chain
-from lib.db_tools import get_existing_concept_ids, update_db_file_rag_concepts
+from lib.db_tools import (
+    db_commit,
+    delete_db_concept,
+    get_concepts,
+    get_existing_concept_categories,
+    get_existing_concept_ids,
+    update_concept_category,
+    update_db_file_rag_concepts,
+)
 from lib.document_parse import process_file_contents
 from lib.document_tools import (
     a_semantic_splitter,
     markdown_to_text,
-    semantic_splitter,
     split_text,
 )
 from lib.load_env import SETTINGS
 from lib.models.prompts import TitledSummary
 from lib.models.sqlite_tables import (
+    ConceptCategoryTag,
+    ConceptDataTable,
+    ParsedConcept,
+    ParsedConceptCategoryTagList,
     ParsedConceptList,
     ConceptData,
+    ParsedConceptStructure,
+    ParsedConceptStructureList,
+    ParsedUniqueConceptList,
     SourceContents,
     SourceReference,
 )
@@ -71,11 +86,15 @@ class ProcessTextState(TypedDict):
     filename: str
     url: str
     source: str
+    semantic_contents: List[Document]
     contents: List[Union[Document, str]]  # Annotated[list[Document], operator.add]
     final_contents: List[Document]
     reformat_contents: List[Document]  # Annotated[list[Document], operator.add]
     concepts: List[ConceptData]  # Annotated[list, operator.add]
     reformatted_txt: Annotated[list, operator.add]
+    snippets: List[Document]
+    found_concepts: Annotated[list, operator.add]
+    new_concepts: List[ParsedConcept]
     collapsed_reformatted_txt: List[Document]
     collected_concepts: List[ConceptData]
     source_contents: SourceContents
@@ -83,10 +102,13 @@ class ProcessTextState(TypedDict):
     instructions: str
     split_complete: bool = False
     reformat_complete: bool = False
+    split_reformatted_complete: bool = False
+    find_concepts_complete: bool = False
+    collapse_concepts_complete: bool = False
     concept_complete: bool = False
     summary_complete: bool = False
     collapse_complete: bool = False
-    final_contents_complete: bool = False
+    finalize_complete: bool = False
     rag_complete: bool = False
 
 
@@ -152,13 +174,17 @@ async def split_content(state: ProcessTextState, config: RunnableConfig):
             text = state["contents"]
 
     split = await a_semantic_splitter(text)
-    split = [Document(page_content=clean_dividers(doc)) for doc in split]
+    split = [
+        Document(page_content=clean_dividers(doc), metadata={"snippet": i})
+        for i, doc in enumerate(split)
+    ]
     response = split_list_of_docs(
         split, length_function, SETTINGS.default_llms.instruct_detailed.char_limit
     )
 
     return {
         "split_complete": True,
+        "semantic_contents": split,
         "contents": response,
         "instructions": (
             config["configurable"]["instructions"]
@@ -271,110 +297,468 @@ async def concat_reformat(state: ProcessTextState, config: RunnableConfig):
 def should_conceptualize(
     state: ProcessTextState,
     config: RunnableConfig,
-) -> Literal["concept_content", "collapse_content", "finalize_content"]:
+) -> Literal["split_reformatted_content", "collapse_content", "finalize_content"]:
     if config["configurable"]["collect_concepts"]:
-        return "concept_content"
+        return "split_reformatted_content"
     else:
         return should_collapse(state=state)
 
 
-async def concept_content(state: ProcessTextState, config: RunnableConfig):
-    concepts: List[ConceptData] = state["concepts"] if "concepts" in state else []
+class ProcessConceptsState(TypedDict):
+    url: str
+    file: str
+    content: Document
+
+
+_new_ids = {}
+
+
+async def split_reformatted_content(state: ProcessTextState):
+    snippets = []
+    flat_contents: List[Document] = []
+    for item in state["contents"]:
+        if isinstance(item, Document):
+            flat_contents.append(item)
+        elif isinstance(item, List):
+            flat_contents.extend(item)
+        else:
+            # print(f"{state["contents"]}")
+            raise ValueError(f"Unknown type {type(item)}: {item=}")
+    for page, content in enumerate(flat_contents):
+        if isinstance(content, Document):
+            content = content.page_content
+
+        # print(f"Snippet {page}:\n{content[:100]}...")
+
+        split = await a_semantic_splitter(
+            content, threshold_type="gradient", breakpoint_threshold=90
+        )
+        snippets += [
+            Document(
+                page_content=clean_dividers(doc), metadata={"snippet": i, "page": page}
+            )
+            for i, doc in enumerate(split)
+        ]
+
+    global _new_ids
+    _new_ids[state["filename"] if "filename" in state else state["url"]] = []
+    return {"split_reformatted_complete": True, "snippets": snippets}
+
+
+async def map_find_concepts(state: ProcessTextState):
+    return [
+        Send(
+            "find_concepts",
+            {
+                "url": state["url"] if "url" in state else None,
+                "filename": state["filename"] if "filename" in state else None,
+                "content": snippet,
+            },
+        )
+        for snippet in state["snippets"]
+    ]
+
+
+def get_unique_id(id_str: str, existing_concept_ids: List[str]):
+    id = 0
+    while True:
+        id += 1
+        concept_id = f"{id_str.lower().replace(' ', '_')}_{id}"
+        if concept_id not in existing_concept_ids:
+            return concept_id
+
+
+_divider = "±!add!±"
+
+
+async def find_concepts(state: ProcessConceptsState, config: RunnableConfig):
+    ident = (
+        f"File: {state['filename']} --\tPage: {state['content'].metadata['page']} --\tSnippet: {state['content'].metadata['snippet']}"
+        if state["filename"]
+        else f"URL: {state['url']} --\tPage: {state['content'].metadata['page']} --\tSnippet: {state['content'].metadata['snippet']}"
+    )
+    params = {
+        "context": ident + f"Content: {get_text_from_completion(state['content'])}"
+    }
+
+    new_concepts: List[ParsedConcept] = []
+
+    # print(f"{ident}: Finding concepts in")
+    more_concepts: ParsedConceptList = await get_chain("concept_structured").ainvoke(
+        params
+    )
+
+    max_repeat = 1
+    repeat = 0
+    try:
+        while len(more_concepts.concepts) > 0:
+            repeat += 1
+
+            new_concepts += more_concepts.concepts
+            if repeat > max_repeat:
+                break
+            # print(f"{ident}: Finding more concepts after found: {len(more_concepts.concepts)} {repeat=}")
+            more_concepts: ParsedConceptList = await get_chain("concept_more").ainvoke(
+                {
+                    "context": params["context"],
+                    "existing_concepts": "\n".join(
+                        f"{concept.title.replace('\n', ' ').strip()}:\n"
+                        f"Summary: {concept.summary.replace('\n', ' ').strip()}\n"
+                        f"Tags: {', '.join(concept.tags).replace('\n', ' ').strip()}\n"
+                        f"Content:\n{concept.content.strip()}\n"
+                        for concept in new_concepts
+                    ),
+                }
+            )
+    except Exception as e:
+        print(e)
+
+    global _new_ids
+    global_new_ids = _new_ids[
+        state["filename"] if "filename" in state else state["url"]
+    ]
+    new_ids = []
+    for concept in new_concepts:
+        concept.id = get_unique_id(
+            concept.title, get_existing_concept_ids() + new_ids + global_new_ids
+        )
+        new_ids.append(concept.id)
+        concept.page_number = state["content"].metadata["page"]
+
+    global_new_ids += new_ids
+    # print(f"{ident}: Finding unique concepts in")
+    unique_concept_ids: ParsedUniqueConceptList = await get_chain(
+        "concept_unique"
+    ).ainvoke(
+        {
+            "existing_concepts": "\n".join(
+                f"Id({concept.id}): {concept.title.replace('\n', ' ').strip()}\n"
+                f"Summary: {concept.summary.replace('\n', ' ').strip()}\n"
+                f"Tags: {', '.join(concept.tags).replace('\n', ' ').strip()}\n"
+                f"Content:\n{concept.content.strip()}\n"
+                for concept in new_concepts
+            )
+        }
+    )
+    global _divider
+
+    concepts: Dict[str, ParsedConcept] = {}
+    for combined_concept in unique_concept_ids.concepts:
+        if combined_concept.id in concepts.keys():
+            continue
+        for concept in new_concepts:
+            if concept.id == combined_concept.id:
+                concept.summary = combined_concept.summary.replace("\n", " ").strip()
+                concept.title = combined_concept.title.replace("\n", " ").strip()
+                concepts[combined_concept.id] = concept
+
+        for concept in new_concepts:
+            if (
+                combined_concept.combined_ids is not None
+                and concept.id in combined_concept.combined_ids
+            ):
+                concepts[combined_concept.id].content += (
+                    "\n" + _divider + "\n" + concept.content.strip()
+                )
+                concepts[combined_concept.id].tags = list(
+                    set(concepts[combined_concept.id].tags + concept.tags)
+                )
+
+    return {"found_concepts": list(concepts.values())}
+
+
+async def combine_concepts(state: ProcessTextState, config: RunnableConfig):
+    found_concepts = state["found_concepts"]
+    new_concepts = []
+    for item in found_concepts:
+        if isinstance(item, ParsedConcept):
+            new_concepts.append(item)
+        if isinstance(item, List):
+            new_concepts.extend(item)
+
+    return {"find_concepts_complete": True, "new_concepts": new_concepts}
+
+
+def unwrap_concept_hierarchy(
+    structure: Union[ParsedConceptStructure, List[ParsedConceptStructure]]
+) -> Dict[str, List]:
+    concept_children: Dict[str, List[str]] = {}
+    if isinstance(structure, List):
+        for item in structure:
+            items = unwrap_concept_hierarchy(item)
+            for id, item in items.values():
+                if id not in concept_children:
+                    concept_children[id] = []
+                concept_children[id].extend(item)
+    elif isinstance(structure, ParsedConceptStructure):
+        if structure.id is not None:
+            if structure.id not in concept_children:
+                concept_children[structure.id] = []
+            concept_children[structure.id] = list(
+                set(
+                    concept_children[structure.id]
+                    + ([structure.id for structure in structure.children])
+                )
+            )
+
+    return concept_children
+
+
+async def collapse_concepts(state: ProcessTextState, config: RunnableConfig):
+    concepts: List[ConceptData] = []  # state["concepts"] if "concepts" in state else []
     all_concept_ids = get_existing_concept_ids(refresh=True)
-    if config["configurable"]["collect_concepts"] is True:
-        for i, txt in enumerate(state["reformatted_txt"]):
-            existing_ids = set([concept.id for concept in concepts] + all_concept_ids)
-            existing_categories = {}
-            if len(concepts) > 0:
-                for concept in concepts:
-                    for categories in concept.tags:
-                        if categories.tag not in existing_categories.keys():
-                            existing_categories[categories.tag] = (
-                                f"{categories.tag}: {categories.description}"
-                            )
+    found_concepts: List[ParsedConcept] = state["new_concepts"]
+    source = state["filename"] if "filename" in state else state["url"]
 
-            params = {
-                "context": (
-                    f"File: {state['filename']}\nPage: {i}\n"
-                    if state["filename"]
-                    else f"URL: {state['url']}\n"
+    if found_concepts is not None and len(found_concepts) > 0:
+        found_concepts_by_id: Dict[str, ParsedConcept] = {
+            concept.id: concept for concept in found_concepts
+        }
+
+        existing_concept_categories: Dict[str, ConceptCategoryTag] = (
+            get_existing_concept_categories(reset=True, categories=state["categories"])
+        )
+        previous_concept_data: List[ConceptDataTable] = get_concepts(source=source)
+        previous_concepts: Dict[str, ConceptData] = {}
+        if len(previous_concept_data) > 0:
+            for concept in previous_concept_data:
+                previous_concepts[concept.id] = ConceptData(**concept.concept_contents)
+
+        # print(f"Found {len(found_concepts)} concepts, optimizing for unique concepts.")
+        unique_concepts: ParsedUniqueConceptList = await get_chain(
+            "concept_unique"
+        ).ainvoke(
+            {
+                "existing_concepts": "Previously defined concepts:\n"
+                + "\n".join(
+                    f"Id({concept.id}): {concept.title}\nSummary: {concept.summary}\nTags: {', '.join([existing_concept_categories[tag].tag for tag in concept.tags])}"
+                    for concept in previous_concepts.values()
                 )
-                + f"Content: {get_text_from_completion(txt)}"
+                + "\n\nNewly defined concepts:\n"
+                + "\n".join(
+                    f"Id({concept.id}): {concept.title}\nSummary: {concept.summary}\nTags: {', '.join(concept.tags)}"
+                    for concept in found_concepts
+                )
             }
-            if len(existing_categories.keys()):
-                params["chat_history"] = [
-                    AIMessage(
-                        "Existing concept ids: " + ", ".join(existing_ids)
-                        + "\n\n"
-                        "Existing categories (tag: description):\n"
-                        + "\n".join(existing_categories.values()),
-                    )
-                ]
+        )
 
-            newConcepts: ParsedConceptList = await get_chain(
-                "concept_structured"
-            ).ainvoke(params)
+        # print(f"Found {len(unique_concepts.concepts)} unique concepts, seeking categories and hierarchy.")
+        # for concept in unique_concepts.concepts:
+        #     print(f"\n\n{json.dumps(concept.__dict__, indent=4)}\n\n")
 
-            newConcepts.concepts = [
-                concept
-                for concept in newConcepts.concepts
-                if len("\n".join(concept.content).strip()) > 10
-            ]
-            if len(newConcepts.concepts) > 0:
-                concepts.extend(
-                    [
-                        ConceptData(
-                            id=parsed_concept.id,
-                            parent_id=parsed_concept.parent_id or None,
-                            title=parsed_concept.title,
-                            contents=[parsed_concept.content],
-                            tags=parsed_concept.tags,
-                            references=[
-                                SourceReference(
-                                    source=(
-                                        state["filename"]
-                                        if "filename" in state
-                                        else state["url"]
-                                    ),
-                                    page_number=i,
-                                )
-                            ],
-                        )
-                        for parsed_concept in newConcepts.concepts
-                    ]
+        # : ParsedConceptStructure
+        concept_hierarchy_task = get_chain("concept_hierarchy").ainvoke(
+            {
+                "existing_concepts": "\n".join(
+                    f"Id({concept.id}): {concept.title}\n{concept.summary}"
+                    for concept in unique_concepts.concepts
+                )
+            }
+        )
+        # : ParsedConceptCategoryTagList
+        concept_categories_task = get_chain("concept_categories").ainvoke(
+            {
+                "existing_categories": "\n".join(
+                    f"Id({id}): {category.title}\nDescription: {category.description}\n"
+                    for id, category in existing_concept_categories.items()
+                ),
+                "concepts": "\n".join(
+                    f"Id({concept.id}): {concept.title}\nSummary: {concept.summary}\nTags: {', '.join(concept.tags)}"
+                    for concept in unique_concepts.concepts
+                ),
+            }
+        )
+
+        concept_categories: ParsedConceptCategoryTagList
+        concept_hierarchy: ParsedConceptStructure
+        concept_categories, concept_hierarchy = await asyncio.gather(
+            concept_categories_task, concept_hierarchy_task
+        )
+        global _divider
+
+        # print("Tags:")
+        # for tag in concept_categories.tags:
+        #     print(f"\n{json.dumps(tag.__dict__, indent=4)}\n\n")
+
+        # print("\n\nHierarchy:\n")
+        # print(f"{concept_hierarchy.model_dump_json(indent=4)}\n\n\n")
+
+        unwrapped_hierarchy = unwrap_concept_hierarchy(concept_hierarchy)
+        inverted_hierarchy: Dict[str, str] = {}
+        for key, value in unwrapped_hierarchy.items():
+            for item in value:
+                inverted_hierarchy[item] = key
+
+        existing_concept_category_ids = existing_concept_categories.keys()
+        new_tag_ids = []
+        for tag in concept_categories.tags:
+            tag.id = (
+                tag.id
+                or get_unique_id(
+                    tag.tag, list(existing_concept_category_ids) + new_tag_ids
+                )
+            ).strip()
+            changes = False
+
+            if tag.id in existing_concept_category_ids:
+                changes = (
+                    existing_concept_categories[tag.id].tag != tag.tag
+                    or existing_concept_categories[tag.id].title != tag.title
+                    or existing_concept_categories[tag.id].description
+                    != tag.description
+                )
+                existing_concept_categories[tag.id].tag = tag.tag.strip()
+                existing_concept_categories[tag.id].title = tag.title.replace(
+                    "\n", " "
+                ).strip()
+                existing_concept_categories[tag.id].description = (
+                    tag.description.replace("\n", " ").strip()
+                )
+            else:
+                new_tag_ids.append(tag.id)
+                changes = True
+                existing_concept_categories[tag.id] = ConceptCategoryTag(
+                    id=tag.id,
+                    parent_id=tag.parent_id,
+                    title=tag.title.replace("\n", " ").strip(),
+                    tag=tag.tag.strip(),
+                    description=tag.description.replace("\n", " ").strip(),
                 )
 
-            filtered_concepts: Dict[str, ConceptData] = {}
-            for concept in concepts:
-                id = str(concept.id)
-                if id not in filtered_concepts.keys():
-                    filtered_concepts[id] = concept
-                else:
-                    filtered_concepts[id].contents = list(
-                        set(filtered_concepts[id].contents + concept.contents)
-                    )
-                    if (
-                        concept.parent_id is not None
-                        and filtered_concepts[id].parent_id is None
-                    ):
-                        filtered_concepts[id].parent_id = concept.parent_id
+            if tag.parent_id:
+                changes = (
+                    changes
+                    or existing_concept_categories[tag.id].parent_id != tag.parent_id
+                )
+                existing_concept_categories[tag.id].parent_id = tag.parent_id
 
-                    for new_tag in concept.tags:
-                        if new_tag.tag not in [
-                            tag.tag for tag in filtered_concepts[id].tags
-                        ]:
-                            filtered_concepts[id].tags.append(new_tag)
-                    for ref in concept.references:
+            if changes:
+                # print(f"\n\n\nNew/Updated category tag:\n\n{existing_concept_categories[tag.id].model_dump_json(indent=4)}")
+                update_concept_category(
+                    existing_concept_categories[tag.id], categories=state["categories"]
+                )
+
+        removed_ids = []
+
+        all_ids = list(
+            set(
+                [concept.id for concept in unique_concepts.concepts]
+                + list(previous_concepts.keys())
+            )
+        )
+
+        # Create new concepts
+        for sum_concept in unique_concepts.concepts:
+            id = sum_concept.id
+            old_concept_item = False
+            new_concept: ConceptData
+            if id is None or id not in all_concept_ids:
+                concept = found_concepts_by_id[id] if id is not None else sum_concept
+                new_id = concept.id or get_unique_id(concept.title, all_ids)
+                new_concept = ConceptData(
+                    id=new_id,
+                    parent_id=(
+                        inverted_hierarchy[new_id]
+                        if new_id in inverted_hierarchy.keys()
+                        else None
+                    ),
+                    title=sum_concept.title,
+                    summary=sum_concept.summary,
+                    contents=concept.content.split(_divider),
+                    references=[
+                        SourceReference(
+                            source=source,
+                            page_number=concept.page_number,
+                        )
+                    ],
+                    tags=[],
+                    sources=[source],
+                    children=[
+                        child_id
+                        for child_id in unwrapped_hierarchy.get(id, [])
+                        if child_id in all_ids
+                    ],
+                )
+            elif id in found_concepts_by_id.keys():
+                concept = found_concepts_by_id[id]
+                new_concept = previous_concepts[id]
+                new_concept.contents.extend(concept.content.split(_divider))
+                new_concept.children = list(
+                    set(
+                        new_concept.children
+                        + [
+                            child_id
+                            for child_id in unwrapped_hierarchy.get(id, [])
+                            if child_id in all_ids
+                        ]
+                    )
+                )
+
+                references = [
+                    ref for ref in new_concept.references if ref.source == source
+                ]
+                if concept.page_number not in [ref.page_number for ref in references]:
+                    new_concept.references.append(
+                        SourceReference(
+                            source=source,
+                            page_number=concept.page_number,
+                        )
+                    )
+            elif id in previous_concepts.keys():
+                old_concept_item = True
+                new_concept = previous_concepts[id]
+
+            for id in sum_concept.combined_ids:
+                if old_concept_item:
+                    removed_ids.append(new_concept.id)
+                if id in previous_concepts.keys():
+                    removed_ids.append(id)
+                    new_concept.contents.extend(previous_concepts[id].contents)
+                    for ref in previous_concepts[id].references:
                         if f"{ref.source}_{(ref.page_number or 0)}" not in [
                             f"{ref.source}_{(ref.page_number or 0)}"
-                            for ref in filtered_concepts[id].references
+                            for ref in new_concept.references
                         ]:
-                            filtered_concepts[id].references.append(ref)
+                            new_concept.references.append(ref)
+                    new_concept.sources = list(
+                        set(new_concept.sources + previous_concepts[id].sources)
+                    )
+                    new_concept.children.append(previous_concepts[id].id)
+                    new_concept.parent_id = (
+                        new_concept.parent_id or previous_concepts[id].parent_id
+                    )
+                if id in found_concepts_by_id.keys():
+                    concept = found_concepts_by_id[id]
+                    new_concept.contents.extend(concept.content.split(_divider))
+                    references = [
+                        ref for ref in new_concept.references if ref.source == source
+                    ]
+                    if concept.page_number not in [
+                        ref.page_number for ref in references
+                    ]:
+                        new_concept.references.append(
+                            SourceReference(
+                                source=source,
+                                page_number=concept.page_number,
+                            )
+                        )
 
-            concepts = list(filtered_concepts.values())
+            for tag in concept_categories.tags:
+                if new_concept.id in tag.connected_concepts:
+                    if tag.id not in new_concept.tags:
+                        new_concept.tags.append(tag.id)
+
+            concepts.append(new_concept)
+        for removed_id in removed_ids:
+            if removed_id in previous_concepts.keys():
+                del previous_concepts[removed_id]
+                delete_db_concept(removed_id, commit=False)
+
+        db_commit()
 
     return {
         "concept_complete": True,
+        "collapse_concepts_complete": True,
         "collected_concepts": concepts,
     }
 
@@ -432,9 +816,7 @@ def should_collapse(
         return "finalize_content"
 
 
-async def collapse_concept(
-    i: int, concepts: List[ConceptData], concept: ConceptData
-):
+async def collapse_concept(i: int, concepts: List[ConceptData], concept: ConceptData):
     joined = "\n".join(concept.contents)
 
     if len(concept.contents) > 1:
@@ -582,7 +964,10 @@ process_text_graph = StateGraph(ProcessTextState, ProcessTextConfig)
 process_text_graph.add_node("split_content", split_content)
 process_text_graph.add_node("reformat_content", reformat_content)  # same as before
 process_text_graph.add_node("concat_reformat", concat_reformat)
-process_text_graph.add_node("concept_content", concept_content)
+process_text_graph.add_node("split_reformatted_content", split_reformatted_content)
+process_text_graph.add_node("find_concepts", find_concepts)
+process_text_graph.add_node("combine_concepts", combine_concepts)
+process_text_graph.add_node("collapse_concepts", collapse_concepts)
 process_text_graph.add_node("collapse_content", collapse_content)
 process_text_graph.add_node("finalize_content", finalize_content)
 process_text_graph.add_node("rag_content", rag_content)
@@ -594,7 +979,12 @@ process_text_graph.add_conditional_edges(
 )
 process_text_graph.add_edge("reformat_content", "concat_reformat")
 process_text_graph.add_conditional_edges("concat_reformat", should_conceptualize)
-process_text_graph.add_conditional_edges("concept_content", should_collapse)
+process_text_graph.add_conditional_edges(
+    "split_reformatted_content", map_find_concepts, ["find_concepts"]
+)
+process_text_graph.add_edge("find_concepts", "combine_concepts")
+process_text_graph.add_edge("combine_concepts", "collapse_concepts")
+process_text_graph.add_conditional_edges("collapse_concepts", should_collapse)
 process_text_graph.add_conditional_edges("collapse_content", should_collapse)
 process_text_graph.add_conditional_edges("finalize_content", should_rag)
 process_text_graph.add_edge("rag_content", END)

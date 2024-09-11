@@ -3,7 +3,7 @@ from functools import cache
 import re
 from bs4 import BeautifulSoup
 from markdown import markdown
-from typing import Dict, List
+from typing import Dict, List, Union
 
 # from langchain_chroma import Chroma
 from langchain_text_splitters import (
@@ -12,7 +12,10 @@ from langchain_text_splitters import (
 )
 
 # from langchain_core.output_parsers import StrOutputParser
-from langchain_experimental.text_splitter import SemanticChunker
+from langchain_experimental.text_splitter import (
+    SemanticChunker,
+    BreakpointThresholdType,
+)
 from langchain.schema.document import Document
 
 from lib.load_env import SETTINGS
@@ -99,7 +102,10 @@ def join_documents(texts, split=SETTINGS.default_llms.instruct.char_limit):
 
 
 def semantic_splitter(
-    text, split=SETTINGS.default_llms.instruct.char_limit, progress_cb=None
+    text,
+    split=SETTINGS.default_llms.instruct.char_limit,
+    progress_cb=None,
+    threshold_type: BreakpointThresholdType = "percentile",
 ):
     if len(text) > 1000:
         less_text = split_text(text, SETTINGS.default_embeddings.default.char_limit, 0)
@@ -123,33 +129,48 @@ def semantic_splitter(
     return join_documents(texts, split)
 
 
-def __split_text(semantic_splitter, txt):
-    return (
-        semantic_splitter.split_text(txt) if len(txt.strip()) > 100 else [txt.strip()]
-    )
+def __split_text(semantic_splitter: SemanticChunker, txt: str):
+    try:
+        resp = (
+            semantic_splitter.split_text(txt) if len(txt.strip()) > 100 else [txt.strip()]
+        )
+    except Exception as e:
+        print(e)
+        resp = [txt.strip()]
+    return resp
+
+
+# Breakpoint defaults:
+# "percentile": 95,
+# "standard_deviation": 3,
+# "interquartile": 1.5,
+# "gradient": 95,
 
 
 async def a_semantic_splitter(
-    text: str, split=SETTINGS.default_llms.instruct.char_limit, progress_cb=None
+    texts: Union[str, List[str]],
+    split=SETTINGS.default_llms.instruct.char_limit,
+    progress_cb=None,
+    threshold_type: BreakpointThresholdType = "percentile",
+    breakpoint_threshold=None,
 ):
-    if len(text) > 1000:
-        less_text = split_text(text, SETTINGS.default_embeddings.default.char_limit, 0)
-    else:
-        less_text = [text]
+    if isinstance(texts, str):
+        texts = [texts]
+
+    less_text = []
+    for text in texts:
+        if len(text) > 1000:
+            less_text += split_text(
+                text, SETTINGS.default_embeddings.default.char_limit, 0
+            )
+        else:
+            less_text.append(text)
 
     semantic_splitter = SemanticChunker(
-        get_embeddings("base"), breakpoint_threshold_type="percentile"
+        get_embeddings("base"),
+        breakpoint_threshold_type=threshold_type,
+        breakpoint_threshold_amount=breakpoint_threshold,
     )
-
-    # async def split_text_async(txt):
-    #     return semantic_splitter.split_text(txt) if len(txt.strip()) > 100 else [txt.strip()]
-
-    # tasks = [split_text_async(txt) for txt in less_text]
-    # texts = []
-    # for i, task in enumerate(asyncio.as_completed(tasks)):
-    #     texts.extend(await task)
-    #     if progress_cb != None and callable(progress_cb):
-    #         progress_cb(len(less_text), i)
 
     texts = []
     with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -316,7 +337,7 @@ def get_concept_rag_chunks(
         concept_metadatas = [
             {
                 "concept_id": concept.id,
-                "concept_tags": ", ".join([tag.tag for tag in concept.tags]),
+                "concept_tags": ", ".join([tag for tag in concept.tags]),
                 "split": str(i) + "_" + str(j),
                 "sources": "\n".join(
                     [

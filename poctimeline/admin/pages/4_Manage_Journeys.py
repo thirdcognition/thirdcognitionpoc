@@ -774,64 +774,66 @@ def main():
     if not check_auth():
         return
 
-    file_categories = get_all_categories()
-    categories = st.multiselect("Categories", file_categories)
+    st.write("NA, upgrade in progress")
 
-    if not categories:
-        st.header("First, choose a categories.")
-        return
+    # file_categories = get_all_categories()
+    # categories = st.multiselect("Categories", file_categories)
 
-    db_journey = get_db_journey(
-        chroma_collections=["rag_" + categories for categories in categories]
-    )
-    if len(db_journey.keys()) == 0:
-        db_journey = get_db_journey(
-            chroma_collections=["rag_" + categories for categories in categories],
-            reset=True,
-        )
+    # if not categories:
+    #     st.header("First, choose a categories.")
+    #     return
 
-    if db_journey is not None and len(db_journey.keys()) > 0:
-        st.header("Journey database")
-    else:
-        st.header("No journeys created yet.")
+    # db_journey = get_db_journey(
+    #     chroma_collections=["rag_" + categories for categories in categories]
+    # )
+    # if len(db_journey.keys()) == 0:
+    #     db_journey = get_db_journey(
+    #         chroma_collections=["rag_" + categories for categories in categories],
+    #         reset=True,
+    #     )
 
-    if "edit_mode" not in st.session_state or len(st.session_state.edit_mode) == 0:
-        st.session_state.edit_mode = [False for _ in db_journey.keys()]
-    for journey_index, journey_name in enumerate(db_journey.keys()):
-        journey: JourneyModel = db_journey[journey_name]
-        col_edit, col_delete, col2, col3 = st.columns(
-            [2, 2, 12, 3], vertical_alignment="center"
-        )
-        edit_mode = st.session_state.edit_mode[journey_index]
-        st.session_state.edit_mode[journey_index] = col_edit.checkbox(
-            ":pencil:",
-            key=f"edit_button_{journey_name}",
-            value=edit_mode,
-        )
-        with col_delete.popover(":x:"):
-            if st.button(
-                f"Are you sure you want to remove {journey_name}?",
-                key=f"delete_button_{journey_name}",
-                use_container_width=True,
-            ):
-                delete_journey(journey_name)
-        col2.subheader(f"&nbsp;{journey_name}", divider=True)
-        col3.link_button(
-            ":paperclip:&nbsp;&nbsp;Link",
-            f"{SETTINGS.client_host}?journey={journey_name}",
-            use_container_width=True,
-        )
+    # if db_journey is not None and len(db_journey.keys()) > 0:
+    #     st.header("Journey database")
+    # else:
+    #     st.header("No journeys created yet.")
 
-        tab1, tab2 = st.tabs(["Details", "Subjects"])
-        with tab1:
-            journey_details_ui(
-                journey_name, journey, st.session_state.edit_mode[journey_index]
-            )
-        with tab2:
-            subjects_ui(journey_name, journey_index, journey)
+    # if "edit_mode" not in st.session_state or len(st.session_state.edit_mode) == 0:
+    #     st.session_state.edit_mode = [False for _ in db_journey.keys()]
+    # for journey_index, journey_name in enumerate(db_journey.keys()):
+    #     journey: JourneyModel = db_journey[journey_name]
+    #     col_edit, col_delete, col2, col3 = st.columns(
+    #         [2, 2, 12, 3], vertical_alignment="center"
+    #     )
+    #     edit_mode = st.session_state.edit_mode[journey_index]
+    #     st.session_state.edit_mode[journey_index] = col_edit.checkbox(
+    #         ":pencil:",
+    #         key=f"edit_button_{journey_name}",
+    #         value=edit_mode,
+    #     )
+    #     with col_delete.popover(":x:"):
+    #         if st.button(
+    #             f"Are you sure you want to remove {journey_name}?",
+    #             key=f"delete_button_{journey_name}",
+    #             use_container_width=True,
+    #         ):
+    #             delete_journey(journey_name)
+    #     col2.subheader(f"&nbsp;{journey_name}", divider=True)
+    #     col3.link_button(
+    #         ":paperclip:&nbsp;&nbsp;Link",
+    #         f"{SETTINGS.client_host}?journey={journey_name}",
+    #         use_container_width=True,
+    #     )
 
-        if st.session_state.edit_mode[journey_index]:
-            save_journey_ui(journey_index, journey_name, journey)
+    #     tab1, tab2 = st.tabs(["Details", "Subjects"])
+    #     with tab1:
+    #         journey_details_ui(
+    #             journey_name, journey, st.session_state.edit_mode[journey_index]
+    #         )
+    #     with tab2:
+    #         subjects_ui(journey_name, journey_index, journey)
+
+    #     if st.session_state.edit_mode[journey_index]:
+    #         save_journey_ui(journey_index, journey_name, journey)
 
 
 if __name__ == "__main__":

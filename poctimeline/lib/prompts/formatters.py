@@ -173,6 +173,8 @@ concept_structured = structured.customize(
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         Extract concepts from the text between the context start and context end.
         The concepts are the main ideas, topics, or subjects that are discussed or referred to in the text.
+        Assign categorical tags for each of the found concepts. The used tags should be generic.
+        Try to use existing tags if available.
         """
     ),
     user=textwrap.dedent(
@@ -180,6 +182,10 @@ concept_structured = structured.customize(
         context start
         {context}
         context end
+        ----------------
+        existing tags start
+        {existing_tags}
+        existing tags end
         ----------------
         format instructions start
         {format_instructions}
@@ -205,6 +211,8 @@ concept_more = PromptFormatter(
         within the text between the context start and context end.
         Extract only the new concepts from the text between the context start and context end.
         The concepts are the main ideas, topics, or subjects that are discussed or referred to in the text.
+        Assign categorical tags for each of the found concepts. The used tags should be generic.
+        Try to use existing tags if available.
         """
     ),
     user=textwrap.dedent(
@@ -212,6 +220,10 @@ concept_more = PromptFormatter(
         context start
         {context}
         context end
+        ----------------
+        existing tags start
+        {existing_tags}
+        existing tags end
         ----------------
         existing concepts start
         {existing_concepts}

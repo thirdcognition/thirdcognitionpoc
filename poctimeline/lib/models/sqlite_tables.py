@@ -40,7 +40,7 @@ class ParsedConceptCategoryTag(BaseModel):
 
 class ParsedConceptCategoryTagList(BaseModel):
     tags: List[ParsedConceptCategoryTag] = Field(
-        description="A list of unique concept category tags identified from the provided concepts",
+        description="A list of unique concept category tags identified from the provided concepts. Tags should be generic and applicable for varied subjects.",
         title="Concepts",
     )
 
@@ -58,7 +58,7 @@ class ParsedConcept(BaseModel):
         title="Summary",
     )
     tags: List[str] = Field(
-        description="A list of tags that this concepts could belong to", title="Tags"
+        description="A list of tags that this concepts could belong to. Tags should be generic and applicable for varied subjects.", title="Tags"
     )
     id: Optional[str] = Field(
         description="An human readable id for this concept using letters and _ if available. If not available, leave blank.",
@@ -93,7 +93,7 @@ class ParsedConceptIds(BaseModel):
         description="A human readable title for this concept", title="Title"
     )
     tags: List[str] = Field(
-        description="A list of tags that this concepts could belong to", title="Tags"
+        description="A list of tags that this concepts could belong to. Tags should be generic and applicable for varied subjects.", title="Tags"
     )
 
 

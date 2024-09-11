@@ -308,6 +308,7 @@ class ProcessConceptsState(TypedDict):
     url: str
     file: str
     content: Document
+    concept_tags: Dict[str, ConceptCategoryTag]
 
 
 _new_ids = {}
@@ -346,6 +347,9 @@ async def split_reformatted_content(state: ProcessTextState):
 
 
 async def map_find_concepts(state: ProcessTextState):
+    existing_concept_categories: Dict[str, ConceptCategoryTag] = (
+        get_existing_concept_categories(reset=True, categories=state["categories"])
+    )
     return [
         Send(
             "find_concepts",
@@ -353,6 +357,7 @@ async def map_find_concepts(state: ProcessTextState):
                 "url": state["url"] if "url" in state else None,
                 "filename": state["filename"] if "filename" in state else None,
                 "content": snippet,
+                "concept_tags": existing_concept_categories
             },
         )
         for snippet in state["snippets"]
@@ -377,9 +382,18 @@ async def find_concepts(state: ProcessConceptsState, config: RunnableConfig):
         if state["filename"]
         else f"URL: {state['url']} --\tPage: {state['content'].metadata['page']} --\tSnippet: {state['content'].metadata['snippet']}"
     )
+    existing_tags = state["concept_tags"]
+
     params = {
         "context": ident + f"Content: {get_text_from_completion(state['content'])}"
     }
+
+    existing_tags_str = ''
+    if existing_tags and len(existing_tags.keys()) > 0:
+        existing_tags_str = "\n".join([f"Id({tag.id}) - Tag({tag.tag}): {tag.title}: {tag.description}" for tag in existing_tags.values()]).strip()
+
+
+    params["existing_tags"] = existing_tags_str
 
     new_concepts: List[ParsedConcept] = []
 
@@ -401,6 +415,7 @@ async def find_concepts(state: ProcessConceptsState, config: RunnableConfig):
             more_concepts: ParsedConceptList = await get_chain("concept_more").ainvoke(
                 {
                     "context": params["context"],
+                    "existing_tags": existing_tags_str,
                     "existing_concepts": "\n".join(
                         f"{concept.title.replace('\n', ' ').strip()}:\n"
                         f"Summary: {concept.summary.replace('\n', ' ').strip()}\n"

@@ -723,40 +723,41 @@ async def collapse_concepts(state: ProcessTextState, config: RunnableConfig):
                 old_concept_item = True
                 new_concept = previous_concepts[id]
 
-            for id in sum_concept.combined_ids:
-                if old_concept_item:
-                    removed_ids.append(new_concept.id)
-                if id in previous_concepts.keys():
-                    removed_ids.append(id)
-                    new_concept.contents.extend(previous_concepts[id].contents)
-                    for ref in previous_concepts[id].references:
-                        if f"{ref.source}_{(ref.page_number or 0)}" not in [
-                            f"{ref.source}_{(ref.page_number or 0)}"
-                            for ref in new_concept.references
-                        ]:
-                            new_concept.references.append(ref)
-                    new_concept.sources = list(
-                        set(new_concept.sources + previous_concepts[id].sources)
-                    )
-                    new_concept.children.append(previous_concepts[id].id)
-                    new_concept.parent_id = (
-                        new_concept.parent_id or previous_concepts[id].parent_id
-                    )
-                if id in found_concepts_by_id.keys():
-                    concept = found_concepts_by_id[id]
-                    new_concept.contents.extend(concept.content.split(_divider))
-                    references = [
-                        ref for ref in new_concept.references if ref.source == source
-                    ]
-                    if concept.page_number not in [
-                        ref.page_number for ref in references
-                    ]:
-                        new_concept.references.append(
-                            SourceReference(
-                                source=source,
-                                page_number=concept.page_number,
-                            )
+            if sum_concept.combined_ids is not None:
+                for id in sum_concept.combined_ids:
+                    if old_concept_item:
+                        removed_ids.append(new_concept.id)
+                    if id in previous_concepts.keys():
+                        removed_ids.append(id)
+                        new_concept.contents.extend(previous_concepts[id].contents)
+                        for ref in previous_concepts[id].references:
+                            if f"{ref.source}_{(ref.page_number or 0)}" not in [
+                                f"{ref.source}_{(ref.page_number or 0)}"
+                                for ref in new_concept.references
+                            ]:
+                                new_concept.references.append(ref)
+                        new_concept.sources = list(
+                            set(new_concept.sources + previous_concepts[id].sources)
                         )
+                        new_concept.children.append(previous_concepts[id].id)
+                        new_concept.parent_id = (
+                            new_concept.parent_id or previous_concepts[id].parent_id
+                        )
+                    if id in found_concepts_by_id.keys():
+                        concept = found_concepts_by_id[id]
+                        new_concept.contents.extend(concept.content.split(_divider))
+                        references = [
+                            ref for ref in new_concept.references if ref.source == source
+                        ]
+                        if concept.page_number not in [
+                            ref.page_number for ref in references
+                        ]:
+                            new_concept.references.append(
+                                SourceReference(
+                                    source=source,
+                                    page_number=concept.page_number,
+                                )
+                            )
 
             for tag in concept_categories.tags:
                 if new_concept.id in tag.connected_concepts:

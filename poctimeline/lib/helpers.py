@@ -1,5 +1,7 @@
 import pprint as pp
+from pydantic import BaseModel
 import streamlit as st
+import yaml
 from lib.load_env import DEBUGMODE
 from langchain_core.runnables import (
     RunnableSequence,
@@ -16,6 +18,19 @@ def print_params(msg="", params=""):
         if params:
             print(f"'\n\n{pp.pformat(params).replace('\\n', '\n')}\n\n")
 
+def pretty_print(obj, msg=None, force=DEBUGMODE):
+    if force:
+        if msg:
+            print(f"\n\n\n{msg}\n")
+        else:
+            print(f"\n\n\n{type(obj)}\n")
+        if obj is None:
+            print("obj = None")
+        elif isinstance(obj, BaseModel):
+            print(obj.model_dump_json(indent=2))
+        else:
+            pp.pprint(obj)
+        print("\n\n")
 
 def get_session_history(session_id: str) -> BaseChatMessageHistory:
     if "chat_history" not in st.session_state:
@@ -42,3 +57,9 @@ def get_chain_with_history(chain_id: str, chain: RunnableSequence):
 
     st.session_state["history_chains"][chain_id] = history_chain
     return history_chain
+
+def read_and_load_yaml(file_path):
+    with open(file_path, "r") as file:
+        content = file.read().replace("\t", "    ")
+        data = yaml.safe_load(content)
+    return data

@@ -1,0 +1,956 @@
+template: |
+  <category_tag>
+  <title>
+  Name for the item that is listed under this category
+  </title>
+  <taxonomy>
+  Category taxonomy tag, should not be plural
+  </taxonomy>
+  <parent_taxonomy>
+  More generic taxonomy tag which can be used for general organization of the specified categories, should not be plural
+  </parent_taxonomy>
+  <tag>
+  Simple tag using letters and _ that can be used to identify the category, should not be plural
+  </tag>
+  <type>
+  Type for the category, e.g. person, product, concept, idea, etc.
+  </type>
+  <description>
+  Short description of the type of items that can be stored in this category used for searching items of this category from a textual content
+  </description>
+  </category_tag>
+tags:
+- category_tag
+- title
+- taxonomy
+- tag
+- type
+- description
+optional_tags:
+- id
+- parent_id
+- parent_taxonomy
+examples:
+  Company: |
+    <category_tag>
+    <title>
+    Company
+    </title>
+    <taxonomy>
+    Business
+    </taxonomy>
+    <parent_taxonomy>
+    Organization
+    </parent_taxonomy>
+    <tag>
+    company
+    </tag>
+    <type>
+    Entity
+    </type>
+    <description>
+    An organization or enterprising entity engaged in commercial, industrial, or professional activities.
+    </description>
+    </category_tag>
+
+  Product: |
+    <category_tag>
+    <title>
+    Product
+    </title>
+    <taxonomy>
+    Goods
+    </taxonomy>
+    <parent_taxonomy>
+    Business
+    </parent_taxonomy>
+    <tag>
+    product
+    </tag>
+    <type>
+    Item
+    </type>
+    <description>
+    An article or substance that is manufactured or refined for sale.
+    </description>
+    </category_tag>
+
+  Service: |
+    <category_tag>
+    <title>
+    Service
+    </title>
+    <taxonomy>
+    Offering
+    </taxonomy>
+    <parent_taxonomy>
+    Business
+    </parent_taxonomy>
+    <tag>
+    service
+    </tag>
+    <type>
+    Activity
+    </type>
+    <description>
+    A system supplying a public need such as transport, communications, or utilities such as electricity and water.
+    </description>
+    </category_tag>
+
+  Startup: |
+    <category_tag>
+    <title>
+    Startup
+    </title>
+    <taxonomy>
+    Company
+    </taxonomy>
+    <parent_taxonomy>
+    Organization
+    </parent_taxonomy>
+    <tag>
+    startup
+    </tag>
+    <type>
+    Entity
+    </type>
+    <description>
+    A newly established business, often in its initial phase, usually aimed at scaling rapidly.
+    </description>
+    </category_tag>
+
+  Small: |
+    <category_tag>
+    <title>
+    Small Business
+    </title>
+    <taxonomy>
+    Company
+    </taxonomy>
+    <parent_taxonomy>
+    Organization
+    </parent_taxonomy>
+    <tag>
+    small_business
+    </tag>
+    <type>
+    Entity
+    </type>
+    <description>
+    A privately owned corporation, partnership, or sole proprietorship that has fewer employees and less annual revenue than a regular-sized business.
+    </description>
+    </category_tag>
+
+  Corporation: |
+    <category_tag>
+    <title>
+    Corporation
+    </title>
+    <taxonomy>
+    Company
+    </taxonomy>
+    <parent_taxonomy>
+    Organization
+    </parent_taxonomy>
+    <tag>
+    corporation
+    </tag>
+    <type>
+    Entity
+    </type>
+    <description>
+    A company or group of people authorized to act as a single entity and recognized as such in law.
+    </description>
+    </category_tag>
+
+  Retail: |
+    <category_tag>
+    <title>
+    Retail
+    </title>
+    <taxonomy>
+    Business
+    </taxonomy>
+    <parent_taxonomy>
+    Industry
+    </parent_taxonomy>
+    <tag>
+    retail
+    </tag>
+    <type>
+    Sector
+    </type>
+    <description>
+    The sale of goods to the public in relatively small quantities for use or consumption rather than for resale.
+    </description>
+    </category_tag>
+
+  E-commerce: |
+    <category_tag>
+    <title>
+    E-commerce
+    </title>
+    <taxonomy>
+    Business
+    </taxonomy>
+    <parent_taxonomy>
+    Industry
+    </parent_taxonomy>
+    <tag>
+    e_commerce
+    </tag>
+    <type>
+    Sector
+    </type>
+    <description>
+    Commercial transactions conducted electronically on the Internet.
+    </description>
+    </category_tag>
+
+  Manufacturing: |
+    <category_tag>
+    <title>
+    Manufacturing
+    </title>
+    <taxonomy>
+    Industry
+    </taxonomy>
+    <parent_taxonomy>
+    Economy
+    </parent_taxonomy>
+    <tag>
+    manufacturing
+    </tag>
+    <type>
+    Sector
+    </type>
+    <description>
+    The process of converting raw materials, components, or parts into finished goods that meet a customer's expectations or specifications.
+    </description>
+    </category_tag>
+
+  Doctor: |
+    <category_tag>
+    <title>
+    Doctor
+    </title>
+    <taxonomy>
+    Profession
+    </taxonomy>
+    <parent_taxonomy>
+    Healthcare
+    </parent_taxonomy>
+    <tag>
+    doctor
+    </tag>
+    <type>
+    Person
+    </type>
+    <description>
+    A qualified practitioner of medicine; a physician.
+    </description>
+    </category_tag>
+
+  Engineer: |
+    <category_tag>
+    <title>
+    Engineer
+    </title>
+    <taxonomy>
+    Profession
+    </taxonomy>
+    <parent_taxonomy>
+    Technology
+    </parent_taxonomy>
+    <tag>
+    engineer
+    </tag>
+    <type>
+    Person
+    </type>
+    <description>
+    A person who designs, builds, or maintains engines, machines, or structures.
+    </description>
+    </category_tag>
+
+  Teacher: |
+    <category_tag>
+    <title>
+    Teacher
+    </title>
+    <taxonomy>
+    Profession
+    </taxonomy>
+    <parent_taxonomy>
+    Education
+    </parent_taxonomy>
+    <tag>
+    teacher
+    </tag>
+    <type>
+    Person
+    </type>
+    <description>
+    A person who helps students to acquire knowledge, competence, or virtue.
+    </description>
+    </category_tag>
+
+  Lawyer: |
+    <category_tag>
+    <title>
+    Lawyer
+    </title>
+    <taxonomy>
+    Profession
+    </taxonomy>
+    <parent_taxonomy>
+    Legal
+    </parent_taxonomy>
+    <tag>
+    lawyer
+    </tag>
+    <type>
+    Person
+    </type>
+    <description>
+    A person who practices or studies law; an attorney or a counselor.
+    </description>
+    </category_tag>
+
+  Data: |
+    <category_tag>
+    <title>
+    Data Analysis
+    </title>
+    <taxonomy>
+    Skill
+    </taxonomy>
+    <parent_taxonomy>
+    Analytics
+    </parent_taxonomy>
+    <tag>
+    data_analysis
+    </tag>
+    <type>
+    Ability
+    </type>
+    <description>
+    The process of inspecting, cleansing, transforming, and modeling data to discover useful information, inform conclusions, and support decision-making.
+    </description>
+    </category_tag>
+
+  Project: |
+    <category_tag>
+    <title>
+    Project Management
+    </title>
+    <taxonomy>
+    Skill
+    </taxonomy>
+    <parent_taxonomy>
+    Management
+    </parent_taxonomy>
+    <tag>
+    project_management
+    </tag>
+    <type>
+    Ability
+    </type>
+    <description>
+    The practice of leading the work of a team to achieve all project goals within the given constraints.
+    </description>
+    </category_tag>
+
+  Communication: |
+    <category_tag>
+    <title>
+    Communication
+    </title>
+    <taxonomy>
+    Skill
+    </taxonomy>
+    <parent_taxonomy>
+    Soft Skill
+    </parent_taxonomy>
+    <tag>
+    communication
+    </tag>
+    <type>
+    Ability
+    </type>
+    <description>
+    The act of conveying intended meanings from one entity or group to another through the use of mutually understood signs and rules.
+    </description>
+    </category_tag>
+
+  Graphic: |
+    <category_tag>
+    <title>
+    Graphic Designer
+    </title>
+    <taxonomy>
+    Profession
+    </taxonomy>
+    <parent_taxonomy>
+    Creative
+    </parent_taxonomy>
+    <tag>
+    graphic_designer
+    </tag>
+    <type>
+    Person
+    </type>
+    <description>
+    A professional within the graphic design and graphic arts industry who assembles images, typography, or motion graphics to create a piece of design.
+    </description>
+    </category_tag>
+
+  Software: |
+    <category_tag>
+    <title>
+    Software Development
+    </title>
+    <taxonomy>
+    Skill
+    </taxonomy>
+    <parent_taxonomy>
+    Technology
+    </parent_taxonomy>
+    <tag>
+    software_development
+    </tag>
+    <type>
+    Ability
+    </type>
+    <description>
+    The process of conceiving, specifying, designing, programming, documenting, testing, and bug fixing involved in creating and maintaining applications, frameworks, or other software components.
+    </description>
+    </category_tag>
+
+  Sustainability: |
+    <category_tag>
+    <title>
+    Sustainability
+    </title>
+    <taxonomy>
+    Concept
+    </taxonomy>
+    <parent_taxonomy>
+    Environment
+    </parent_taxonomy>
+    <tag>
+    sustainability
+    </tag>
+    <type>
+    Idea
+    </type>
+    <description>
+    The ability to be maintained at a certain rate or level without depleting natural resources, ensuring long-term environmental quality.
+    </description>
+    </category_tag>
+
+  Innovation: |
+    <category_tag>
+    <title>
+    Innovation
+    </title>
+    <taxonomy>
+    Idea
+    </taxonomy>
+    <parent_taxonomy>
+    Progress
+    </parent_taxonomy>
+    <tag>
+    innovation
+    </tag>
+    <type>
+    Concept
+    </type>
+    <description>
+    The process of translating an idea or invention into a good or service that creates value or for which customers will pay.
+    </description>
+    </category_tag>
+
+  Artificial: |
+    <category_tag>
+    <title>
+    Artificial Intelligence
+    </title>
+    <taxonomy>
+    Concept
+    </taxonomy>
+    <parent_taxonomy>
+    Technology
+    </parent_taxonomy>
+    <tag>
+    artificial_intelligence
+    </tag>
+    <type>
+    Idea
+    </type>
+    <description>
+    The simulation of human intelligence processes by machines, especially computer systems, including learning, reasoning, and self-correction.
+    </description>
+    </category_tag>
+
+  Quantum: |
+    <category_tag>
+    <title>
+    Quantum Computing
+    </title>
+    <taxonomy>
+    Concept
+    </taxonomy>
+    <parent_taxonomy>
+    Technology
+    </parent_taxonomy>
+    <tag>
+    quantum_computing
+    </tag>
+    <type>
+    Idea
+    </type>
+    <description>
+    The area of study focused on developing computer technology based on the principles of quantum theory, which explains the nature and behavior of energy and matter on the quantum level.
+    </description>
+    </category_tag>
+
+  Ethics: |
+    <category_tag>
+    <title>
+    Ethics
+    </title>
+    <taxonomy>
+    Concept
+    </taxonomy>
+    <parent_taxonomy>
+    Philosophy
+    </parent_taxonomy>
+    <tag>
+    ethics
+    </tag>
+    <type>
+    Idea
+    </type>
+    <description>
+    Moral principles that govern a person's behavior or the conducting of an activity.
+    </description>
+    </category_tag>
+
+    Quantum: |
+    <category_tag>
+    <title>
+    Quantum Mechanics
+    </title>
+    <taxonomy>
+    Physics
+    </taxonomy>
+    <parent_taxonomy>
+    Science
+    </parent_taxonomy>
+    <tag>
+    quantum_mechanics
+    </tag>
+    <type>
+    Concept
+    </type>
+    <description>
+    A fundamental theory in physics describing the properties of nature on an atomic scale.
+    </description>
+    </category_tag>
+
+  Photosynthesis: |
+    <category_tag>
+    <title>
+    Photosynthesis
+    </title>
+    <taxonomy>
+    Biology
+    </taxonomy>
+    <parent_taxonomy>
+    Science
+    </parent_taxonomy>
+    <tag>
+    photosynthesis
+    </tag>
+    <type>
+    Concept
+    </type>
+    <description>
+    The process by which green plants and some other organisms use sunlight to synthesize foods from carbon dioxide and water.
+    </description>
+    </category_tag>
+
+  Supply: |
+    <category_tag>
+    <title>
+    Supply Chain Management
+    </title>
+    <taxonomy>
+    Business
+    </taxonomy>
+    <parent_taxonomy>
+    Economics
+    </parent_taxonomy>
+    <tag>
+    supply_chain_management
+    </tag>
+    <type>
+    Concept
+    </type>
+    <description>
+    The management of the flow of goods and services and includes all processes that transform raw materials into final products.
+    </description>
+    </category_tag>
+
+  Machine: |
+    <category_tag>
+    <title>
+    Machine Learning
+    </title>
+    <taxonomy>
+    Computer Science
+    </taxonomy>
+    <parent_taxonomy>
+    Technology
+    </parent_taxonomy>
+    <tag>
+    machine_learning
+    </tag>
+    <type>
+    Concept
+    </type>
+    <description>
+    A subset of artificial intelligence that involves the study of algorithms and statistical models that computer systems use to perform tasks without explicit instructions.
+    </description>
+    </category_tag>
+
+  Cognitive: |
+    <category_tag>
+    <title>
+    Cognitive Dissonance
+    </title>
+    <taxonomy>
+    Psychology
+    </taxonomy>
+    <parent_taxonomy>
+    Social Science
+    </parent_taxonomy>
+    <tag>
+    cognitive_dissonance
+    </tag>
+    <type>
+    Concept
+    </type>
+    <description>
+    The mental discomfort experienced by a person who holds two or more contradictory beliefs, ideas, or values at the same time.
+    </description>
+    </category_tag>
+
+  Plate: |
+    <category_tag>
+    <title>
+    Plate Tectonics
+    </title>
+    <taxonomy>
+    Geology
+    </taxonomy>
+    <parent_taxonomy>
+    Earth Science
+    </parent_taxonomy>
+    <tag>
+    plate_tectonics
+    </tag>
+    <type>
+    Concept
+    </type>
+    <description>
+    A scientific theory describing the large-scale motion of seven large plates and the movements of a larger number of smaller plates of the Earth's lithosphere.
+    </description>
+    </category_tag>
+
+  String: |
+    <category_tag>
+    <title>
+    String Theory
+    </title>
+    <taxonomy>
+    Theoretical Physics
+    </taxonomy>
+    <parent_taxonomy>
+    Physics
+    </parent_taxonomy>
+    <tag>
+    string_theory
+    </tag>
+    <type>
+    Concept
+    </type>
+    <description>
+    A theoretical framework in which the point-like particles of particle physics are replaced by one-dimensional objects called strings.
+    </description>
+    </category_tag>
+
+  Natural: |
+    <category_tag>
+    <title>
+    Natural Selection
+    </title>
+    <taxonomy>
+    Evolutionary Biology
+    </taxonomy>
+    <parent_taxonomy>
+    Biology
+    </parent_taxonomy>
+    <tag>
+    natural_selection
+    </tag>
+    <type>
+    Concept
+    </type>
+    <description>
+    The process through which species adapt to their environment; it is the mechanism by which evolution takes place.
+    </description>
+    </category_tag>
+
+  Behavioral: |
+    <category_tag>
+    <title>
+    Behavioral Economics
+    </title>
+    <taxonomy>
+    Economics
+    </taxonomy>
+    <parent_taxonomy>
+    Social Science
+    </parent_taxonomy>
+    <tag>
+    behavioral_economics
+    </tag>
+    <type>
+    Concept
+    </type>
+    <description>
+    A method of economic analysis that applies psychological insights into human behavior to explain economic decision-making.
+    </description>
+    </category_tag>
+
+  User: |
+    <category_tag>
+    <title>
+    User Manual
+    </title>
+    <taxonomy>
+    Documentation
+    </taxonomy>
+    <parent_taxonomy>
+    Information
+    </parent_taxonomy>
+    <tag>
+    user_manual
+    </tag>
+    <type>
+    document
+    </type>
+    <description>
+    A guidebook that provides instructions on how to use a product or service.
+    </description>
+    </category_tag>
+
+  Privacy: |
+    <category_tag>
+    <title>
+    Privacy Policy
+    </title>
+    <taxonomy>
+    Documentation
+    </taxonomy>
+    <parent_taxonomy>
+    Information
+    </parent_taxonomy>
+    <tag>
+    privacy_policy
+    </tag>
+    <type>
+    document
+    </type>
+    <description>
+    A legal document that outlines how a company collects, uses, and protects user data.
+    </description>
+    </category_tag>
+
+  Standard: |
+    <category_tag>
+    <title>
+    Standard Operating Procedure (SOP)
+    </title>
+    <taxonomy>
+    Processes
+    </taxonomy>
+    <parent_taxonomy>
+    Information
+    </parent_taxonomy>
+    <tag>
+    sop
+    </tag>
+    <type>
+    document
+    </type>
+    <description>
+    A set of step-by-step instructions compiled by an organization to help workers carry out routine operations.
+    </description>
+    </category_tag>
+
+  Flowchart: |
+    <category_tag>
+    <title>
+    Flowchart
+    </title>
+    <taxonomy>
+    Processes
+    </taxonomy>
+    <parent_taxonomy>
+    Information
+    </parent_taxonomy>
+    <tag>
+    flowchart
+    </tag>
+    <type>
+    diagram
+    </type>
+    <description>
+    A graphical representation of a process, showing the sequence of steps using symbols.
+    </description>
+    </category_tag>
+
+  Annual: |
+    <category_tag>
+    <title>
+    Annual Report
+    </title>
+    <taxonomy>
+    Documentation
+    </taxonomy>
+    <parent_taxonomy>
+    Information
+    </parent_taxonomy>
+    <tag>
+    annual_report
+    </tag>
+    <type>
+    document
+    </type>
+    <description>
+    A comprehensive report on a company's activities and financial performance throughout the preceding year.
+    </description>
+    </category_tag>
+
+  Data: |
+    <category_tag>
+    <title>
+    Data Flow Diagram (DFD)
+    </title>
+    <taxonomy>
+    Processes
+    </taxonomy>
+    <parent_taxonomy>
+    Information
+    </parent_taxonomy>
+    <tag>
+    dfd
+    </tag>
+    <type>
+    diagram
+    </type>
+    <description>
+    A graphical representation of the flow of data through an information system.
+    </description>
+    </category_tag>
+
+  White: |
+    <category_tag>
+    <title>
+    White Paper
+    </title>
+    <taxonomy>
+    Documentation
+    </taxonomy>
+    <parent_taxonomy>
+    Information
+    </parent_taxonomy>
+    <tag>
+    white_paper
+    </tag>
+    <type>
+    document
+    </type>
+    <description>
+    An authoritative report or guide that informs readers concisely about a complex issue and presents the issuing body's philosophy on the matter.
+    </description>
+    </category_tag>
+
+  Incident: |
+    <category_tag>
+    <title>
+    Incident Report
+    </title>
+    <taxonomy>
+    Documentation
+    </taxonomy>
+    <parent_taxonomy>
+    Information
+    </parent_taxonomy>
+    <tag>
+    incident_report
+    </tag>
+    <type>
+    document
+    </type>
+    <description>
+    A document detailing the facts and circumstances of an incident, typically used in workplace settings.
+    </description>
+    </category_tag>
+
+  Audit: |
+    <category_tag>
+    <title>
+    Audit Trail
+    </title>
+    <taxonomy>
+    Processes
+    </taxonomy>
+    <parent_taxonomy>
+    Information
+    </parent_taxonomy>
+    <tag>
+    audit_trail
+    </tag>
+    <type>
+    record
+    </type>
+    <description>
+    A chronological record of system activities to enable the reconstruction and examination of the sequence of events and changes.
+    </description>
+    </category_tag>
+
+  Meeting: |
+    <category_tag>
+    <title>
+    Meeting Minutes
+    </title>
+    <taxonomy>
+    Documentation
+    </taxonomy>
+    <parent_taxonomy>
+    Information
+    </parent_taxonomy>
+    <tag>
+    meeting_minutes
+    </tag>
+    <type>
+    document
+    </type>
+    <description>
+    A written record of everything that was discussed during a meeting, including decisions and action items.
+    </description>
+    </category_tag>

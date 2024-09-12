@@ -88,23 +88,23 @@ async def process_text_call(
         }
     }
     states = {
-        "split": "Read and analysis of document",
-        "reformat": "Document re-formatting",
+        "split": "Read and analyse document",
+        "reformat": "Rewrite document",
     }
     if config["configurable"]["collect_concepts"]:
         states.update(
             {
-                "split_reformatted": "Prepare content for concept search",
-                "find_concepts": "Searching for concepts",
-                "collapse_concepts": "Formatting concepts"
+                "split_reformatted": "Build document taxonomy",
+                "find_concepts": "Search for concepts based on taxonomy",
+                "collapse_concepts": "Format concepts and taxonomy"
             }
         )
 
     states.update(
         {
-            "summary": "Summary writing",
-            "collapse": "Collapsing contents",
-            "finalize": "Combining contents",
+            "summary": "Write summary",
+            "collapse": "Collapse contents",
+            "finalize": "Combine contents",
         }
     )
 

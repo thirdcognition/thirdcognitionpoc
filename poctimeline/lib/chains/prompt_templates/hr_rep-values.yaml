@@ -8,7 +8,7 @@ task_details:
 
     Before starting, plan how to proceed step by step and place your thinking between
 
-    [thinking_start] and [thinking_end]-tags. Then follow your plan and return only
+    <thinking> and </thinking>-tags. Then follow your plan and return only
     the expected output.
 
 
@@ -69,7 +69,7 @@ step_tasks:
 
     Before starting, plan how to proceed step by step and place your thinking between
 
-    [thinking_start] and [thinking_end]-tags. Then follow your plan and return only
+    <thinking> and </thinking>-tags. Then follow your plan and return only
     the expected output.
 
 
@@ -136,7 +136,7 @@ step_content:
 
     Before starting, plan how to proceed step by step and place your thinking between
 
-    [thinking_start] and [thinking_end]-tags. Then follow your plan and return only
+    <thinking> and </thinking>-tags. Then follow your plan and return only
     the expected output.
 
 
@@ -212,7 +212,7 @@ step_intro:
 
     Before starting, plan how to proceed step by step and place your thinking between
 
-    [thinking_start] and [thinking_end]-tags. Then follow your plan and return only
+    <thinking> and </thinking>-tags. Then follow your plan and return only
     the expected output.
 
 

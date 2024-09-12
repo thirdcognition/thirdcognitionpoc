@@ -1,11 +1,13 @@
 from datetime import datetime
 from enum import Enum
+import textwrap
 from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 import sqlalchemy as sqla
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.ext.mutable import MutableList
 
+from lib.helpers import pretty_print
 from lib.load_env import SETTINGS
 
 Base = declarative_base()
@@ -16,7 +18,7 @@ class SourceType(Enum):
     file = "file"
 
 
-class ParsedConceptCategoryTag(BaseModel):
+class ParsedConceptTaxonomy(BaseModel):
     parent_id: Optional[str] = Field(
         description=f"A previously defined concept category tag id if available. If not available, leave blank. This is used to create a hierarchy of tags. The parent_id should be the id of the parent tag.",
         title="Parent Id",
@@ -24,6 +26,18 @@ class ParsedConceptCategoryTag(BaseModel):
     id: Optional[str] = Field(
         description="A previously defined concept category tag id if available. If not available, leave blank.",
         title="Id",
+    )
+    taxonomy: str = Field(
+        description="The taxonomy of the category. This is used to determine the structure for the taxonomy.",
+        title="Taxonomy",
+    )
+    parent_taxonomy: str = Field(
+        description="The parent taxonomy of the category. This is used to determine the structure for the taxonomy.",
+        title="Parent Taxonomy",
+    )
+    type: str = Field(
+        description="The type of the category. This is used to determine the type of the category. For example, a category could be a subject, a topic, a skill, etc.",
+        title="Type",
     )
     tag: str = Field(
         description="The tag for the category using letters, _ and -", title="Tag"
@@ -38,8 +52,8 @@ class ParsedConceptCategoryTag(BaseModel):
     )
 
 
-class ParsedConceptCategoryTagList(BaseModel):
-    tags: List[ParsedConceptCategoryTag] = Field(
+class ParsedConceptTaxonomyList(BaseModel):
+    tags: List[ParsedConceptTaxonomy] = Field(
         description="A list of unique concept category tags identified from the provided concepts. Tags should be generic and applicable for varied subjects.",
         title="Concepts",
     )
@@ -118,9 +132,9 @@ class ParsedConceptStructureList(BaseModel):
         description="A list of concepts identified in the context", title="Concepts"
     )
 
-class ConceptCategoryTag(BaseModel):
+class ConceptTaxonomy(BaseModel):
     parent_id: Optional[str] = Field(
-        description="Id of the parent concept category tag if available. If not available, leave blank.",
+        description="Id of the parent concept category tag if available.",
         title="Parent Id",
     )
     id: Optional[str] = Field(
@@ -128,9 +142,75 @@ class ConceptCategoryTag(BaseModel):
         title="Id",
     )
     tag: str = Field(description="The tag for the category", title="Tag")
+    type: str = Field(description=f"The type of the category.", title="Type")
     title: str = Field(description="A title for this concept", title="Title")
     description: str = Field(
         description="The description of the category", title="Description"
+    )
+    taxonomy: str = Field(
+        description="The taxonomy of the category.",
+        title="Taxonomy",
+    )
+    parent_taxonomy: str = Field(
+        description="The parent taxonomy of the category.",
+        title="Parent Taxonomy",
+    )
+
+def convert_concept_category_tag_to_dict(concept_category_tag: ConceptTaxonomy) -> dict:
+    return {
+        "category_tag": {
+            "title": concept_category_tag.title,
+            "taxonomy": concept_category_tag.taxonomy,
+            "parent_taxonomy": concept_category_tag.parent_taxonomy,
+            "tag": concept_category_tag.tag,
+            "type": concept_category_tag.type,
+            "id": concept_category_tag.id,
+            "parent_id": concept_category_tag.parent_id,
+            "description": concept_category_tag.description
+        }
+    }
+
+def convert_taxonomy_dict_to_tag_structure_string(data: dict) -> str:
+    category_tag_data = data["category_tag"]
+    tag_structure = f"""
+    <category_tag>
+        {f'<id>{category_tag_data["id"]}</id>' if 'id' in category_tag_data.keys() else ''}
+        {f'<parent_id>{category_tag_data["parent_id"]}</parent_id>' if 'parent_id' in category_tag_data.keys() else ''}
+        <title>{category_tag_data["title"]}</title>
+        <taxonomy>{category_tag_data["taxonomy"]}</taxonomy>
+        {f'<parent_taxonomy>{category_tag_data["parent_taxonomy"]}</parent_taxonomy>' if "parent_taxonomy" in category_tag_data.keys() else ''}
+        <tag>{category_tag_data["tag"]}</tag>
+        <type>{category_tag_data["type"]}</type>
+        <description>{category_tag_data["description"]}</description>
+    </category_tag>
+    """
+    return textwrap.dedent(tag_structure)
+
+def convert_taxonomy_tags_to_dict(input_dict, tags):
+    output_dict = {
+        "category_tag": {
+        }
+    }
+
+    for child in input_dict['children']:
+        if child['tag'] in tags:
+            output_dict['category_tag'][child['tag']] = child['body'].strip()
+
+    return output_dict
+
+def convert_taxonomy_dict_to_concept_category_tag(data: dict) -> ConceptTaxonomy:
+    category_tag_data:Dict = data.get("category_tag", {})
+    if not category_tag_data:
+        raise ValueError("Invalid data format. 'category_tag' key not found.")
+    return ConceptTaxonomy(
+        id=category_tag_data.get("id", ""),
+        parent_id=category_tag_data.get("parent_id", ""),
+        title=category_tag_data.get("title", ""),
+        taxonomy=category_tag_data.get("taxonomy", ""),
+        parent_taxonomy=category_tag_data.get("parent_taxonomy", ""),
+        tag=category_tag_data.get("tag", ""),
+        description=category_tag_data.get("description", ""),
+        type=category_tag_data.get("type", "")
     )
 
 

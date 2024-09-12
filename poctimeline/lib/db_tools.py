@@ -18,7 +18,7 @@ from lib.models.journey import JourneyModel
 from lib.models.sqlite_tables import (
     Base,
     ConceptCategoryDataTable,
-    ConceptCategoryTag,
+    ConceptTaxonomy,
     ConceptDataTable,
     ConceptData,
     SourceContents,
@@ -214,40 +214,40 @@ def db_concept_category_tag_id_exists(tag_id: str) -> bool:
         sqla.exists().where(ConceptCategoryDataTable.id == tag_id)
     ).scalar()
 
-def get_existing_concept_categories(categories=None, reset:bool=False) -> Dict[str, ConceptCategoryTag]:
-    db_concept_categories: Dict[str, ConceptCategoryTag] = None
+def get_existing_concept_taxonomy(categories=None, reset:bool=False) -> Dict[str, ConceptTaxonomy]:
+    db_concept_taxonomy: Dict[str, ConceptTaxonomy] = None
     if (
-        "db_concept_categories" not in st.session_state
+        "db_concept_taxonomy" not in st.session_state
         or reset
     ):
         found_categories = database_session.query(ConceptCategoryDataTable).filter(
             ConceptCategoryDataTable.category_tags.contains(set(categories))
         ).distinct().all()
 
-        if "db_concept_categories" not in st.session_state or reset:
-            db_concept_categories = {}
+        if "db_concept_taxonomy" not in st.session_state or reset:
+            db_concept_taxonomy = {}
         else:
-            db_concept_categories = st.session_state.db_concept_categories
+            db_concept_taxonomy = st.session_state.db_concept_taxonomy
         for category in found_categories:
-            db_concept_categories[category.id] = ConceptCategoryTag(**category.concept_category_tag.__dict__)
-            db_concept_categories[category.id].id = category.id
+            db_concept_taxonomy[category.id] = ConceptTaxonomy(**category.concept_category_tag.__dict__)
+            db_concept_taxonomy[category.id].id = category.id
 
-        st.session_state.db_concept_categories = db_concept_categories
+        st.session_state.db_concept_taxonomy = db_concept_taxonomy
     else:
-        db_concept_categories = st.session_state.db_concept_categories
+        db_concept_taxonomy = st.session_state.db_concept_taxonomy
 
     if isinstance(categories, str):
         categories = [categories]
     if categories:
-        new_db_concept_categories = {}
+        new_db_concept_taxonomy = {}
         for cat in categories:
-            new_db_concept_categories.update(
-                {k: v for k, v in db_concept_categories.items() if cat in v.category_tags}
+            new_db_concept_taxonomy.update(
+                {k: v for k, v in db_concept_taxonomy.items() if cat in v.category_tags}
             )
-        db_concept_categories = new_db_concept_categories
-    return db_concept_categories
+        db_concept_taxonomy = new_db_concept_taxonomy
+    return db_concept_taxonomy
 
-def update_concept_category(tag: ConceptCategoryTag, categories=List[str]):
+def update_concept_category(tag: ConceptTaxonomy, categories=List[str]):
     if db_concept_category_tag_id_exists(tag.id):
         # print(f"\n\nUpdate existing tag:\n\n{tag.model_dump_json(indent=4)}")
         concept_category = (

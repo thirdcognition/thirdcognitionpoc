@@ -1,10 +1,12 @@
+import os
 import textwrap
-from typing import List
+import random
+from typing import Any, Dict, List
 from langchain_core.output_parsers import PydanticOutputParser
+from lib.helpers import read_and_load_yaml
 from lib.models.sqlite_tables import (
-    ParsedConceptCategoryTagList,
+    ParsedConceptTaxonomyList,
     ParsedConceptList,
-    ParsedConceptStructure,
     ParsedConceptStructureList,
     ParsedUniqueConceptList,
 )
@@ -16,6 +18,30 @@ from lib.prompts.base import (
     TagsParser,
 )
 from lib.prompts.actions import structured
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+
+taxonomy_examples_yaml: Dict[str, Any] = read_and_load_yaml(
+    os.path.join(current_dir, "taxonomy_examples.yaml")
+)
+taxonomy_template = taxonomy_examples_yaml["template"]
+
+# Randomly pick 10 examples
+TAXONOMY = "Template structure: \n" + textwrap.indent(
+    f"{taxonomy_template}\n\n"
+    + "\n".join(
+        [
+            f"Example {i+1}:\n{example}"
+            for i, example in enumerate(
+                random.sample(list(taxonomy_examples_yaml["examples"].values()), 10)
+            )
+        ]
+    ),
+    8 * " ",
+)
+TAXONOMY_TAGS:List[str] = taxonomy_examples_yaml["tags"]
+TAXONOMY_OPTIONAL_TAGS:List[str] = taxonomy_examples_yaml["optional_tags"]
+TAXONOMY_ALL_TAGS:List[str] = TAXONOMY_TAGS + TAXONOMY_OPTIONAL_TAGS
 
 text_formatter = PromptFormatter(
     system=textwrap.dedent(
@@ -166,15 +192,50 @@ md_formatter_guided = PromptFormatter(
 )
 md_formatter_guided.parser = TagsParser(min_len=100)
 
+concept_taxonomy = PromptFormatter(
+    system=textwrap.dedent(
+        f"""
+        Act as a document concept extractor.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
+        {PRE_THINK_INSTRUCT}
+        {KEEP_PRE_THINK_TOGETHER}
+        Extract content taxonomy category tags from the context the provided template structure.
+        The category tags are used to organize the ideas, topics, or subjects that can be found from the context.
+        Prioritize using existing tags instead of providing new ones.
+
+        Use the following templates and examples as guide:
+
+        {TAXONOMY}
+        """
+    ),
+    user=textwrap.dedent(
+        """
+        existing taxonomy start
+        {existing_taxonomy}
+        existing taxonomy end
+        ----------------
+        Context start
+        {context}
+        Context end
+        """
+    ),
+)
+concept_taxonomy.parser = TagsParser(
+    min_len=0,
+    tags=TAXONOMY_TAGS,
+    optional_tags=["thinking", "reflection"] + TAXONOMY_OPTIONAL_TAGS,
+    all_tags_required=True,
+    return_tag=True
+)
+
 concept_structured = structured.customize(
     system=textwrap.dedent(
         f"""
         Act as a document concept extractor.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
-        Extract concepts from the text between the context start and context end.
-        The concepts are the main ideas, topics, or subjects that are discussed or referred to in the text.
-        Assign categorical tags for each of the found concepts. The used tags should be generic.
-        Try to use existing tags if available.
+        Extract concepts fitting the specified taxonomy from the text between the context start and context end.
+        Use specified taxonomy to categorize the concepts.
+        The concepts are the main ideas, topics, or subjects that can be found from the context.
         """
     ),
     user=textwrap.dedent(
@@ -183,15 +244,16 @@ concept_structured = structured.customize(
         {context}
         context end
         ----------------
-        existing tags start
-        {existing_tags}
-        existing tags end
+        taxonomy start
+        {taxonomy}
+        taxonomy end
         ----------------
         format instructions start
         {format_instructions}
         format instructions end
         ----------------
-        Using the context find the all different concepts and extract them using the specified format.
+        Using the context find all concepts fitting the specified taxonomy and extract
+        them using the specified format.
         Format the context data using the format instructions.
         Return only the properly formatted JSON object with the formatted data.
         """
@@ -206,13 +268,12 @@ concept_more = PromptFormatter(
         f"""
         Act as a document concept extractor.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
-        You are provided with a list of concepts extracted from a document.
+        You are provided with a list of concepts and a taxonomy extracted from a document.
         Check if there's any more concepts that are not covered by the existing concepts
         within the text between the context start and context end.
-        Extract only the new concepts from the text between the context start and context end.
-        The concepts are the main ideas, topics, or subjects that are discussed or referred to in the text.
-        Assign categorical tags for each of the found concepts. The used tags should be generic.
-        Try to use existing tags if available.
+        Extract only new concepts fitting the specified taxonomy from the text between the context start and context end.
+        Use specified taxonomy to categorize the concepts.
+        The concepts are the main ideas, topics, or subjects that can be found from the context.
         """
     ),
     user=textwrap.dedent(
@@ -221,9 +282,9 @@ concept_more = PromptFormatter(
         {context}
         context end
         ----------------
-        existing tags start
-        {existing_tags}
-        existing tags end
+        taxonomy start
+        {taxonomy}
+        taxonomy end
         ----------------
         existing concepts start
         {existing_concepts}
@@ -233,8 +294,9 @@ concept_more = PromptFormatter(
         {format_instructions}
         format instructions end
         ----------------
-        Using the context find the all new and different concepts and extract them using the specified format.
-        Don't export existing concepts. If there's no remaining concepts, return an empty list.
+        Using the context find all new and undefined concepts fitting the specified taxonomy and extract
+        them using the specified format.
+        Don't export existing concepts. If you cannot find any new concepts, return an empty list.
         Format the context data using the format instructions.
         Return only the properly formatted JSON object with the formatted data.
         """
@@ -297,24 +359,32 @@ concept_hierarchy = PromptFormatter(
         """
     ),
 )
-concept_hierarchy.parser = PydanticOutputParser(pydantic_object=ParsedConceptStructureList)
+concept_hierarchy.parser = PydanticOutputParser(
+    pydantic_object=ParsedConceptStructureList
+)
 
-concept_categories = PromptFormatter(
+concept_taxonomy_structured = PromptFormatter(
     system=textwrap.dedent(
         f"""
-        Act as a concept category compiler who is finding the different categories for the concepts
-        from a list of concepts and assigning them to the concepts.
+        Act as a taxonomy builder and a concept taxonomy compiler who is building and combining
+        a structured format out of new and existing taxonomy categories.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
-        You are provided with a list of concepts extracted from a document and a list of existing categories.
-        Connect the concepts to existing categories and assign new categories to the concepts if necessary.
-        The concepts are the main ideas, topics, or subjects.
+        Connect the concepts to the taxonomy using tags and ids and define a hierarchy for the taxonomy.
+        Prefer using existing taxonomy over new taxonomy.
+        Do not create new concepts or taxonomy categories which are not defined in the
+        content. Only use the available information and items.
+        Use the specified format and return your output in JSON only.
         """
     ),
     user=textwrap.dedent(
         """
-        existing categories start
-        {existing_categories}
-        existing categories end
+        existing taxonomy start
+        {existing_taxonomy}
+        existing taxonomy end
+        ----------------
+        new taxonomy start
+        {new_taxonomy}
+        new taxonomy end
         ----------------
         concepts start
         {concepts}
@@ -324,12 +394,15 @@ concept_categories = PromptFormatter(
         {format_instructions}
         format instructions end
         ----------------
-        Using the existing concepts find the hierachy of concepts and extract it using the specified format.
+        Using the existing and new taxonomy combine them into a structured format.
+        Connect the concepts to the taxonomy using tags and concept ids
+        and define a hierarchy for the taxonomy.
+        Prefer using existing taxonomy over new taxonomy.
         Format the context data using the format instructions.
         Return only the properly formatted JSON object with the formatted data.
         """
     ),
 )
-concept_categories.parser = PydanticOutputParser(
-    pydantic_object=ParsedConceptCategoryTagList
+concept_taxonomy_structured.parser = PydanticOutputParser(
+    pydantic_object=ParsedConceptTaxonomyList
 )

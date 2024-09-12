@@ -1,8 +1,8 @@
 import re
 from fuzzywuzzy import fuzz
 import textwrap
-from typing import Optional, Tuple, Union
-from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Optional, Tuple, Union
+from pydantic import BaseModel, Field, field_validator, root_validator, validator
 
 # from langchain_core.documents import Document
 # from langchain_core.prompts.few_shot import FewShotPromptTemplate
@@ -17,19 +17,21 @@ from langchain_core.output_parsers.base import BaseOutputParser
 from langchain_core.exceptions import OutputParserException
 from langchain_core.output_parsers import BaseOutputParser
 
+from lib.helpers import pretty_print
+
 # from fewshot_data import FewShotItem, example_tasks
 
 PRE_THINK_INSTRUCT = """
-        Before starting plan how to proceed step by step and place your thinking between
-        [thinking_start] and [thinking_end]-tags. Then follow your plan and return only the expected output.
+        Reason through the query inside <thinking> tags, and then provide your final response inside <output> tags.
+        If you detect that you made a mistake in your reasoning at any point, correct yourself inside <reflection> tags.
         """
-ACTOR_INTRODUCTIONS = "You are a helpful and efficient AI assistant Virtual Buddy."
+ACTOR_INTRODUCTIONS = "You are a world-class AI system, capable of complex reasoning and reflection called Virtual Buddy."
 # For example:
 
 # Example 1:
 
-# [thinking_start] I have a long article about a recent scientific discovery. I will generate a summary
-# that highlights the main findings, the method used, and the implications of the discovery. [thinking_end]
+# <thinking> I have a long article about a recent scientific discovery. I will generate a summary
+# that highlights the main findings, the method used, and the implications of the discovery. </thinking>
 
 # A recent study published in the Journal of Neuroscience revealed that prolonged exposure to blue light
 # before sleep can disrupt circadian rhythms and lead to sleep disorders. The research, conducted on mice,
@@ -39,8 +41,8 @@ ACTOR_INTRODUCTIONS = "You are a helpful and efficient AI assistant Virtual Budd
 
 # Example 2:
 
-# [thinking_start] I have a lengthy book review. I will create a summary that captures the main points of the book,
-# the author's style, and the reviewer's overall opinion. [thinking_end]
+# <thinking> I have a lengthy book review. I will create a summary that captures the main points of the book,
+# the author's style, and the reviewer's overall opinion. </thinking>
 
 # In 'The Catcher in the Rye', J.D. Salinger explores the disillusionment and alienation of a teenager named Holden Caulfield.
 # Through Holden's first-person narrative, the novel delves into themes of adolescence, identity, and the struggle for authenticity.
@@ -48,8 +50,8 @@ ACTOR_INTRODUCTIONS = "You are a helpful and efficient AI assistant Virtual Budd
 
 # Example 3:
 
-# [thinking_start] I have several research papers on a specific topic. I will generate a comprehensive report that synthesizes
-# the findings from each paper, identifies common themes, and discusses any discrepancies. [thinking_end]
+# <thinking> I have several research papers on a specific topic. I will generate a comprehensive report that synthesizes
+# the findings from each paper, identifies common themes, and discusses any discrepancies. </thinking>
 
 # A comprehensive analysis of the effects of climate change on global food security was conducted by synthesizing data from
 # multiple research papers. The synthesis revealed that climate change is likely to have a significant negative impact on food
@@ -158,67 +160,135 @@ class PromptFormatter(BaseModel):
         return self.parser.get_format_instructions()
 
 
-class TagsParser(BaseOutputParser[bool]):
+from html.parser import HTMLParser
+
+
+class TagHTMLParser(HTMLParser):
+    def __init__(self, allowed_tags):
+        super().__init__()
+        self.allowed_tags = allowed_tags
+        self.stack = []
+        self.root = None
+
+    def reset(self):
+        self.stack = []
+        self.root = None
+        super().reset()
+
+    def handle_starttag(self, tag, attrs):
+        for allowed_tag in self.allowed_tags:
+            if fuzz.ratio(tag, allowed_tag) > 80:
+                new_node = {"tag": tag, "body": "", "children": []}
+                if self.stack:
+                    self.stack[-1]["children"].append(new_node)
+                else:
+                    self.root = new_node
+                self.stack.append(new_node)
+
+    def handle_endtag(self, tag):
+        if self.stack:
+            if fuzz.ratio(tag, self.stack[-1]["tag"]) > 80:
+                self.stack.pop()
+
+    def handle_data(self, data):
+        if self.stack and len(str(data).strip()) > 0:
+            self.stack[-1]["body"] += (
+                data.strip() + "\n\n" if isinstance(data, str) else data
+            )
+
+    def get_root(self):
+        return self.root
+
+
+def parse_html(html, allowed_tags):
+    parser = TagHTMLParser(allowed_tags)
+    parser.feed(html)
+    return parser.get_root()
+
+
+class TagsParser(BaseOutputParser[Union[str, Dict]]):
     """Custom parser to clean specified tag from results."""
 
     min_len: int = 10
-    start_tag: str = "thinking_start"
-    end_tag: str = "thinking_end"
+    tags = ["thinking", "reflection"]
+    content_tags = ["root", "output"]
+    optional_tags: List[str] = None
     return_tag: bool = False
+    all_tags_required: bool = False
 
-    def parse(self, text: Union[str, BaseMessage]) -> Union[str, tuple[str, str]]:
+    def get_child_content(self, node, tags=None) -> str:
+        if tags is None:
+            tags = self.tags
+        content = str(node["body"]).strip()
+        for child in node["children"]:
+            if child["tag"] in tags:
+                content += self.get_child_content(child, tags).strip()
+        return content
+
+    def parse(self, text: Union[str, BaseMessage]) -> Union[str, Dict]:
+        tag_html_parser = TagHTMLParser(
+            (
+                self.tags + self.optional_tags
+                if isinstance(self.optional_tags, list)
+                else self.tags
+            )
+            + self.content_tags
+        )
+
         # print(f"Parsing tags: {text}")
         if isinstance(text, BaseMessage):
             text = text.content
 
-        # Initialize the lists to store the thinking contents and remaining contents
-        tag_contents = []
-        text_contents = []
+        if isinstance(text, str):
+            text = text.strip()
 
-        text_contents_joined = ""
+        tag_html_parser.feed(
+            f"<root>{text}</root>"
+            if not text.startswith("<root>") or not text.startswith("<output>")
+            else text
+        )
+        parsed_content = tag_html_parser.get_root()
+
+        pretty_print(
+            {"text": text, "parsed": parsed_content}, "Parsed content:"
+        )
+
+        content = {}
         tag_contents_joined = ""
 
-        # Split the text into matches using regex
-        matches = re.split(r"([\[{\(][/ ]*[^\[\]]+[\]}\)])", text, 0, re.IGNORECASE)
+        for tag in self.tags:
+            if parsed_content is not None and "children" in parsed_content:
+                content[tag] = ""
+                for node in parsed_content["children"]:
+                    if node["tag"] == tag:
+                        content[tag] += self.get_child_content(
+                            node,
+                            (
+                                self.tags + self.optional_tags
+                                if isinstance(self.optional_tags, list)
+                                else self.tags
+                            ),
+                        )
+                tag_contents_joined += content[tag]
 
-        # Initialize a flag to indicate whether we're inside a tag block
-        in_tag = False
+        text_contents_joined = str(parsed_content["body"]).strip()
+        for node in parsed_content["children"]:
+            if node["tag"] not in self.tags:
+                text_contents_joined += self.get_child_content(node, self.content_tags)
 
-        # Iterate over the matches
-        for match in matches:
-            match = match.strip()
-            # print(f"Match: {match}")
-            # If the match is a start tag, set the flag to True
-            if fuzz.ratio(match, self.start_tag) > 80:
-                in_tag = True
-            # If the match is an end tag, set the flag to False
-            elif fuzz.ratio(match, self.end_tag) > 80:
-                in_tag = False
-            # If we're inside a tag block, add the match to the tag contents
-            elif in_tag:
-                tag_contents.append(match)
-            # Otherwise, add the match to the text contents
-            else:
-                text_contents.append(match)
+        if (
+            self.min_len > 0
+            and len(tag_contents_joined) > 0
+            and len(text_contents_joined) == 0
+        ):
+            found_tags = content.keys()
 
-        text_contents_joined = "\n".join(text_contents).strip()
-        tag_contents_joined = "\n".join(tag_contents).strip()
-
-        if len(text_contents_joined) == 0 and len(tag_contents_joined) > 0 or in_tag:
             excpect_msg = textwrap.dedent(
                 f"""
-                Expected tags {self.start_tag} and {self.end_tag} in pairs.
-                But got only tag: {self.start_tag if len(text_contents_joined) == 0 else self.end_tag}.
-                Please make sure to close the tags that have been opened.
-                """
-            )
-            raise OutputParserException(excpect_msg)
-        elif len(tag_contents_joined) > 0 and len(text_contents_joined) < self.min_len:
-            excpect_msg = textwrap.dedent(
-                f"""
-            Expected a response message at least {self.min_len} characters long
-            but got only [thinking_start] .... [thinking_end] response. Please make
-            sure that the response is long enough and also contains text outside of the tags.
+            Expected a response but got only:
+            {",\n ".join([f"<{tag}> .... </{tag}>" for tag in found_tags])}>
+            response{"" if len(found_tags) == 1 else "s"}. Please make sure that the response is long enough
+            and also contains text outside of the tags.
             """
             )
         elif len(text_contents_joined) < self.min_len:
@@ -231,8 +301,23 @@ class TagsParser(BaseOutputParser[bool]):
 
             raise OutputParserException(excpect_msg)
 
+        if self.all_tags_required:
+            missing_tags = []
+            for tag in self.tags:
+                if tag not in content:
+                    missing_tags.append(tag)
+
+            if len(missing_tags) > 0:
+                raise OutputParserException(
+                    f"Expected a response with all tags: {', '.join(self.tags)}\nMissing tags: {', '.join(missing_tags)}"
+                )
+
         if self.return_tag:
-            return text_contents_joined, tag_contents_joined
+            return {
+                "content": text_contents_joined,
+                "tags": {tag: content[tag] for tag in self.tags},
+                "parsed": parsed_content,
+            }
         else:
             return text_contents_joined
 

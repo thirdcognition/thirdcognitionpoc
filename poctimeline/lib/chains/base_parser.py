@@ -61,7 +61,7 @@ def get_text_from_completion(completion):
             completion_content = completion[1].strip()
         elif len(completion) == 2:
             completion_content = (
-                f"[thinking_start] {completion[1].strip()} [thinking_end]"
+                f"<thinking> {completion[1].strip()} </thinking>"
                 if len(completion[1].strip()) > 0
                 else ""
             ) + f"{completion[0].strip()}"

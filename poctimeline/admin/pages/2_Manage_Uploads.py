@@ -11,7 +11,8 @@ from langchain_core.messages import BaseMessage
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
-from lib.models.sqlite_tables import ConceptData, ConceptDataTable, ConceptCategoryTag, SourceContents
+from lib.helpers import pretty_print
+from lib.models.sqlite_tables import ConceptData, ConceptDataTable, ConceptTaxonomy, SourceContents
 from lib.chains.init import get_chain
 from lib.document_tools import create_document_lists, split_text
 from lib.load_env import SETTINGS
@@ -151,17 +152,6 @@ async def manage_file(filename):
                     )
                     contents = SourceContents(**instance.source_contents.__dict__)
 
-                    # text = contents.summary
-                    # summary_texts = instance.texts
-                    # if (
-                    #     contents.summary is not None
-                    #     and contents.summary != ""
-                    # ):
-                    #     summary_texts = split_text(
-                    #         contents.summary,
-                    #         SETTINGS.default_llms.instruct.char_limit,
-                    #         128,
-                    #     )
                     with st.spinner("Rewriting"):
                         if instance.texts is not None:
                             text = await llm_edit(
@@ -172,38 +162,6 @@ async def manage_file(filename):
                                 ),
                                 summarize=True,
                             )
-                            # split_texts = split_text("\n".join(texts), CHAR_LIMIT)
-                            # if len(summary_texts) == 1:
-                            #     shorter_text = llm_edit(
-                            #         summary_texts
-                            #     )
-                            #     if shorter_text is not None or shorter_text == "":
-                            #         text = shorter_text
-                            #     else:
-                            #         text = summary_texts[0]
-                            # else:
-                            #     list_of_docs = create_document_lists(
-                            #         summary_texts, source=filename
-                            #     )
-                            #     # print(f"{ list_of_docs = }")
-
-                            #     results = get_chain("summary_documents").invoke(
-                            #         {"context": list_of_docs}
-                            #     )
-
-                            #     if isinstance(results, tuple) and len(results) == 2:
-                            #         _, shorter_text = results
-
-                            #     shorter_text = (
-                            #         shorter_text.content
-                            #         if isinstance(shorter_text, BaseMessage)
-                            #         else shorter_text
-                            #     )
-
-                            #     shorter_text = llm_edit([shorter_text])
-
-                            #     if shorter_text is not None:
-                            #         text = shorter_text
 
                     st.success("Summary rewrite complete")
 
@@ -212,7 +170,7 @@ async def manage_file(filename):
                         instance.source_contents = contents
                         database_session.commit()
                         get_db_sources(reset=True)
-                    st.rerun(scope="fragment")
+                    st.rerun()
                 else:
                     with st.container():
                         st.write(summary, unsafe_allow_html=True)
@@ -293,10 +251,12 @@ async def manage_file(filename):
 
             with tab4:
                 tagged_concepts: Dict[str, List[ConceptData]] = defaultdict(list)
-                tags:Dict[str, ConceptCategoryTag] = {}
+                tags:Dict[str, ConceptTaxonomy] = {}
+                pretty_print(file_entry.source_concepts, "source concepts", force=True)
                 for concept_id in file_entry.source_concepts:
                     db_concept = get_concept_by_id(concept_id)
                     concept_inst:ConceptData = db_concept.concept_contents
+                    pretty_print(concept_inst, "concept instance", force=True)
                     for tag in concept_inst.tags:
                         tagged_concepts[tag].append(concept_inst)
                         if tag not in tags:
@@ -304,21 +264,28 @@ async def manage_file(filename):
                             if tag_inst:
                                 tags[tag] = tag_inst.concept_category_tag
 
+                pretty_print(tags, "tags", force=True)
+                pretty_print(tagged_concepts, "tagged concepts", force=True)
+
                 for concept_tag, concepts in tagged_concepts.items():
-                    st.write(f"### {tags[concept_tag].title}:")
-                    st.write(tags[concept_tag].description)
-                    # with st.expander("Concept instances"):
-                    for concept_inst in concepts:
-                        with st.expander(f"Concept: {concept_inst.title}"):
-                            st.write(f"#### {concept_inst.id}")
-                            st.code(concept_inst.id)
-                            sub_col1, sub_col2  = st.columns([1,2])
-                            sub_col1.write("References:")
-                            sub_col1.write(ref for ref in concept_inst.references)
-                            sub_col1.write("Tags:")
-                            sub_col1.write(concept_inst.tags)
-                            sub_col2.write(f"##### Summary:\n{concept_inst.summary}")
-                            sub_col2.write(f"##### Content:\n{'\n'.join(concept_inst.contents)}")
+                    if concept_tag in tags:
+                        st.write(f"### {tags[concept_tag].title}:")
+                        st.write(tags[concept_tag].description)
+                        # with st.expander("Concept instances"):
+                        for concept_inst in concepts:
+                            with st.expander(f"Concept: {concept_inst.title}"):
+                                st.write(f"#### {concept_inst.id}")
+                                st.code(concept_inst.id)
+                                sub_col1, sub_col2  = st.columns([1,2])
+                                sub_col1.write("References:")
+                                sub_col1.write(ref for ref in concept_inst.references)
+                                sub_col1.write("Tags:")
+                                sub_col1.write(concept_inst.tags)
+                                sub_col2.write(f"##### Summary:\n{concept_inst.summary}")
+                                sub_col2.write(f"##### Content:\n{'\n'.join(concept_inst.contents)}")
+                    else:
+                        st.write(f"### {concept_tag}:")
+                        st.write(tags.keys())
 
             with tab5:
                 # print(f"{file_entry.chroma_collections=}")

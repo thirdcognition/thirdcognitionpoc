@@ -2,9 +2,9 @@ import json
 import os
 import textwrap
 from pydantic import BaseModel, Field
-import yaml
 from langchain_core.output_parsers import PydanticOutputParser
 
+from lib.helpers import read_and_load_yaml
 from lib.prompts.base import PromptFormatter
 
 
@@ -34,14 +34,6 @@ class CustomPromptContainer(BaseModel):
     task_details: CustomPrompt = Field(
         description="Specific details about the tasks to be taken in each step."
     )
-
-
-def read_and_load_yaml(file_path):
-    with open(file_path, "r") as file:
-        content = file.read().replace("\t", "    ")
-        data = yaml.safe_load(content)
-    return data
-
 
 hr_rep_values = read_and_load_yaml(
     os.path.join(current_dir, "prompt_templates/hr_rep-values.yaml")
@@ -82,7 +74,7 @@ journey_prompts = PromptFormatter(
         Target:
         {hr_rep_values_instruct["target"]}
         Output
-        {json.dumps(hr_rep_values, indent=4)}
+        {json.dumps(hr_rep_values, indent=2)}
 
         Example 2:
         Actor:
@@ -90,7 +82,7 @@ journey_prompts = PromptFormatter(
         Target:
         {sales_rep_products_instruct["target"]}
         Output
-        {json.dumps(sales_rep_products, indent=4)}
+        {json.dumps(sales_rep_products, indent=2)}
 
         Example 3:
         Actor:
@@ -98,7 +90,7 @@ journey_prompts = PromptFormatter(
         Target:
         {teacher_class_curriculum_instruct["target"]}
         Output
-        {json.dumps(teacher_class_curriculum, indent=4)}
+        {json.dumps(teacher_class_curriculum, indent=2)}
         """
     ),
     user=textwrap.dedent(  # Use get_journey_format_example instead

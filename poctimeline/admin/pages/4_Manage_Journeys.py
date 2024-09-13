@@ -628,7 +628,7 @@ def journey_subjects_ui(journey_name: str, journey_index: int, journey: JourneyM
         options=subject_titles,
         key=f"subject_select_{journey_name}_subject",
         index=(
-            min(int(st.session_state.subject_index if "subject_index" in st.session_state else 0), len(subject_titles))
+            min(int(st.session_state.subject_index if "subject_index" in st.session_state else 0), len(subject_titles)-1)
         ),
     )
     st.session_state.subject_index = subject_titles.index(subject_title)

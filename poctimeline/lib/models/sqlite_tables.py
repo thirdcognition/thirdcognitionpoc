@@ -20,11 +20,11 @@ class SourceType(Enum):
 
 class ParsedConceptTaxonomy(BaseModel):
     parent_id: Optional[str] = Field(
-        description=f"A previously defined concept category tag id if available. If not available, leave blank. This is used to create a hierarchy of tags. The parent_id should be the id of the parent tag.",
+        description=f"A previously defined category taxonomy id if available. If not available, leave blank. This is used to create a hierarchy of taxonomy categories. The parent_id should be the id of the parent taxonomy.",
         title="Parent Id",
     )
     id: Optional[str] = Field(
-        description="A previously defined concept category tag id if available. If not available, leave blank.",
+        description="A previously defined category taxonomy id if available. If not available, leave blank.",
         title="Id",
     )
     taxonomy: str = Field(
@@ -40,22 +40,22 @@ class ParsedConceptTaxonomy(BaseModel):
         title="Type",
     )
     tag: str = Field(
-        description="The tag for the category using letters, _ and -", title="Tag"
+        description="The tag for the taxonomy category using letters, _ and -", title="Tag"
     )
-    title: str = Field(description="A title for this concept", title="Title")
+    title: str = Field(description="A title for this taxonomy category", title="Title")
     description: str = Field(
-        description="The description of the category", title="Description"
+        description="The description of the taxonomy category", title="Description"
     )
     connected_concepts: List[str] = Field(
-        description="A list of concept ids that are connected to this tag",
+        description="A list of concept ids that are connected to this taxonomy category",
         title="Connected Concepts",
     )
 
 
 class ParsedConceptTaxonomyList(BaseModel):
-    tags: List[ParsedConceptTaxonomy] = Field(
-        description="A list of unique concept category tags identified from the provided concepts. Tags should be generic and applicable for varied subjects.",
-        title="Concepts",
+    taxonomy: List[ParsedConceptTaxonomy] = Field(
+        description="A list of new category taxonomy build from the provided list of taxonomy and concepts. Each taxonomy category should be generic and applicable for varied subjects.",
+        title="Taxonomy",
     )
 
 
@@ -72,7 +72,7 @@ class ParsedConcept(BaseModel):
         title="Summary",
     )
     tags: List[str] = Field(
-        description="A list of tags that this concepts could belong to. Tags should be generic and applicable for varied subjects.", title="Tags"
+        description="A list of taxonomy tags that this concept could belong to. Use only existing taxonomy for the tags", title="Tags"
     )
     id: Optional[str] = Field(
         description="An human readable id for this concept using letters and _ if available. If not available, leave blank.",
@@ -107,7 +107,7 @@ class ParsedConceptIds(BaseModel):
         description="A human readable title for this concept", title="Title"
     )
     tags: List[str] = Field(
-        description="A list of tags that this concepts could belong to. Tags should be generic and applicable for varied subjects.", title="Tags"
+        description="A list of taxonomy tags that the combined concepts could belong to. Use only existing taxonomy for the tags", title="Tags"
     )
 
 

@@ -284,7 +284,7 @@ async def manage_file(filename):
                                 sub_col2.write(f"##### Summary:\n{concept_inst.summary}")
                                 sub_col2.write(f"##### Content:\n{'\n'.join(concept_inst.contents)}")
                     else:
-                        st.write(f"### {concept_tag}:")
+                        st.write(f"### Issue with: {concept_tag}:")
                         st.write(tags.keys())
 
             with tab5:

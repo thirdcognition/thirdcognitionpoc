@@ -240,12 +240,12 @@ def init_chain(
     id,
     prompt: PromptFormatter,
     retry_id: str = None,
-    validate_id: str = "instruct_detailed",
+    validate_id: str = "instruct" if DEVMODE else "instruct_detailed",
     check_for_hallucinations=False,
     ChainType: BaseChain = Chain,
 ) -> BaseChain:
     if retry_id is None:
-        retry_id = id if "structured" in id else "instruct_detailed"
+        retry_id = "structured_detailed" if "structured" in id else "instruct_detailed"
 
     return ChainType(
         llm=get_llm(id),
@@ -265,7 +265,11 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
         summary_guided,
         True,
     ),
-    "summary_with_title": ("structured_detailed" if not DEVMODE else "structured", summary_with_title, True),
+    "summary_with_title": (
+        "structured_detailed" if not DEVMODE else "structured",
+        summary_with_title,
+        True,
+    ),
     "task": ("instruct_0", action, False),
     "grader": ("structured", grader, False),
     "check": ("instruct_0", check, False),
@@ -282,12 +286,28 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
         md_formatter_guided,
         True,
     ),
-    "concept_taxonomy": ("instruct_detailed", concept_taxonomy, False),
+    "concept_taxonomy": (
+        "instruct_detailed" if not DEVMODE else "instruct",
+        concept_taxonomy,
+        False,
+    ),
     "concept_structured": ("structured", concept_structured, True),
     "concept_more": ("structured", concept_more, True),
-    "concept_unique": ("structured_detailed", concept_unique, False),
-    "concept_hierarchy": ("structured_detailed", concept_hierarchy, False),
-    "concept_taxonomy_structured": ("structured_detailed", concept_taxonomy_structured, False),
+    "concept_unique": (
+        "structured_detailed" if not DEVMODE else "structured",
+        concept_unique,
+        False,
+    ),
+    "concept_hierarchy": (
+        "structured_detailed" if not DEVMODE else "structured",
+        concept_hierarchy,
+        False,
+    ),
+    "concept_taxonomy_structured": (
+        "structured_detailed" if not DEVMODE else "structured",
+        concept_taxonomy_structured,
+        False,
+    ),
     "journey_prompt_generator": (
         "structured_detailed" if not DEVMODE else "structured",
         journey_prompts,

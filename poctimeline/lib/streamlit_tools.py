@@ -81,6 +81,7 @@ async def process_text_call(
         "configurable": {
             "collect_concepts": collect_concepts,
             "overwrite_sources": overwrite,
+            "rewrite_text": overwrite,
             "update_rag": (source != None or file != None or url != None)
             and categories != None,
             "guidance": guidance,

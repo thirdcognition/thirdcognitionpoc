@@ -28,6 +28,14 @@ def pretty_print(obj, msg=None, force=DEBUGMODE):
             print("obj = None")
         elif isinstance(obj, BaseModel):
             print(obj.model_dump_json(indent=2))
+        elif isinstance(obj, list):
+            for i, item in enumerate(obj):
+                print(f"\n{i}:\n")
+                if isinstance(item, BaseModel):
+                    print(item.model_dump_json(indent=2))
+                    print("\n\n")
+                else:
+                    pp.pprint(item)
         else:
             pp.pprint(obj)
         print("\n\n")

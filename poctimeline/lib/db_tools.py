@@ -44,7 +44,9 @@ def init_db():
     return database_session
 
 
-def get_db_sources(reset=False, source=None, categories=None) -> Dict[str, SourceData]:
+def get_db_sources(
+    reset=False, source=None, categories: List[str] = None
+) -> Dict[str, SourceData]:
     db_sources: Dict[str, SourceData] = None
     if (
         "db_sources" not in st.session_state
@@ -52,12 +54,19 @@ def get_db_sources(reset=False, source=None, categories=None) -> Dict[str, Sourc
         or source != None
         and source not in st.session_state.db_sources.keys()
     ):
-        if source == None:
-            sources = database_session.query(SourceDataTable).all()
-        else:
+        if source is not None:
             sources = database_session.query(SourceDataTable).filter(
                 SourceDataTable.source == source
             )
+        else:
+            sources = list(database_session.query(SourceDataTable).all())
+
+        if categories is not None:
+            sources = [
+                source
+                for source in sources
+                if any(cat in source.category_tags for cat in categories)
+            ]
 
         if "db_sources" not in st.session_state or reset:
             db_sources = {}
@@ -82,11 +91,13 @@ def get_db_sources(reset=False, source=None, categories=None) -> Dict[str, Sourc
         db_sources = new_db_sources
     return db_sources
 
+
 def db_commit():
     database_session.commit()
     get_db_sources(reset=True)
 
-def delete_db_file(filename: str, commit: bool = True):
+
+def delete_db_source(filename: str, commit: bool = True):
     instance = (
         database_session.query(SourceDataTable)
         .where(SourceDataTable.source == filename)
@@ -105,20 +116,21 @@ def delete_db_file(filename: str, commit: bool = True):
     if commit:
         db_commit()
 
-def db_file_exists(filename: str) -> bool:
+
+def db_source_exists(filename: str) -> bool:
     return database_session.query(
         sqla.exists().where(SourceDataTable.source == filename)
     ).scalar()
 
 
-def save_db_file(
+def save_db_source(
     filename,
     texts: List[str],
     categories: List[str] = None,
     collections: List[str] = None,
     uploaded_file: io.BytesIO = None,
 ):
-    if db_file_exists(filename):
+    if db_source_exists(filename):
         # If the file exists, get the row and update its text field
         existing_file = (
             database_session.query(SourceDataTable)
@@ -195,12 +207,16 @@ def update_rag(
                     print(f"{rag_id} not in {rag_items['ids']} - retrying...")
                     break
 
+
 def db_concept_id_exists(concept_id: str) -> bool:
     return database_session.query(
         sqla.exists().where(ConceptDataTable.id == concept_id)
     ).scalar()
 
+
 existing_concept_ids = []
+
+
 def get_existing_concept_ids(refresh: bool = False) -> List[str]:
     global existing_concept_ids
     if refresh or len(existing_concept_ids) == 0:
@@ -209,43 +225,59 @@ def get_existing_concept_ids(refresh: bool = False) -> List[str]:
         ]
     return existing_concept_ids
 
+
 def db_concept_category_tag_id_exists(tag_id: str) -> bool:
     return database_session.query(
         sqla.exists().where(ConceptCategoryDataTable.id == tag_id)
     ).scalar()
 
-def get_existing_concept_taxonomy(categories=None, reset:bool=False) -> Dict[str, ConceptTaxonomy]:
-    db_concept_taxonomy: Dict[str, ConceptTaxonomy] = None
-    if (
-        "db_concept_taxonomy" not in st.session_state
-        or reset
-    ):
-        found_categories = database_session.query(ConceptCategoryDataTable).filter(
-            ConceptCategoryDataTable.category_tags.contains(set(categories))
-        ).distinct().all()
+
+def get_db_concept_taxonomy(
+    categories: List[str] = None, reset: bool = False
+) -> Dict[str, List[ConceptTaxonomy]]:
+    db_concept_taxonomy: Dict[str, List[ConceptTaxonomy]] = None
+    if "db_concept_taxonomy" not in st.session_state or reset:
+        found_categories = (
+            database_session.query(ConceptCategoryDataTable).distinct().all()
+        )
+
+        if categories is not None:
+            found_categories = [
+                category
+                for category in found_categories
+                if any(cat in category.category_tags for cat in categories)
+            ]
 
         if "db_concept_taxonomy" not in st.session_state or reset:
             db_concept_taxonomy = {}
         else:
             db_concept_taxonomy = st.session_state.db_concept_taxonomy
         for category in found_categories:
-            db_concept_taxonomy[category.id] = ConceptTaxonomy(**category.concept_category_tag.__dict__)
-            db_concept_taxonomy[category.id].id = category.id
+            file_categories = category.category_tags
+            for ict in file_categories:
+                if ict not in db_concept_taxonomy:
+                    db_concept_taxonomy[ict] = []
+                concept_taxonomy = ConceptTaxonomy(
+                    **category.concept_category_tag.__dict__
+                )
+                concept_taxonomy.id = category.id
+                db_concept_taxonomy[ict].append(concept_taxonomy)
 
         st.session_state.db_concept_taxonomy = db_concept_taxonomy
     else:
         db_concept_taxonomy = st.session_state.db_concept_taxonomy
 
-    if isinstance(categories, str):
-        categories = [categories]
-    if categories:
-        new_db_concept_taxonomy = {}
-        for cat in categories:
-            new_db_concept_taxonomy.update(
-                {k: v for k, v in db_concept_taxonomy.items() if cat in v.category_tags}
-            )
-        db_concept_taxonomy = new_db_concept_taxonomy
+    # if isinstance(categories, str):
+    #     categories = [categories]
+    # if categories:
+    #     new_db_concept_taxonomy = {}
+    #     for cat in categories:
+    #         new_db_concept_taxonomy.update(
+    #             {k: v for k, v in db_concept_taxonomy.items() if cat in v.category_tags}
+    #         )
+    #     db_concept_taxonomy = new_db_concept_taxonomy
     return db_concept_taxonomy
+
 
 def update_concept_category(tag: ConceptTaxonomy, categories=List[str]):
     if db_concept_category_tag_id_exists(tag.id):
@@ -256,7 +288,9 @@ def update_concept_category(tag: ConceptTaxonomy, categories=List[str]):
             .first()
         )
         concept_category.concept_category_tag = tag
-        concept_category.category_tags = list(set(categories + concept_category.category_tags))
+        concept_category.category_tags = list(
+            set(categories + concept_category.category_tags)
+        )
         concept_category.last_updated = datetime.now()
     else:
         # print(f"\n\nCreate new tag:\n\n{tag.model_dump_json(indent=4)}")
@@ -271,13 +305,17 @@ def update_concept_category(tag: ConceptTaxonomy, categories=List[str]):
 
     database_session.commit()
 
+
 @cache
-def get_concept_category_tag_by_id(concept_category_id: str) -> ConceptCategoryDataTable:
+def get_concept_category_tag_by_id(
+    concept_category_id: str,
+) -> ConceptCategoryDataTable:
     return (
         database_session.query(ConceptCategoryDataTable)
         .filter(ConceptCategoryDataTable.id == concept_category_id)
         .first()
     )
+
 
 @cache
 def get_concept_by_id(concept_id: str) -> ConceptDataTable:
@@ -287,19 +325,37 @@ def get_concept_by_id(concept_id: str) -> ConceptDataTable:
         .first()
     )
 
-def get_concepts(id:str=None, source:str=None) -> Union[ConceptDataTable, List[ConceptDataTable]]:
+
+def get_db_concepts(
+    id: str = None,
+    source: str = None,
+    categories: List[str] = None,
+    taxonomy: ConceptTaxonomy = None,
+) -> Union[ConceptDataTable, List[ConceptDataTable]]:
     if id is not None:
         return (
             database_session.query(ConceptDataTable)
             .filter(ConceptDataTable.id == id)
             .first()
         )
+
+    concepts = database_session.query(ConceptDataTable).all()
+
     if source is not None:
-        return (
-            database_session.query(ConceptDataTable)
-            .filter(ConceptDataTable.sources.contains(source))
-            .all()
-        )
+        concepts = [concept for concept in concepts if source in concept.sources]
+    if taxonomy is not None:
+        concepts = [
+            concept for concept in concepts if str(taxonomy.id) in concept.taxonomy
+        ]
+    if categories is not None:
+        concepts = [
+            concept
+            for concept in concepts
+            if set(categories).issubset(concept.category_tags)
+        ]
+
+    return concepts
+
 
 def delete_db_concept(concept_id: str, commit: bool = True):
     instance = (
@@ -320,7 +376,8 @@ def delete_db_concept(concept_id: str, commit: bool = True):
     if commit:
         database_session.commit()
 
-def update_db_file_rag_concepts(
+
+def update_db_source_rag_concepts(
     source: str,
     categories: List[str],
     texts: List[str],
@@ -338,17 +395,24 @@ def update_db_file_rag_concepts(
         raise ValueError(f"Source {source} not found in the database.")
 
     category_id = "-".join(categories)
-    defined_concept_ids = [(category_id + "-" + concept.id) for concept in concepts] if concepts else []
+    defined_concept_ids = (
+        [(category_id + "-" + concept.id) for concept in concepts] if concepts else []
+    )
 
     existing_concepts = (
         database_session.query(ConceptDataTable)
         .filter(
             ConceptDataTable.id.in_(defined_concept_ids),
-            ConceptDataTable.category_tags.contains(set(categories))
         )
         .distinct()
         .all()
     )
+
+    existing_concepts = [
+        concept
+        for concept in existing_concepts
+        if set(categories).issubset(concept.category_tags)
+    ]
 
     rag_chunks = []
     rag_ids = []
@@ -366,7 +430,9 @@ def update_db_file_rag_concepts(
     new_ids = []
     old_ids = [concept.id for concept in existing_concepts]
     if concepts is not None:
-        resp:List[tuple[ConceptData, List, List, List]] = get_concept_rag_chunks(category_id=category_id, concepts=concepts)
+        resp: List[tuple[ConceptData, List, List, List]] = get_concept_rag_chunks(
+            category_id=category_id, concepts=concepts
+        )
         for concept, concept_chunks, concept_ids, concept_metadatas in resp:
             concept.id = category_id + "-" + concept.id
             if concept.parent_id is not None:
@@ -396,7 +462,7 @@ def update_db_file_rag_concepts(
             existing_chroma_collections.extend(concept.chroma_collections)
 
             if concept.id in concepts_by_id:
-                new_concept:ConceptData = concepts_by_id[str(concept.id)]["concept"]
+                new_concept: ConceptData = concepts_by_id[str(concept.id)]["concept"]
                 parent_id = concept.parent_id or new_concept.parent_id
                 if parent_id is not concept.parent_id:
                     if parent_id not in old_ids or parent_id not in new_ids:
@@ -408,6 +474,7 @@ def update_db_file_rag_concepts(
                         parent_id = None
 
                 concept.concept_contents = new_concept
+                concept.taxonomy = new_concept.taxonomy
                 concept.parent_id = parent_id
                 concept.chroma_ids = concepts_by_id[str(concept.id)]["rag_ids"]
                 concept.chroma_collections = ["rag_" + cat for cat in categories]
@@ -432,9 +499,19 @@ def update_db_file_rag_concepts(
                 new_id = concept.id
                 if db_concept_id_exists(concept.id):
                     all_concept_ids = get_existing_concept_ids(True)
-                    matching_ids = sorted(set([concept_id for concept_id in existing_concept_ids if concept.id in concept_id]))
+                    matching_ids = sorted(
+                        set(
+                            [
+                                concept_id
+                                for concept_id in existing_concept_ids
+                                if concept.id in concept_id
+                            ]
+                        )
+                    )
                     new_id = concept.id + "-" + str(len(matching_ids))
-                    print(f"Concept with id {concept.id} already exists. Changing id to {new_id}")
+                    print(
+                        f"Concept with id {concept.id} already exists. Changing id to {new_id}"
+                    )
                     defined_concept_ids.remove(concept.id)
                     defined_concept_ids.append(new_id)
 
@@ -442,6 +519,7 @@ def update_db_file_rag_concepts(
                     id=new_id,
                     parent_id=parent_id,
                     concept_contents=concept,
+                    taxonomy=concept.taxonomy,
                     category_tags=categories,
                     chroma_ids=concepts_by_id[str(concept.id)]["rag_ids"],
                     chroma_collections=["rag_" + cat for cat in categories],

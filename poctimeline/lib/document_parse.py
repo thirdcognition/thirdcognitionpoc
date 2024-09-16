@@ -8,7 +8,7 @@ import fitz
 
 from rapidocr_onnxruntime import RapidOCR
 
-from lib.db_tools import db_file_exists, get_db_sources, save_db_file
+from lib.db_tools import db_source_exists, get_db_sources, save_db_source
 from lib.document_tools import (
     a_semantic_splitter,
     semantic_splitter,
@@ -183,37 +183,50 @@ def load_pymupdf(file: io.BytesIO, filetype, progress_cb=None):
 
     return chunks
 
+from enum import Enum
 
-async def process_file_contents(
-    uploaded_file: io.BytesIO,
-    filename: str,
+class SourceType(Enum):
+    FILE = "file"
+    URL = "url"
+
+
+async def process_source_contents(
+    source_name: str,
+    uploaded_file: io.BytesIO = None,
+    text_content: str = None,
+    type:SourceType = SourceType.FILE,
     categories: List[str] = None,
     overwrite=False,
 ):
-    filetype = os.path.basename(filename).split(".")[-1]
-    file_exists = db_file_exists(filename)
+    filetype = os.path.basename(source_name).split(".")[-1]
+    source_exists = db_source_exists(source_name)
 
-    if file_exists and overwrite is not True:
-        return get_db_sources(source=filename)[filename].texts
+    if source_exists and overwrite is not True:
+        return get_db_sources(source=source_name)[source_name].texts
 
     texts = None
 
-    if (
-        filetype == "pdf"
-        or filetype == "epub"
-        or filetype == "xps"
-        or filetype == "mobi"
-        or filetype == "fb2"
-        or filetype == "cbz"
-        or filetype == "svg"
-    ):
-        texts = await process_document_filetype(uploaded_file, filetype=filetype)
+    if type == SourceType.FILE:
+        if (
+            filetype == "pdf"
+            or filetype == "epub"
+            or filetype == "xps"
+            or filetype == "mobi"
+            or filetype == "fb2"
+            or filetype == "cbz"
+            or filetype == "svg"
+        ):
+            texts = await process_document_filetype(uploaded_file, filetype=filetype)
 
-    elif filetype == "md" or filetype == "txt":
-        text = io.StringIO(uploaded_file.getvalue().decode("utf-8")).read()
-        texts = split_markdown(text)
+        elif filetype == "md" or filetype == "txt":
+            text = io.StringIO(uploaded_file.getvalue().decode("utf-8")).read()
+            texts = split_markdown(text)
+        else:
+            raise Exception("Unsupported file type")
+    elif type == SourceType.URL:
+        texts = [text_content]
     else:
-        raise Exception("Unsupported file type")
+        raise Exception("Unsupported source type")
 
     split_texts = []
     for text in texts:
@@ -229,7 +242,7 @@ async def process_file_contents(
         for cat in categories:
             collections.append("rag_" + cat)
 
-    save_db_file(filename, texts, categories, collections, uploaded_file)
+    save_db_source(source_name, texts, categories, collections, uploaded_file)
 
     return texts
 

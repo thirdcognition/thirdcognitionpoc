@@ -14,7 +14,7 @@ from langchain_core.runnables import (
     RunnablePassthrough,
     RunnableLambda,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from lib.chains.base import BaseChain
 from lib.helpers import print_params
 from lib.prompts.base import PromptFormatter
@@ -135,14 +135,36 @@ class BaseParserChain(BaseChain):
         def rerun_parser(x):
             print_params("Rerun format parser", x)
             x["completion"] = get_text_from_completion(x["completion"])
-            return retry_parser.parse_with_prompt(x["completion"], x["prompt_value"])
+            try:
+                return retry_parser.parse_with_prompt(
+                    x["completion"], x["prompt_value"]
+                )
+            except ValidationError as e:
+                completion = parser_retry_chain.invoke(
+                    dict(
+                        completion=x["completion"],
+                        prompt=x["prompt_value"],
+                        error=repr(e),
+                    )
+                )
+                return retry_parser.parse_with_prompt(completion, x["prompt_value"])
 
         async def arerun_parser(x):
             print_params("Rerun format parser", x)
             x["completion"] = get_text_from_completion(x["completion"])
-            return await retry_parser.aparse_with_prompt(
-                x["completion"], x["prompt_value"]
-            )
+            try:
+                return await retry_parser.aparse_with_prompt(
+                    x["completion"], x["prompt_value"]
+                )
+            except ValidationError as e:
+                completion = parser_retry_chain.ainvoke(
+                    dict(
+                        completion=x["completion"],
+                        prompt=x["prompt_value"],
+                        error=repr(e),
+                    )
+                )
+                return retry_parser.aparse_with_prompt(completion, x["prompt_value"])
 
         if (
             isinstance(parser, PydanticOutputParser)

@@ -31,8 +31,8 @@ class ParsedConceptTaxonomy(BaseModel):
         description="The taxonomy of the category. This is used to determine the structure for the taxonomy.",
         title="Taxonomy",
     )
-    parent_taxonomy: str = Field(
-        description="The parent taxonomy of the category. This is used to determine the structure for the taxonomy.",
+    parent_taxonomy: Optional[str] = Field(
+        description="The parent taxonomy of the category. This is used to determine the structure for the taxonomy tree.",
         title="Parent Taxonomy",
     )
     type: str = Field(
@@ -40,7 +40,7 @@ class ParsedConceptTaxonomy(BaseModel):
         title="Type",
     )
     tag: str = Field(
-        description="The tag for the taxonomy category using letters, _ and -", title="Tag"
+        description="A generalized tag for this taxonomy which can be used to group similar items and areas together.", title="Tag"
     )
     title: str = Field(description="A title for this taxonomy category", title="Title")
     description: str = Field(
@@ -71,8 +71,8 @@ class ParsedConcept(BaseModel):
         description="A short summary of the concept with 1-2 sentences of the content.",
         title="Summary",
     )
-    tags: List[str] = Field(
-        description="A list of taxonomy tags that this concept could belong to. Use only existing taxonomy for the tags", title="Tags"
+    taxonomy: List[str] = Field(
+        description="A list of taxonomy ids that this concept belongs to. Use only existing taxonomy ids for the items", title="Taxonomy"
     )
     id: Optional[str] = Field(
         description="An human readable id for this concept using letters and _ if available. If not available, leave blank.",
@@ -106,8 +106,8 @@ class ParsedConceptIds(BaseModel):
     title: str = Field(
         description="A human readable title for this concept", title="Title"
     )
-    tags: List[str] = Field(
-        description="A list of taxonomy tags that the combined concepts could belong to. Use only existing taxonomy for the tags", title="Tags"
+    taxonomy: List[str] = Field(
+        description="A list of category taxonomy ids that the combined concepts could belong to. Use only existing taxonomy ids for the items", title="Taxonomy"
     )
 
 
@@ -151,7 +151,7 @@ class ConceptTaxonomy(BaseModel):
         description="The taxonomy of the category.",
         title="Taxonomy",
     )
-    parent_taxonomy: str = Field(
+    parent_taxonomy: Optional[str] = Field(
         description="The parent taxonomy of the category.",
         title="Parent Taxonomy",
     )
@@ -255,9 +255,9 @@ class ConceptData(BaseModel):
         description="A reference to the source and page number where this concept was identified",
         title="Reference",
     )
-    tags: List[str] = Field(
-        description="A list of concept category tag ids that this concept belongs to",
-        title="Category",
+    taxonomy: List[str] = Field(
+        description="A list of taxonomy category ids that this concept belongs to",
+        title="taxonomy",
     )
 
 
@@ -293,6 +293,7 @@ class ConceptDataTable(Base):
     id = sqla.Column(sqla.String, primary_key=True)
     parent_id = sqla.Column(sqla.String)
     concept_contents = sqla.Column(sqla.PickleType, default=None)
+    taxonomy = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
     category_tags = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
     sources = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
     last_updated = sqla.Column(sqla.DateTime)

@@ -337,7 +337,7 @@ def get_concept_rag_chunks(
         concept_metadatas = [
             {
                 "concept_id": concept.id,
-                "concept_tags": ", ".join([tag for tag in concept.tags]),
+                "concept_taxonomy": ", ".join([tag for tag in concept.taxonomy]),
                 "split": str(i) + "_" + str(j),
                 "sources": "\n".join(
                     [

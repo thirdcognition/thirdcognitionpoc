@@ -103,7 +103,7 @@ def write_categories(add_new=True) -> Union[List, None]:
     with cat_col2:
         add_categories = st.button(
             "Add",
-            key="add_file_categories_" + "new" if add_new else "show",
+            key="add_source_categories_" + "new" if add_new else "show",
             disabled=not valid,
             use_container_width=True,
         )
@@ -125,7 +125,7 @@ def write_categories(add_new=True) -> Union[List, None]:
             # st.rerun()
 
 
-def process_file_contents(
+def process_source_contents(
     uploaded_file: UploadedFile, filename, categories, overwrite=False
 ):
     filetype = os.path.basename(uploaded_file.name).split(".")[-1]
@@ -298,7 +298,7 @@ async def main():
 
     db_sources = get_db_sources()
 
-    new_file_count = 0
+    new_source_count = 0
     unique_files = len(existing_files_names) + len(new_files_names)
 
     if len(uploaded_files) > 0:
@@ -316,14 +316,14 @@ async def main():
             if file_exists and uploaded_file.name not in existing_files_names:
                 existing_files.append(uploaded_file)
                 existing_files_names.append(uploaded_file.name)
-                new_file_count += 1
+                new_source_count += 1
             elif not file_exists and uploaded_file.name not in new_files_names:
                 new_files.append(uploaded_file)
                 new_files_names.append(uploaded_file.name)
-                new_file_count += 1
+                new_source_count += 1
 
-    if new_file_count > 0:
-        st.write(f"Added {new_file_count} of {unique_files} files to list")
+    if new_source_count > 0:
+        st.write(f"Added {new_source_count} of {unique_files} files to list")
 
     if len(existing_files) > 0:
         st.subheader("Existing files:")

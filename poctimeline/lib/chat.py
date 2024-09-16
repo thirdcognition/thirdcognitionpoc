@@ -150,20 +150,20 @@ def chat_elements(chat_state, journey_name=None):
                                 # formatted = "formatted_" in reference.metadata["file"]
 
                                 # meta_keys = reference.metadata.keys()
-                                db_file = get_db_sources(source=file)[file]
+                                db_source = get_db_sources(source=file)[file]
                                 [col1, col2] = st.columns([1, 3])
                                 col1.write(file)
                                 if filetype != "epub":
                                     col1.download_button(
                                         "Download",
-                                        db_file.file_data,
+                                        db_source.file_data,
                                         file_name=file,
                                         key=file + "_" + chat_state + "_" + str(i),
                                     )
 
                                 col2.container(height=150).write(
                                     reference.page_content
-                                )  # db_file["summary"])
+                                )  # db_source["summary"])
         else:
             # print(f"{message = }")
             if message.content not in st.session_state.chat_history_seen[chat_state]:

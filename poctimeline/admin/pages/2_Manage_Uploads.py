@@ -19,7 +19,7 @@ from lib.load_env import SETTINGS
 from lib.db_tools import (
     SourceDataTable,
     db_commit,
-    delete_db_file,
+    delete_db_source,
     get_chroma_collections,
     get_concept_by_id,
     get_concept_category_tag_by_id,
@@ -63,7 +63,7 @@ async def manage_file(filename):
             key=f"delete_button_{filename}",
             use_container_width=True,
         ):
-            delete_db_file(filename)
+            delete_db_source(filename)
             st.rerun(scope="fragment")
     header_col1, header_col2 = st.columns([1, 4], vertical_alignment="bottom")
     with header_col1:
@@ -252,20 +252,15 @@ async def manage_file(filename):
             with tab4:
                 tagged_concepts: Dict[str, List[ConceptData]] = defaultdict(list)
                 tags:Dict[str, ConceptTaxonomy] = {}
-                pretty_print(file_entry.source_concepts, "source concepts", force=True)
                 for concept_id in file_entry.source_concepts:
                     db_concept = get_concept_by_id(concept_id)
                     concept_inst:ConceptData = db_concept.concept_contents
-                    pretty_print(concept_inst, "concept instance", force=True)
-                    for tag in concept_inst.tags:
+                    for tag in concept_inst.taxonomy:
                         tagged_concepts[tag].append(concept_inst)
                         if tag not in tags:
                             tag_inst = get_concept_category_tag_by_id(tag)
                             if tag_inst:
                                 tags[tag] = tag_inst.concept_category_tag
-
-                pretty_print(tags, "tags", force=True)
-                pretty_print(tagged_concepts, "tagged concepts", force=True)
 
                 for concept_tag, concepts in tagged_concepts.items():
                     if concept_tag in tags:
@@ -279,8 +274,8 @@ async def manage_file(filename):
                                 sub_col1, sub_col2  = st.columns([1,2])
                                 sub_col1.write("References:")
                                 sub_col1.write(ref for ref in concept_inst.references)
-                                sub_col1.write("Tags:")
-                                sub_col1.write(concept_inst.tags)
+                                sub_col1.write("Taxonomy:")
+                                sub_col1.write(concept_inst.taxonomy)
                                 sub_col2.write(f"##### Summary:\n{concept_inst.summary}")
                                 sub_col2.write(f"##### Content:\n{'\n'.join(concept_inst.contents)}")
                     else:
@@ -367,7 +362,7 @@ async def main():
         ):
             files = get_db_sources(categories=categories)
             for file in files.keys():
-                delete_db_file(file, commit=False)
+                delete_db_source(file, commit=False)
             db_commit()
             st.rerun()
 

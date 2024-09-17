@@ -262,7 +262,7 @@ concept_taxonomy = PromptFormatter(
         Extract content taxonomy category tags from the context the provided template structure.
         The category tags are used to organize the ideas, topics, or subjects that can be found from the context.
         Prioritize using existing tags instead of providing new ones. Do not export or rewrite the existing taxonomy,
-        only use it as a reference to define new taxanomy.
+        only use it as a reference to define new taxonomy.
 
         Use the following templates and examples as guide:
 
@@ -279,12 +279,54 @@ concept_taxonomy = PromptFormatter(
         {context}
         Context end
 
-        Do not export or rewrite the existing taxonomy,
-        only use it as a reference to define new taxanomy.
+        Do not include, export, rewrite, or modify the existing taxonomy.
+        Only use the existing taxonomy as a reference to define new taxonomy.
         """
     ),
 )
 concept_taxonomy.parser = TagsParser(
+    min_len=0,
+    tags=TAXONOMY_TAGS,
+    optional_tags=["thinking", "reflection"] + TAXONOMY_OPTIONAL_TAGS,
+    all_tags_required=True,
+    return_tag=True,
+)
+
+concept_taxonomy_refine = PromptFormatter(
+    system=textwrap.dedent(
+        f"""
+        Act as a taxonomy combiner.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
+        {PRE_THINK_INSTRUCT}
+        {KEEP_PRE_THINK_TOGETHER}
+        Combine, refine and reduce the taxonomy defined within
+        the new taxonomy items where possible.
+        The existing taxonomy should be used as a reference to
+        define new taxonomy and cannot be modified.
+
+        Use the following templates and examples as guide:
+
+        {TAXONOMY}
+        """
+    ),
+    user=textwrap.dedent(
+        """
+        existing taxonomy start
+        {existing_taxonomy}
+        existing taxonomy end
+        ----------------
+        new taxonomy items start
+        {new_taxonomy_items}
+        new taxonomy items end
+
+        Do not include, export, rewrite, or modify the existing taxonomy.
+        Only use the existing taxonomy as a reference to when combining and
+        refining the new taxonomy items.
+        The new taxonomy items should still always follow the example format.
+        """
+    ),
+)
+concept_taxonomy_refine.parser = TagsParser(
     min_len=0,
     tags=TAXONOMY_TAGS,
     optional_tags=["thinking", "reflection"] + TAXONOMY_OPTIONAL_TAGS,
@@ -384,13 +426,17 @@ concept_unique = PromptFormatter(
         {existing_concepts}
         existing concepts end
         ----------------
+        new concepts start
+        {new_concepts}
+        new concepts end
+        ----------------
         format instructions start
         {format_instructions}
         format instructions end
         ----------------
-        Using the existing concepts find the all unique concepts and extract them using the specified format.
-        Don't export duplicate concepts, combine them if possible and only use existing ids. Don't create new concepts.
-        Format the context data using the format instructions.
+        Using the existing and new concepts find the all unique concepts and extract them using the specified format.
+        Don't export duplicate concepts, combine them if possible and only use existing ids. Don't create any more
+        new concepts. Format the context data using the format instructions.
         Return only the properly formatted JSON object with the formatted data.
         """
     ),

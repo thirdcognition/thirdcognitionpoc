@@ -38,7 +38,7 @@ def init_db():
     if database_session is None:
         engine = sqla.create_engine("sqlite:///{}".format(SETTINGS.sqlite_db))
         Base.metadata.create_all(engine)
-        DatabaseSession = sessionmaker(bind=engine)
+        DatabaseSession = sessionmaker(bind=engine, autoflush=False)
         database_session = DatabaseSession()
 
     return database_session

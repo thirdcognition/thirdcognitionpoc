@@ -178,24 +178,24 @@ def convert_concept_category_tag_to_dict(concept_category_tag: ConceptTaxonomy) 
 
 
 def convert_taxonomy_dict_to_tag_structure_string(data: dict) -> str:
-    category_tag_data = data["category_tag"]
+    category_tag_data:Dict = data["category_tag"]
     tag_structure = f"""
     <category_tag>
         {f'<id>{category_tag_data["id"]}</id>' if 'id' in category_tag_data.keys() else ''}
         {f'<parent_id>{category_tag_data["parent_id"]}</parent_id>' if 'parent_id' in category_tag_data.keys() else ''}
-        <title>{category_tag_data["title"]}</title>
-        <taxonomy>{category_tag_data["taxonomy"]}</taxonomy>
+        <title>{category_tag_data.get("title", "")}</title>
+        <taxonomy>{category_tag_data.get("taxonomy", "")}</taxonomy>
         {f'<parent_taxonomy>{category_tag_data["parent_taxonomy"]}</parent_taxonomy>' if "parent_taxonomy" in category_tag_data.keys() else ''}
-        <tag>{category_tag_data["tag"]}</tag>
-        <type>{category_tag_data["type"]}</type>
-        <description>{category_tag_data["description"]}</description>
+        <tag>{category_tag_data.get("tag", "")}</tag>
+        <type>{category_tag_data.get("type", "")}</type>
+        <description>{category_tag_data.get("description", "")}</description>
     </category_tag>
     """
     return textwrap.dedent(tag_structure)
 
 
-def convert_taxonomy_dict_to_tag_simple_structure_string(data: dict) -> str:
-    category_tag_data = data["category_tag"]
+def convert_taxonomy_dict_to_tag_simple_structure_string(data: dict, show_description: bool = False) -> str:
+    category_tag_data:Dict = data["category_tag"]
     tag_structure = (
         (
             f'parent_id({category_tag_data["parent_id"]}) > '
@@ -208,10 +208,11 @@ def convert_taxonomy_dict_to_tag_simple_structure_string(data: dict) -> str:
             if "parent_taxonomy" in category_tag_data
             else ""
         )
-        + f'taxonomy({category_tag_data["taxonomy"]}) '
-        + f'tag({category_tag_data["tag"]}) '
-        + f'type({category_tag_data["type"]}): '
-        + f'{category_tag_data["title"]}'
+        + f'taxonomy({category_tag_data.get("taxonomy", "")}) '
+        + f'tag({category_tag_data.get("tag", "")}) '
+        + f'type({category_tag_data.get("type", "")}): '
+        + f'{category_tag_data.get("title", "")}'
+        + (f'\n{str(category_tag_data.get("description", "")).replace("\n", " ")}\n\n' if show_description else "")
     )
     return tag_structure
 

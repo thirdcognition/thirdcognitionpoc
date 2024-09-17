@@ -28,11 +28,9 @@ from lib.document_tools import (
 )
 from lib.load_env import SETTINGS
 from lib.models.sqlite_tables import (
-    ConceptData,
     SourceContentPage,
     SourceContents,
 )
-from lib.prompts.formatters import TAXONOMY_ALL_TAGS
 
 
 def clean_dividers(text: str) -> str:
@@ -70,7 +68,7 @@ class ProcessTextState(TypedDict):
     filename: str
     url: str
     source: str
-    semantic_contents: List[Document]
+    # semantic_contents: List[Document]
     contents: List[Union[Document, str]]  # Annotated[list[Document], operator.add]
     final_contents: List[Document]
     # reformat_contents: List[Document]  # Annotated[list[Document], operator.add]
@@ -94,6 +92,7 @@ class ProcessTextConfig(TypedDict):
     update_rag: bool = False
     summarize: bool = True
     rewrite_text: bool = True
+    run_split_for_source: bool = True
 
 
 async def should_rewrite_content(state: ProcessTextState, config: RunnableConfig):
@@ -182,7 +181,7 @@ async def split_content(state: ProcessTextState, config: RunnableConfig):
 
     return {
         "split_complete": True,
-        "semantic_contents": split,
+        # "semantic_contents": split,
         "contents": response,
         "instructions": (
             config["configurable"]["instructions"]
@@ -199,18 +198,23 @@ async def get_source_content(state: Dict, config: RunnableConfig):
     if source_data is None:
         raise ValueError(f"Source {source} not found")
 
-    split = await a_semantic_splitter(source_data.texts)
-    split = [
-        Document(page_content=clean_dividers(doc), metadata={"snippet": i})
-        for i, doc in enumerate(split)
-    ]
-    response = split_list_of_docs(
-        split, length_function, SETTINGS.default_llms.instruct_detailed.char_limit
-    )
+    if config["configurable"].get("run_split_for_source", False):
+        split = await a_semantic_splitter(source_data.texts)
+        split = [
+            Document(page_content=clean_dividers(doc), metadata={"snippet": i})
+            for i, doc in enumerate(split)
+        ]
+        response = split_list_of_docs(
+            split, length_function, SETTINGS.default_llms.instruct_detailed.char_limit
+        )
+    else:
+        print("Skip split")
+        split = []
+        response = []
 
     return {
-        "split_complete": True,
-        "semantic_contents": split,
+        # "split_complete": True,
+        # "semantic_contents": split,
         "contents": response,
         "instructions": (
             config["configurable"]["instructions"]
@@ -356,19 +360,20 @@ async def reformat_content(state: SummaryState):
             average_length = (
                 sum(average_lengths) / len(average_lengths) if average_lengths else 0
             )
-            if len(items[-1]["document"].page_content) > average_length * 1.5:
-                last_item = items.pop()
-                last_item["topic_index"] = 0
-                last_item["summary"] = (
-                    last_item["summary"]
-                    if last_item["summary"] is not None
-                    else last_item["document"].page_content[:200] + "..."
-                )
-                last_item["topic"] = (
-                    last_item["topic"] if last_item["topic"] is not None else "Overview"
-                )
+            last_item = items.pop()
+            last_item["topic_index"] = 0
+            last_item["summary"] = (
+                last_item["summary"]
+                if last_item["summary"] is not None
+                else last_item["document"].page_content[:200] + "..."
+            )
+            last_item["topic"] = (
+                f"Overview: " + last_item["topic"]
+                if last_item["topic"] is not None
+                else "Overview: "
+            )
 
-                items.insert(0, last_item)
+            items.insert(0, last_item)
 
     else:
         doc = Document(
@@ -442,7 +447,9 @@ def map_reformat(state: ProcessTextState):
 
 
 async def concat_reformat(state: ProcessTextState, config: RunnableConfig):
-    sorted_reformat = sorted(state["reformatted_txt"], key=lambda x: x["index"])
+    sorted_reformat: List[Dict] = sorted(
+        state["reformatted_txt"], key=lambda x: x["index"]
+    )
     return {
         "reformat_complete": True,
         # "reformat_contents": [
@@ -459,7 +466,12 @@ async def concat_reformat(state: ProcessTextState, config: RunnableConfig):
                 topic=item["topic"] or "",
             )
             for result in sorted_reformat
-            for item in result["items"]
+            for item in list(
+                filter(
+                    lambda x: not str(x.get("topic", "")).startswith("Overview:"),
+                    result["items"],
+                )
+            )
         ],
         "summary": "\n".join(
             [
@@ -472,9 +484,14 @@ async def concat_reformat(state: ProcessTextState, config: RunnableConfig):
         ),
         "topics": set(
             [
-                item["topic"] or ""
+                item.get("topic", "")
                 for result in sorted_reformat
-                for item in result["items"]
+                for item in list(
+                    filter(
+                        lambda x: not str(x.get("topic", "")).startswith("Overview:"),
+                        result["items"],
+                    )
+                )
             ]
         ),
     }
@@ -536,14 +553,15 @@ async def rag_content(state: ProcessTextState, config: RunnableConfig):
     if state["filename"] is not None:
         filetype = os.path.basename(state["filename"]).split(".")[-1]
 
-    texts = [page.page_content for page in state["final_contents"]]
-    update_db_source_rag(
-        state["filename"] or state["url"],
-        state["categories"],
-        texts,
-        content,
-        filetype=filetype,
-    )
+    if config["configurable"]["overwrite_sources"] or state.get("split_complete", False):
+        texts = [page.page_content for page in state["final_contents"]]
+        update_db_source_rag(
+            state["filename"] or state["url"],
+            state["categories"],
+            texts,
+            content,
+            filetype=filetype,
+        )
 
     return {"rag_complete": True}
 

@@ -53,6 +53,7 @@ from lib.prompts.formatters import (
     md_formatter,
     md_formatter_guided,
     concept_taxonomy,
+    concept_taxonomy_refine,
     concept_structured,
     concept_more,
     concept_unique,
@@ -289,8 +290,13 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
         True,
     ),
     "concept_taxonomy": (
-        "instruct_detailed" if not DEVMODE else "instruct",
+        "instruct",
         concept_taxonomy,
+        False,
+    ),
+    "concept_taxonomy_refine": (
+        "instruct_detailed" if not DEVMODE else "instruct",
+        concept_taxonomy_refine,
         False,
     ),
     "concept_structured": ("structured", concept_structured, True),

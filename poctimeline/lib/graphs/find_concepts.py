@@ -12,6 +12,7 @@ from lib.chains.base_parser import get_text_from_completion
 from lib.chains.init import get_chain
 from lib.graphs.process_text import clean_dividers, get_source_content
 from lib.helpers import pretty_print
+from lib.load_env import SETTINGS
 from lib.models.prompts import TitledSummary
 from lib.db_tools import (
     db_commit,
@@ -58,7 +59,7 @@ class FindConceptsState(TypedDict):
     collected_concepts: List[ConceptData]
     content_result: Dict
     contents: List[Union[Document, str]]
-    semantic_contents: List[Document]
+    # semantic_contents: List[Document]
     source_content_topics: List[SourceContentPage]
     reformatted_txt: Annotated[list, operator.add]
     collapsed_reformatted_txt: List[Document]
@@ -83,12 +84,12 @@ class ProcessConceptsState(TypedDict):
     categories: List[str]
     filename: str
     url: str
-    topic: SourceContentPage
+    topics: List[SourceContentPage]
     taxonomy: Dict
 
 
 _new_ids = {}
-_divider = "±!add!±"
+_divider = "±!s!±"
 
 
 def get_taxonomy_item_list(categories: List[str], reset=False) -> List[ConceptTaxonomy]:
@@ -111,38 +112,29 @@ def get_specific_tag(items, tag="category_tag") -> List[dict]:
     return found_items
 
 
-# async def split_reformatted_content(state: FindConceptsState):
-#     snippets: List[Document] = []
-#     flat_contents: List[Document] = []
-#     for item in state["source_content_topics"]:
-#         if isinstance(item, Document):
-#             flat_contents.append(item)
-#         elif isinstance(item, List):
-#             flat_contents.extend(item)
-#         else:
-#             # print(f"{state["contents"]}")
-#             raise ValueError(f"Unknown type {type(item)}: {item=}")
-#     for page, content in enumerate(flat_contents):
-#         if isinstance(content, Document):
-#             content = content.page_content
+def handle_new_taxonomy_item(item, taxonomy_ids: List, cat_for_id: str):
+    new_taxonomy = convert_taxonomy_tags_to_dict(item, TAXONOMY_ALL_TAGS)
+    new_id = (
+        new_taxonomy["category_tag"]["id"]
+        if "id" in new_taxonomy["category_tag"]
+        and new_taxonomy["category_tag"]["id"] not in taxonomy_ids
+        else cat_for_id
+        + "-"
+        + get_unique_id(new_taxonomy["category_tag"]["taxonomy"], taxonomy_ids)
+    )
 
-#         # print(f"Snippet {page}:\n{content[:100]}...")
+    new_taxonomy["category_tag"]["id"] = new_id
+    parent_id = (
+        new_taxonomy["category_tag"]["parent_id"]
+        if "parent_id" in new_taxonomy["category_tag"]
+        else cat_for_id
+        + "-"
+        + get_unique_id(new_taxonomy["category_tag"]["parent_taxonomy"], [])
+    )
+    if parent_id in taxonomy_ids:
+        new_taxonomy["category_tag"]["parent_id"] = parent_id
 
-#         split = await a_semantic_splitter(
-#             content, threshold_type="gradient", breakpoint_threshold=90
-#         )
-#         snippets += [
-#             Document(
-#                 page_content=clean_dividers(doc), metadata={"snippet": i, "page": page}
-#             )
-#             for i, doc in enumerate(split)
-#         ]
-
-
-#     return {
-#         "split_reformatted_complete": True,
-#         "snippets": snippets,
-#     }
+    return new_taxonomy
 
 
 async def search_for_taxonomy(state: FindConceptsState, config: RunnableConfig):
@@ -166,66 +158,117 @@ async def search_for_taxonomy(state: FindConceptsState, config: RunnableConfig):
         else []
     )
 
-    topics = state["source_content_topics"]
+    # topics = state["source_content_topics"]
+    max_chars = SETTINGS.default_llms.instruct.char_limit / 2
+    global _divider
 
     nex_taxonomy_str = ""
     new_taxonomy_items = []
     cat_for_id = "-".join(state["categories"]).replace(" ", "-").lower()
-    for topic in topics:
-        topic_taxonomy = await get_chain("concept_taxonomy").ainvoke(
-            {
-                "existing_taxonomy": existing_taxonomy + "\n" + nex_taxonomy_str,
-                "context": f"{topic.topic}: \n\n{topic.page_content}",
-            }
+    topic_lists = split_topics(state["source_content_topics"])
+    for i, topics in enumerate(topic_lists):
+        content = "\n\n".join(
+            [f"{topic.topic}: \n\n{topic.page_content}" for topic in topics]
         )
+        params = {
+            "existing_taxonomy": existing_taxonomy + "\n" + nex_taxonomy_str,
+            "context": content,
+        }
+        topic_taxonomy = await get_chain("concept_taxonomy").ainvoke(params)
+        if isinstance(topic_taxonomy, AIMessage):
+            print("Retrying concept_taxonomy once")
+            await asyncio.sleep(30)
+            topic_taxonomy = await get_chain("concept_taxonomy").ainvoke(params)
         found_new_taxonomy_items = get_specific_tag(
             topic_taxonomy["parsed"]["children"] or []
         )
         if len(found_new_taxonomy_items) == 0:
-            print(
-                f"No new category taxonomy found for topic: {topic.page_content[:100]}..."
-            )
+            print(f"No new category taxonomy found for topic: {content[:100]}...")
             continue
         if len(found_new_taxonomy_items) > 0:
             for item in found_new_taxonomy_items:
                 try:
-                    new_taxonomy = convert_taxonomy_tags_to_dict(
-                        item, TAXONOMY_ALL_TAGS
+                    new_taxonomy = handle_new_taxonomy_item(
+                        item, taxonomy_ids, cat_for_id
                     )
-                    new_id = (
-                        new_taxonomy["category_tag"]["id"]
-                        if "id" in new_taxonomy["category_tag"]
-                        and new_taxonomy["category_tag"]["id"] not in taxonomy_ids
-                        else cat_for_id
-                        + "-"
-                        + get_unique_id(
-                            new_taxonomy["category_tag"]["taxonomy"], taxonomy_ids
-                        )
-                    )
-                    taxonomy_ids.append(new_id)
-                    new_taxonomy["category_tag"]["id"] = new_id
-                    parent_id = (
-                        new_taxonomy["category_tag"]["parent_id"]
-                        if "parent_id" in new_taxonomy["category_tag"]
-                        else cat_for_id
-                        + "-"
-                        + get_unique_id(
-                            new_taxonomy["category_tag"]["parent_taxonomy"], []
-                        )
-                    )
-                    if parent_id in taxonomy_ids:
-                        new_taxonomy["category_tag"]["parent_id"] = parent_id
-                    new_taxonomy_items.append(new_taxonomy)
                     nex_taxonomy_str += (
                         convert_taxonomy_dict_to_tag_simple_structure_string(
                             new_taxonomy
                         )
                         + "\n"
                     )
+                    taxonomy_ids.append(new_taxonomy["category_tag"]["id"])
+                    new_taxonomy_items.append(new_taxonomy)
                 except Exception as e:
                     print(f"Error parsing taxonomy: {e}")
                     pretty_print(item, "Error parsing taxonomy", force=True)
                     continue
+
+        if len(nex_taxonomy_str) > max_chars or i == (len(topic_lists) - 1):
+            new_all_items = _divider.join(
+                [
+                    convert_taxonomy_dict_to_tag_simple_structure_string(item, True)
+                    for item in new_taxonomy_items
+                ]
+            )
+            if len(nex_taxonomy_str) > max_chars:
+                print(
+                    f"Taxonomy is getting too large ({len(new_taxonomy_items)} items), refining."
+                )
+
+            params = {
+                "existing_taxonomy": existing_taxonomy,
+                "new_taxonomy_items": new_all_items.replace(_divider, "\n\n"),
+            }
+            topic_taxonomy = await get_chain("concept_taxonomy_refine").ainvoke(params)
+            if isinstance(topic_taxonomy, AIMessage):
+                print("Retrying concept_taxonomy_refine once")
+                await asyncio.sleep(30)
+                topic_taxonomy = await get_chain("concept_taxonomy_refine").ainvoke(
+                    params
+                )
+
+            combined_taxonomy_items = get_specific_tag(
+                topic_taxonomy["parsed"]["children"] or []
+            )
+            if len(combined_taxonomy_items) == 0:
+                print(
+                    f"Combine resulted in all items being removed. Reseting taxonomy items."
+                )
+                new_taxonomy_items = []
+                nex_taxonomy_str = ""
+                taxonomy_ids = [
+                    taxonomy_item.id for taxonomy_item in existing_concept_taxonomy
+                ]
+                continue
+            if len(combined_taxonomy_items) > 0:
+
+                print(
+                    f"Reduced the taxonomy items by: {len(new_taxonomy_items) - len(combined_taxonomy_items)}"
+                )
+                taxonomy_ids = [
+                    taxonomy_item.id for taxonomy_item in existing_concept_taxonomy
+                ]
+                new_taxonomy_items = []
+                nex_taxonomy_str = ""
+                for item in combined_taxonomy_items:
+                    try:
+                        new_taxonomy = handle_new_taxonomy_item(
+                            item, taxonomy_ids, cat_for_id
+                        )
+
+                        nex_taxonomy_str += (
+                            convert_taxonomy_dict_to_tag_simple_structure_string(
+                                new_taxonomy
+                            )
+                            + "\n"
+                        )
+                        taxonomy_ids.append(new_taxonomy["category_tag"]["id"])
+                        new_taxonomy_items.append(new_taxonomy)
+                    except Exception as e:
+                        print(f"Error parsing taxonomy: {e}")
+                        pretty_print(item, "Error parsing taxonomy", force=True)
+                        continue
 
     global _new_ids
     _new_ids[state["filename"] if "filename" in state else state["url"]] = []
@@ -234,6 +277,25 @@ async def search_for_taxonomy(state: FindConceptsState, config: RunnableConfig):
         "search_for_taxonomy_complete": True,
         "taxonomy": new_taxonomy_items,
     }
+
+
+def split_topics(
+    topics: List[SourceContentPage],
+    char_count: int = SETTINGS.default_llms.instruct.char_limit // 2,
+) -> List[List[SourceContentPage]]:
+    topic_lists = []
+    topic_list = []
+    cur_content = ""
+    for topic in topics:
+        topic_list.append(topic)
+        cur_content += topic.page_content
+        if len(cur_content) > char_count:
+            topic_lists.append(topic_list)
+            topic_list = []
+            cur_content = ""
+
+    topic_lists.append(topic_list)
+    return topic_lists
 
 
 async def map_search_concepts(state: FindConceptsState):
@@ -261,11 +323,11 @@ async def map_search_concepts(state: FindConceptsState):
                 "url": state["url"] if "url" in state else None,
                 "filename": state["filename"] if "filename" in state else None,
                 "categories": state["categories"],
-                "topic": topic,
+                "topics": topics,
                 "taxonomy": state_taxonomy,
             },
         )
-        for topic in state["source_content_topics"]
+        for topics in split_topics(state["source_content_topics"])
     ]
 
 
@@ -282,17 +344,21 @@ def get_unique_id(id_str: str, existing_ids: List[str]):
 
 
 async def search_concepts(state: ProcessConceptsState, config: RunnableConfig):
-    topic: SourceContentPage = state["topic"]
-    ident = (
-        f"File: {state['filename']} --\tPage: {topic.page_content} --\tTopic: {topic.topic_index}"
-        if state["filename"]
-        else f"URL: {state['url']} --\tPage: {topic.page_content} --\tTopic: {topic.topic_index}"
-    )
-    taxonomy = "\n".join(state["taxonomy"] or "")
+    topics: List[SourceContentPage] = state["topics"]
+    content = ""
+    for topic in topics:
+        ident = (
+            f"File: {state['filename']} --\tPage: {topic.page_number} --\tTopics: {topic.topic_index}"
+            if state["filename"]
+            else f"URL: {state['url']} --\tPage: {topic.page_number} --\tTopic: {topic.topic_index}"
+        )
+        content += (
+            ident + f"{topic.topic}: {get_text_from_completion(topic.page_content)}\n\n"
+        )
 
+    taxonomy = "\n".join(state["taxonomy"]) or ""
     params = {
-        "context": ident
-        + f"{topic.topic}: {get_text_from_completion(topic.page_content)}",
+        "context": content,
         "taxonomy": taxonomy,
     }
 
@@ -304,6 +370,7 @@ async def search_concepts(state: ProcessConceptsState, config: RunnableConfig):
     )
     if isinstance(more_concepts, AIMessage):
         print("Retry concept_structured once")
+        await asyncio.sleep(30)
         more_concepts: ParsedConceptList = await get_chain(
             "concept_structured"
         ).ainvoke(params)
@@ -334,6 +401,7 @@ async def search_concepts(state: ProcessConceptsState, config: RunnableConfig):
             )
             if isinstance(more_concepts, AIMessage):
                 print("Retry concept_more once")
+                await asyncio.sleep(30)
                 more_concepts: ParsedConceptList = await get_chain(
                     "concept_more"
                 ).ainvoke(params)
@@ -356,13 +424,14 @@ async def search_concepts(state: ProcessConceptsState, config: RunnableConfig):
 
     global_new_ids += new_ids
     params = {
-        "existing_concepts": "\n".join(
+        "existing_concepts": "",
+        "new_concepts": "\n".join(
             f"Id({concept.id}): {concept.title.replace('\n', ' ').strip()}\n"
             f"Summary: {concept.summary.replace('\n', ' ').strip()}\n"
             f"Taxonomy IDs: {', '.join(concept.taxonomy).replace('\n', ' ').strip()}\n"
             f"Content:\n{concept.content.strip()}\n"
             for concept in new_concepts
-        )
+        ),
     }
     # print(f"{ident}: Finding unique concepts in")
     unique_concept_ids: ParsedUniqueConceptList = await get_chain(
@@ -370,34 +439,40 @@ async def search_concepts(state: ProcessConceptsState, config: RunnableConfig):
     ).ainvoke(params)
     if isinstance(unique_concept_ids, AIMessage):
         print("Retry concept_unique once")
+        await asyncio.sleep(30)
         unique_concept_ids: ParsedUniqueConceptList = await get_chain(
             "concept_unique"
         ).ainvoke(params)
     global _divider
 
     concepts: Dict[str, ParsedConcept] = {}
-    for combined_concept in unique_concept_ids.concepts:
-        if combined_concept.id in concepts.keys():
-            continue
-        for concept in new_concepts:
-            if concept.id == combined_concept.id:
-                concept.summary = combined_concept.summary.replace("\n", " ").strip()
-                concept.title = combined_concept.title.replace("\n", " ").strip()
-                concepts[combined_concept.id] = concept
+    try:
+        for combined_concept in unique_concept_ids.concepts:
+            if combined_concept.id in concepts.keys():
+                continue
+            for concept in new_concepts:
+                if concept.id == combined_concept.id:
+                    concept.summary = combined_concept.summary.replace(
+                        "\n", " "
+                    ).strip()
+                    concept.title = combined_concept.title.replace("\n", " ").strip()
+                    concepts[combined_concept.id] = concept
 
-    for combined_concept in unique_concept_ids.concepts:
-        for concept in new_concepts:
-            if (
-                combined_concept.id in concepts.keys()
-                and combined_concept.combined_ids is not None
-                and concept.id in combined_concept.combined_ids
-            ):
-                concepts[combined_concept.id].content += (
-                    "\n" + _divider + "\n" + concept.content.strip()
-                )
-                concepts[combined_concept.id].taxonomy = list(
-                    set(concepts[combined_concept.id].taxonomy + concept.taxonomy)
-                )
+        for combined_concept in unique_concept_ids.concepts:
+            for concept in new_concepts:
+                if (
+                    combined_concept.id in concepts.keys()
+                    and combined_concept.combined_ids is not None
+                    and concept.id in combined_concept.combined_ids
+                ):
+                    concepts[combined_concept.id].content += (
+                        "\n" + _divider + "\n" + concept.content.strip()
+                    )
+                    concepts[combined_concept.id].taxonomy = list(
+                        set(concepts[combined_concept.id].taxonomy + concept.taxonomy)
+                    )
+    except Exception as e:
+        print(e)
 
     return {"found_concepts": list(concepts.values())}
 
@@ -483,51 +558,81 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
         if len(previous_concept_data) > 0:
             for concept in previous_concept_data:
                 previous_concepts[concept.id] = ConceptData(**concept.concept_contents)
+        global _divider
 
-        get_unique_concepts = lambda: get_chain("concept_unique").ainvoke(
-            {
-                "existing_concepts": "Previously defined concepts:\n"
-                + "\n".join(
-                    f"Id({concept.id}): {concept.title}\nSummary: {concept.summary}\nTaxonomy IDs: {', '.join(concept.taxonomy)}"
-                    for concept in previous_concepts.values()
-                )
-                + "\n\nNewly defined concepts:\n"
-                + "\n".join(
-                    f"Id({concept.id}): {concept.title}\nSummary: {concept.summary}\nTaxonomy IDs: {', '.join(concept.taxonomy)}"
-                    for concept in found_concepts
-                )
-            }
+        existing_concepts_content = "\n".join(
+            [
+                f"Id({concept.id}): {concept.title}\nSummary: {concept.summary.strip().replace('\n', ' ')}\nTaxonomy IDs: {', '.join(concept.taxonomy)}"
+                for concept in previous_concepts.values()
+            ]
+        )
+        new_concepts_content = [
+            f"Id({concept.id}): {concept.title}\nSummary: {concept.summary.strip().replace('\n', ' ')}\nTaxonomy IDs: {', '.join(concept.taxonomy)}"
+            for concept in found_concepts
+        ]
+
+        unique_contents: List[tuple] = []
+        if (
+            len(existing_concepts_content + "\n".join(new_concepts_content))
+            > SETTINGS.default_llms.instruct.char_limit
+        ):
+            print("Chunk new concepts...")
+            new_content = ""
+            for item in new_concepts_content:
+                new_content += item + "\n\n"
+                if len(item) > SETTINGS.default_llms.instruct.char_limit / 2:
+                    unique_contents.append((existing_concepts_content, new_content))
+                    new_content = ""
+            unique_contents.append((existing_concepts_content, new_content))
+
+        else:
+            unique_contents = [
+                (existing_concepts_content, "\n".join(new_concepts_content))
+            ]
+
+        get_unique_concepts = lambda existing_concepts, new_concepts: get_chain(
+            "concept_unique"
+        ).ainvoke(
+            {"existing_concepts": existing_concepts, "new_concepts": new_concepts}
         )
 
         # print(f"Found {len(found_concepts)} concepts, optimizing for unique concepts.")
-        unique_concepts: ParsedUniqueConceptList = await get_unique_concepts()
-        if isinstance(unique_concepts, AIMessage):
-            print("\n\nRetrying get unique concepts...")
-            unique_concepts = await get_unique_concepts()
-        # await get_chain(
-        #     "concept_unique"
-        # ).ainvoke(
-        #     {
-        #         "existing_concepts": "Previously defined concepts:\n"
-        #         + "\n".join(
-        #             f"Id({concept.id}): {concept.title}\nSummary: {concept.summary}\nTaxonomy IDs: {', '.join(concept.taxonomy)}"
-        #             for concept in previous_concepts.values()
-        #         )
-        #         + "\n\nNewly defined concepts:\n"
-        #         + "\n".join(
-        #             f"Id({concept.id}): {concept.title}\nSummary: {concept.summary}\nTaxonomy IDs: {', '.join(concept.taxonomy)}"
-        #             for concept in found_concepts
-        #         )
-        #     }
-        # )
+        uniq_concepts: List[ParsedConceptIds] = []
+        for uniq_item in unique_contents:
+            item_unique_concepts: ParsedUniqueConceptList = await get_unique_concepts(
+                uniq_item[0], uniq_item[1]
+            )
+            if isinstance(item_unique_concepts, AIMessage):
+                print("\n\nRetry concept_unique once...")
+                await asyncio.sleep(30)
+                item_unique_concepts = await get_unique_concepts(
+                    uniq_item[0], uniq_item[1]
+                )
+            uniq_concepts.extend(item_unique_concepts.concepts)
 
-        pretty_print(unique_concepts, "New unique concepts")
+        if len(unique_contents) > 1:
+            new_concepts_content = [
+                f"Id({concept.id}): {concept.title}\nSummary: {concept.summary.strip().replace('\n', ' ')}\nTaxonomy IDs: {', '.join(concept.taxonomy)}"
+                for concept in uniq_concepts
+            ]
+            item_unique_concepts: ParsedUniqueConceptList = await get_unique_concepts(
+                existing_concepts_content, new_concepts_content
+            )
+            if isinstance(item_unique_concepts, AIMessage):
+                print("\n\nRetry concept_unique once...")
+                await asyncio.sleep(30)
+                item_unique_concepts = await get_unique_concepts(
+                    existing_concepts_content, new_concepts_content
+                )
+            uniq_concepts.extend(item_unique_concepts.concepts)
+
+        pretty_print(uniq_concepts, "New unique concepts")
 
         concept_hierarchy_task = lambda: get_chain("concept_hierarchy").ainvoke(
             {
                 "existing_concepts": "\n".join(
                     f"Id({concept.id}): {concept.title}\n{concept.summary}"
-                    for concept in unique_concepts.concepts
+                    for concept in uniq_concepts
                 )
             }
         )
@@ -546,37 +651,10 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
                 ),
                 "concepts": "\n".join(
                     f"Id({concept.id}): {concept.title}\nSummary: {concept.summary}\nTaxonomy IDs: {', '.join(concept.taxonomy)}"
-                    for concept in unique_concepts.concepts
+                    for concept in uniq_concepts
                 ),
             }
         )
-
-        # : ParsedConceptStructure
-        # concept_hierarchy_task = get_chain("concept_hierarchy").ainvoke(
-        #     {
-        #         "existing_concepts": "\n".join(
-        #             f"Id({concept.id}): {concept.title}\n{concept.summary}"
-        #             for concept in unique_concepts.concepts
-        #         )
-        #     }
-        # )
-        # # : ParsedConceptTaxonomyList
-        # concept_taxonomy_task = get_chain("concept_taxonomy_structured").ainvoke(
-        #     {
-        #         "existing_taxonomy": "\n".join(
-        #             convert_taxonomy_dict_to_tag_structure_string(item)
-        #             for item in existing_taxonomy
-        #         ),
-        #         "new_taxonomy": "\n".join(
-        #             convert_taxonomy_dict_to_tag_structure_string(item)
-        #             for item in new_concept_taxonomy
-        #         ),
-        #         "concepts": "\n".join(
-        #             f"Id({concept.id}): {concept.title}\nSummary: {concept.summary}\nTaxonomy IDs: {', '.join(concept.taxonomy)}"
-        #             for concept in unique_concepts.concepts
-        #         ),
-        #     }
-        # )
 
         concept_taxonomy: ParsedConceptTaxonomyList
         concept_hierarchy: ParsedConceptStructureList
@@ -585,7 +663,11 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
         )
         global _divider
 
-        # Retry once if fail.
+        if isinstance(concept_taxonomy, AIMessage) or isinstance(
+            concept_hierarchy, AIMessage
+        ):
+            await asyncio.sleep(30)
+
         if isinstance(concept_taxonomy, AIMessage):
             print("\n\nRetrying concept taxonomy...")
             concept_taxonomy = await concept_taxonomy_task()
@@ -695,7 +777,7 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
 
         all_ids = list(
             set(
-                [concept.id for concept in unique_concepts.concepts]
+                [concept.id for concept in uniq_concepts]
                 + list(previous_concepts.keys())
             )
         )
@@ -703,7 +785,7 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
         all_taxonomy_ids = list(existing_taxonomy_by_id.keys())
 
         # Create new concepts
-        for sum_concept in unique_concepts.concepts:
+        for sum_concept in uniq_concepts:
             id = sum_concept.id
             old_concept_item = False
             new_concept: ConceptData

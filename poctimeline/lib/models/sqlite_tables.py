@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 import textwrap
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 from pydantic import BaseModel, Field
 import sqlalchemy as sqla
 from sqlalchemy.orm import declarative_base
@@ -260,8 +260,16 @@ class ConceptData(BaseModel):
         title="taxonomy",
     )
 
+class SourceContentPage(BaseModel):
+    page_content: str
+    page_number: int
+    topic_index: int
+    metadata: Dict
+    topic: str
 
 class SourceContents(BaseModel):
+    topics: Set[str]
+    formatted_topics: List[SourceContentPage]
     formatted_content: str
     summary: str
     # concepts: List[ConceptData]

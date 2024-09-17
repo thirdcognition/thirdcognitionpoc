@@ -73,6 +73,8 @@ def get_text_from_completion(completion):
         completion_content = completion.page_content
     elif isinstance(completion, BaseModel):
         completion_content = completion.model_dump_json()
+    elif isinstance(completion, dict) and "content" in completion.keys():
+        completion_content = str(completion["content"]).strip()
     elif isinstance(completion, str):
         completion_content = completion.strip()
 

@@ -14,6 +14,8 @@ from lib.prompts.base import (
     KEEP_PRE_THINK_TOGETHER,
     MAINTAIN_CONTENT_AND_USER_LANGUAGE,
     PRE_THINK_INSTRUCT,
+    SUMMARIZE_INSTRUCT,
+    SUMMARIZE_INSTRUCT_TAGS,
     PromptFormatter,
     TagsParser,
 )
@@ -39,9 +41,9 @@ TAXONOMY = "Template structure: \n" + textwrap.indent(
     ),
     8 * " ",
 )
-TAXONOMY_TAGS:List[str] = taxonomy_examples_yaml["tags"]
-TAXONOMY_OPTIONAL_TAGS:List[str] = taxonomy_examples_yaml["optional_tags"]
-TAXONOMY_ALL_TAGS:List[str] = TAXONOMY_TAGS + TAXONOMY_OPTIONAL_TAGS
+TAXONOMY_TAGS: List[str] = taxonomy_examples_yaml["tags"]
+TAXONOMY_OPTIONAL_TAGS: List[str] = taxonomy_examples_yaml["optional_tags"]
+TAXONOMY_ALL_TAGS: List[str] = TAXONOMY_TAGS + TAXONOMY_OPTIONAL_TAGS
 
 text_formatter = PromptFormatter(
     system=textwrap.dedent(
@@ -49,6 +51,7 @@ text_formatter = PromptFormatter(
         Act as a document formatter.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         {PRE_THINK_INSTRUCT}
+        {SUMMARIZE_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
         Rewrite the text specified by the user between the context start and context end in full detail using natural language.
         Don't use html tags or markdown. Remove all mentions of confidentiality. Use only information from the available in the text.
@@ -56,6 +59,12 @@ text_formatter = PromptFormatter(
     ),
     user=textwrap.dedent(
         """
+        Previous page ending start
+        {prev_page}
+        Previous page ending end
+        Next page beginning start
+        {next_page}
+        Next page beginning end
         Context start
         {context}
         Context end
@@ -64,7 +73,13 @@ text_formatter = PromptFormatter(
         """
     ),
 )
-text_formatter.parser = TagsParser(min_len=100)
+text_formatter.parser = TagsParser(
+    min_len=100,
+    tags=SUMMARIZE_INSTRUCT_TAGS,
+    optional_tags=["thinking", "reflection"],
+    all_tags_required=True,
+    return_tag=True,
+)
 
 text_formatter_compress = PromptFormatter(
     system=textwrap.dedent(
@@ -97,6 +112,7 @@ text_formatter_guided = PromptFormatter(
         Act as a document formatter.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         {PRE_THINK_INSTRUCT}
+        {SUMMARIZE_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
         Rewrite the text between the context start and context end using only information and follow the instructions exactly.
         Don't use html tags or markdown.
@@ -105,7 +121,12 @@ text_formatter_guided = PromptFormatter(
     user=textwrap.dedent(
         """
         Instructions: {instructions}
-
+        Previous page ending start
+        {prev_page}
+        Previous page ending end
+        Next page beginning start
+        {next_page}
+        Next page beginning end
         Context start
         {context}
         Context end
@@ -114,7 +135,13 @@ text_formatter_guided = PromptFormatter(
         """
     ),
 )
-text_formatter_guided.parser = TagsParser(min_len=100)
+text_formatter_guided.parser = TagsParser(
+    min_len=100,
+    tags=SUMMARIZE_INSTRUCT_TAGS,
+    optional_tags=["thinking", "reflection"],
+    all_tags_required=True,
+    return_tag=True,
+)
 
 text_formatter_compress_guided = PromptFormatter(
     system=textwrap.dedent(
@@ -150,6 +177,7 @@ md_formatter = PromptFormatter(
         Act as a document formatter.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         {PRE_THINK_INSTRUCT}
+        {SUMMARIZE_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
         Rewrite the text between the context start and context end using markdown syntax. Use only information from the context.
         Remove all mentions of confidentiality.
@@ -165,7 +193,13 @@ md_formatter = PromptFormatter(
         """
     ),
 )
-md_formatter.parser = TagsParser(min_len=100)
+md_formatter.parser = TagsParser(
+    min_len=100,
+    tags=SUMMARIZE_INSTRUCT_TAGS,
+    optional_tags=["thinking", "reflection"],
+    all_tags_required=True,
+    return_tag=True,
+)
 
 md_formatter_guided = PromptFormatter(
     system=textwrap.dedent(
@@ -173,6 +207,7 @@ md_formatter_guided = PromptFormatter(
         Act as a document formatter.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         {PRE_THINK_INSTRUCT}
+        {SUMMARIZE_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
         Rewrite the text between the context start and context end using markdown syntax. Use only information from the context
         and follow the instructions exactly. Remove all mentions of confidentiality. Follow the instructions exactly.
@@ -190,7 +225,12 @@ md_formatter_guided = PromptFormatter(
         """
     ),
 )
-md_formatter_guided.parser = TagsParser(min_len=100)
+md_formatter_guided.parser = TagsParser(
+    min_len=100,
+    tags=SUMMARIZE_INSTRUCT_TAGS,
+    optional_tags=["thinking", "reflection"],
+    all_tags_required=True,
+)
 
 concept_taxonomy = PromptFormatter(
     system=textwrap.dedent(
@@ -225,7 +265,7 @@ concept_taxonomy.parser = TagsParser(
     tags=TAXONOMY_TAGS,
     optional_tags=["thinking", "reflection"] + TAXONOMY_OPTIONAL_TAGS,
     all_tags_required=True,
-    return_tag=True
+    return_tag=True,
 )
 
 concept_structured = structured.customize(

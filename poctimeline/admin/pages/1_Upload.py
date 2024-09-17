@@ -17,6 +17,7 @@ from langchain_core.messages import BaseMessage
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
+from lib.graphs.find_concepts import find_concepts
 from lib.graphs.process_text import process_text
 from lib.models.sqlite_tables import SourceContents
 from lib.db_tools import (
@@ -29,7 +30,7 @@ from lib.db_tools import (
 from lib.document_parse import load_pymupdf
 from lib.document_tools import split_markdown, split_text
 from lib.load_env import SETTINGS
-from lib.streamlit_tools import check_auth, get_all_categories, process_text_call
+from lib.streamlit_tools import check_auth, get_all_categories, graph_call
 
 st.set_page_config(
     page_title="TC POC: Upload files",
@@ -224,13 +225,23 @@ async def process_source(
         # texts = file_entry.texts
         # filetype = os.path.basename(filename).split(".")[-1]
 
-        result = await process_text_call(
+        result = await graph_call(
+            categories=categories,
+            filename=filename,
+            url=url,
+            file=file,
+            overwrite=False,
+            # collect_concepts=True,
+        )
+
+        taxonomy = await graph_call(
             categories=categories,
             filename=filename,
             url=url,
             file=file,
             overwrite=overwrite,
-            collect_concepts=True,
+            graph=find_concepts
+            # collect_concepts=True,
         )
         # with st.spinner("Processing"):
 
@@ -239,9 +250,17 @@ async def process_source(
         else:
             contents = result["content_summaries"]
 
+        if "collected_concepts" in taxonomy:
+            concepts = taxonomy["collected_concepts"]
+        else:
+            concepts = taxonomy["concepts"]
+
         with st.container(height=400, border=False):
             st.write(f"### Summary")
             st.write(contents.summary)
+            st.write(f"### Found concepts")
+            for concept in concepts:
+                st.write(concept)
 
 
 async def main():
@@ -395,7 +414,7 @@ async def main():
             elif filename in new_files_details:
                 det = new_files_details[filename]
 
-            await process_source(det["categories"], filename=filename, file=det["file"])
+            await process_source(det["categories"], filename=filename, file=det["file"], overwrite=True)
 
         get_db_sources(reset=True)
 

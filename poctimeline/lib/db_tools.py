@@ -376,24 +376,11 @@ def delete_db_concept(concept_id: str, commit: bool = True):
     if commit:
         database_session.commit()
 
-
-def update_db_source_rag_concepts(
+def update_db_concept_rag(
     source: str,
     categories: List[str],
-    texts: List[str],
-    contents: SourceContents,
     concepts: List[ConceptData] = None,
-    filetype="txt",
 ):
-    existing_source = (
-        database_session.query(SourceDataTable)
-        .filter(SourceDataTable.source == source)
-        .first()
-    )
-
-    if existing_source is None:
-        raise ValueError(f"Source {source} not found in the database.")
-
     category_id = "-".join(categories)
     defined_concept_ids = (
         [(category_id + "-" + concept.id) for concept in concepts] if concepts else []
@@ -407,7 +394,6 @@ def update_db_source_rag_concepts(
         .distinct()
         .all()
     )
-
     existing_concepts = [
         concept
         for concept in existing_concepts
@@ -417,14 +403,6 @@ def update_db_source_rag_concepts(
     rag_chunks = []
     rag_ids = []
     rag_metadatas = []
-
-    source_rag_chunks, source_rag_ids, source_rag_metadatas = get_source_rag_chunks(
-        texts, source, categories, contents, filetype
-    )
-
-    rag_chunks.extend(source_rag_chunks)
-    rag_ids.extend(source_rag_ids)
-    rag_metadatas.extend(source_rag_metadatas)
 
     concepts_by_id = {}
     new_ids = []
@@ -445,15 +423,8 @@ def update_db_source_rag_concepts(
             if str(concept.id) not in old_ids:
                 new_ids.append(str(concept.id))
 
-    # print(f"\n\n\n{source=}\n\n{rag_chunks=}\n\n{rag_ids=}\n\n{rag_metadatas=}\n\n")
-
-    existing_chroma_ids = (
-        existing_source.chroma_ids if existing_source is not None else []
-    )
-    existing_chroma_collections = (
-        existing_source.chroma_collections if existing_source is not None else []
-    )
-
+    existing_chroma_ids = []
+    existing_chroma_collections = []
     handled_concepts = []
 
     if existing_concepts is not None:
@@ -480,11 +451,9 @@ def update_db_source_rag_concepts(
                 concept.chroma_collections = ["rag_" + cat for cat in categories]
                 concept.category_tags = categories
                 concept.last_updated = datetime.now()
+                concept.sources = set(list(concept.sources) + [source])
                 handled_concepts.append(concept.id)
 
-        # filter unique from existing chroma ids and collections
-        existing_chroma_ids = list(set(existing_chroma_ids))
-        existing_chroma_collections = list(set(existing_chroma_collections))
     if concepts is not None:
         for concept in concepts:
             if concept.id not in handled_concepts:
@@ -498,7 +467,7 @@ def update_db_source_rag_concepts(
                     parent_id = None
                 new_id = concept.id
                 if db_concept_id_exists(concept.id):
-                    all_concept_ids = get_existing_concept_ids(True)
+                    # all_concept_ids = get_existing_concept_ids(True)
                     matching_ids = sorted(
                         set(
                             [
@@ -541,13 +510,63 @@ def update_db_source_rag_concepts(
         existing_chroma_collections,
     )
 
+    database_session.commit()
+
+def update_db_source_rag(
+    source: str,
+    categories: List[str],
+    texts: List[str],
+    contents: SourceContents,
+    filetype="txt",
+):
+    existing_source = (
+        database_session.query(SourceDataTable)
+        .filter(SourceDataTable.source == source)
+        .first()
+    )
+
+    if existing_source is None:
+        raise ValueError(f"Source {source} not found in the database.")
+
+    rag_chunks = []
+    rag_ids = []
+    rag_metadatas = []
+
+    source_rag_chunks, source_rag_ids, source_rag_metadatas = get_source_rag_chunks(
+        texts, source, categories, contents, filetype
+    )
+
+    rag_chunks.extend(source_rag_chunks)
+    rag_ids.extend(source_rag_ids)
+    rag_metadatas.extend(source_rag_metadatas)
+
+    existing_chroma_ids = (
+        existing_source.chroma_ids if existing_source is not None else []
+    )
+    existing_chroma_collections = (
+        existing_source.chroma_collections if existing_source is not None else []
+    )
+
+    existing_chroma_ids = None if len(existing_chroma_ids) == 0 else existing_chroma_ids
+    existing_chroma_collections = (
+        None if len(existing_chroma_collections) == 0 else existing_chroma_collections
+    )
+
+    update_rag(
+        categories,
+        rag_ids,
+        rag_chunks,
+        rag_metadatas,
+        existing_chroma_ids,
+        existing_chroma_collections,
+    )
+
     existing_source.texts = texts  # Update the text field with the new content
     existing_source.source_contents = contents
     existing_source.category_tags = categories
     existing_source.chroma_ids = rag_ids
     existing_source.chroma_collections = ["rag_" + cat for cat in categories]
     existing_source.last_updated = datetime.now()
-    existing_source.source_concepts = defined_concept_ids
     database_session.commit()
 
 

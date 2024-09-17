@@ -287,9 +287,16 @@ def get_source_rag_chunks(
         else:
             formatted_split = [content.formatted_content]
 
-        rag_split = rag_split + formatted_split
+        page_contents = []
+        if content.formatted_topics is not None and len(content.formatted_topics) > 1:
+            page_contents = [page.page_content for page in content.formatted_topics]
+
+        rag_split = rag_split + formatted_split + page_contents
         rag_ids = rag_ids + [
             source + "_formatted_" + str(i) for i in range(len(formatted_split))
+        ] + [
+            source + "_formatted_page_" + str(i)
+            for i in range(len(page_contents))
         ]
         rag_metadatas = rag_metadatas + [
             {
@@ -299,6 +306,14 @@ def get_source_rag_chunks(
                 "split": i,
             }
             for i in range(len(formatted_split))
+        ] + [
+            {
+                "source": "formatted_page_" + source,
+                "categories": ", ".join(categories),
+                "filetype": filetype,
+                "split": i,
+            }
+            for i in range(len(page_contents))
         ]
 
     return rag_split, rag_ids, rag_metadatas

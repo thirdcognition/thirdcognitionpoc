@@ -130,6 +130,8 @@ async def manage_file(filename):
             filetype = filename.split(".")[-1]
             summary = file_entry.source_contents.summary
             text = file_entry.source_contents.formatted_content
+            combined_topics = file_entry.source_contents.topics
+            topics = file_entry.source_contents.formatted_topics
             raw = file_entry.texts
 
             if filename in rewrite_text:
@@ -229,8 +231,17 @@ async def manage_file(filename):
                     st.success("Markdown rewrite complete")
                     rewrite_text[filename] = text
 
-                if text != None and len(text) > 0:
-                    st.write(text, unsafe_allow_html=True)
+                text_tab1, text_tab2 = st.tabs(["Combined", "Pages"])
+                with text_tab1:
+                    if text != None and len(text) > 0:
+
+                        st.write("##### Topics:\n - " + "\n - ".join(combined_topics))
+                        st.write("##### Content:\n\n" + text, unsafe_allow_html=True)
+                with text_tab2:
+                    for topic in topics:
+                        st.write("#### Page: " + str(topic.page_number) + " - " + str(topic.topic_index))
+                        st.write("##### " + topic.topic)
+                        st.write(topic.page_content, unsafe_allow_html=True)
 
                 if update:
                     instance = (

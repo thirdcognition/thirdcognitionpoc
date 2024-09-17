@@ -20,13 +20,13 @@ template: |
   </description>
   </category_tag>
 tags:
-- category_tag
 - title
 - taxonomy
 - tag
 - type
 - description
 optional_tags:
+- category_tag
 - id
 - parent_id
 - parent_taxonomy

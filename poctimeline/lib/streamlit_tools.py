@@ -1,16 +1,18 @@
 from io import BytesIO
 import re
-from typing import List
+from typing import Dict, List
 import streamlit as st
 import streamlit_authenticator as stauth
 import yaml
 from yaml.loader import SafeLoader
+from langchain_core.messages import BaseMessage
+from langgraph.graph.state import CompiledStateGraph
 
 from lib.chains.init import get_chain
 from lib.db_tools import SourceDataTable, init_db
 from lib.document_tools import markdown_to_text
-from langchain_core.messages import BaseMessage
 
+from lib.graphs.find_concepts import find_concepts
 from lib.graphs.process_text import ProcessTextState, process_text
 
 with open("admin_auth.yaml") as file:
@@ -64,7 +66,7 @@ def get_all_categories():
     return uniq_categories
 
 
-async def process_text_call(
+async def graph_call(
     show_progress=True,
     texts: List[str] = None,
     source: str = None,
@@ -74,12 +76,11 @@ async def process_text_call(
     categories: List[str] = None,
     overwrite: bool = False,
     guidance: str = None,
-    collect_concepts=True,
     summarize: bool = True,
-) -> ProcessTextState:
+    graph: CompiledStateGraph = process_text
+) -> Dict:
     config = {
         "configurable": {
-            "collect_concepts": collect_concepts,
             "overwrite_sources": overwrite,
             "rewrite_text": overwrite,
             "update_rag": (source != None or file != None or url != None)
@@ -88,26 +89,28 @@ async def process_text_call(
             "summarize": summarize,
         }
     }
-    states = {
-        "split": "Read and analyse document",
-        "reformat": "Rewrite document",
-    }
-    if config["configurable"]["collect_concepts"]:
+    states = {}
+    if graph == find_concepts:
         states.update(
             {
-                "split_reformatted": "Build document taxonomy",
-                "find_concepts": "Search for concepts based on taxonomy",
+                "get_source_content": "Get source content",
+                "split_reformatted": "Split document into pages",
+                "search_for_taxonomy": "Build document taxonomy",
+                "search_concepts": "Search for concepts based on taxonomy",
+                "combine_concepts": "Combine found concepts",
                 "collapse_concepts": "Format concepts and taxonomy"
             }
         )
-
-    states.update(
-        {
-            "summary": "Write summary",
-            "collapse": "Collapse contents",
-            "finalize": "Combine contents",
-        }
-    )
+    else:
+        states.update(
+            {
+                "split": "Read and analyse document",
+                "reformat": "Rewrite document",
+                "summary": "Write summary",
+                "collapse": "Collapse contents",
+                "finalize": "Combine contents",
+            }
+        )
 
 
     if config["configurable"]["update_rag"]:
@@ -134,7 +137,7 @@ async def process_text_call(
     if texts is not None:
         params["contents"] = texts
 
-    async for event in process_text.astream_events(
+    async for event in graph.astream_events(
         params,
         config=config,
         version="v2",
@@ -208,7 +211,7 @@ async def llm_edit(
     if not force and (len(texts) == 1 and len(texts[0]) < 1000):
         return texts[0] or ""
 
-    result = await process_text_call(
+    result = await graph_call(
         show_progress=show_process,
         texts=texts,
         guidance=guidance,

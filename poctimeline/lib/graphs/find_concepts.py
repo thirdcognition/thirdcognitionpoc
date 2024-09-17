@@ -302,6 +302,11 @@ async def search_concepts(state: ProcessConceptsState, config: RunnableConfig):
     more_concepts: ParsedConceptList = await get_chain("concept_structured").ainvoke(
         params
     )
+    if isinstance(more_concepts, AIMessage):
+        print("Retry concept_structured once")
+        more_concepts: ParsedConceptList = await get_chain(
+            "concept_structured"
+        ).ainvoke(params)
 
     max_repeat = 1
     repeat = 0
@@ -312,20 +317,26 @@ async def search_concepts(state: ProcessConceptsState, config: RunnableConfig):
             new_concepts += more_concepts.concepts
             if repeat > max_repeat:
                 break
+            params = {
+                "context": params["context"],
+                "taxonomy": taxonomy,
+                "existing_concepts": "\n".join(
+                    f"{concept.title.replace('\n', ' ').strip()}:\n"
+                    f"Summary: {concept.summary.replace('\n', ' ').strip()}\n"
+                    f"Taxonomy IDs: {', '.join(concept.taxonomy).replace('\n', ' ').strip()}\n"
+                    f"Content:\n{concept.content.strip()}\n"
+                    for concept in new_concepts
+                ),
+            }
             # print(f"{ident}: Finding more concepts after found: {len(more_concepts.concepts)} {repeat=}")
             more_concepts: ParsedConceptList = await get_chain("concept_more").ainvoke(
-                {
-                    "context": params["context"],
-                    "taxonomy": taxonomy,
-                    "existing_concepts": "\n".join(
-                        f"{concept.title.replace('\n', ' ').strip()}:\n"
-                        f"Summary: {concept.summary.replace('\n', ' ').strip()}\n"
-                        f"Taxonomy IDs: {', '.join(concept.taxonomy).replace('\n', ' ').strip()}\n"
-                        f"Content:\n{concept.content.strip()}\n"
-                        for concept in new_concepts
-                    ),
-                }
+                params
             )
+            if isinstance(more_concepts, AIMessage):
+                print("Retry concept_more once")
+                more_concepts: ParsedConceptList = await get_chain(
+                    "concept_more"
+                ).ainvoke(params)
     except Exception as e:
         print(e)
 
@@ -344,20 +355,24 @@ async def search_concepts(state: ProcessConceptsState, config: RunnableConfig):
         concept.page_number = topic.page_number
 
     global_new_ids += new_ids
+    params = {
+        "existing_concepts": "\n".join(
+            f"Id({concept.id}): {concept.title.replace('\n', ' ').strip()}\n"
+            f"Summary: {concept.summary.replace('\n', ' ').strip()}\n"
+            f"Taxonomy IDs: {', '.join(concept.taxonomy).replace('\n', ' ').strip()}\n"
+            f"Content:\n{concept.content.strip()}\n"
+            for concept in new_concepts
+        )
+    }
     # print(f"{ident}: Finding unique concepts in")
     unique_concept_ids: ParsedUniqueConceptList = await get_chain(
         "concept_unique"
-    ).ainvoke(
-        {
-            "existing_concepts": "\n".join(
-                f"Id({concept.id}): {concept.title.replace('\n', ' ').strip()}\n"
-                f"Summary: {concept.summary.replace('\n', ' ').strip()}\n"
-                f"Taxonomy IDs: {', '.join(concept.taxonomy).replace('\n', ' ').strip()}\n"
-                f"Content:\n{concept.content.strip()}\n"
-                for concept in new_concepts
-            )
-        }
-    )
+    ).ainvoke(params)
+    if isinstance(unique_concept_ids, AIMessage):
+        print("Retry concept_unique once")
+        unique_concept_ids: ParsedUniqueConceptList = await get_chain(
+            "concept_unique"
+        ).ainvoke(params)
     global _divider
 
     concepts: Dict[str, ParsedConcept] = {}

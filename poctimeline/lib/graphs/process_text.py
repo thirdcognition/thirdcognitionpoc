@@ -233,48 +233,87 @@ class SummaryState(TypedDict):
     content: Union[str, Document]
     instructions: str
 
+
 def parse_content_dict(data):
     result = []
-    for item in data['children']:
-        if item['tag'] == 'output':
-            topic = next((child['body'] for child in item['children'] if child['tag'] == 'topic'), None)
-            content = item['body']
-            summary = next((child['body'] for child in item['children'] if child['tag'] == 'summary'), None)
-            result.append({
-                "topic": topic,
-                "content": content,
-                "summary": summary
-            })
+    for item in data["children"]:
+        if item["tag"] == "output":
+            topic = next(
+                (
+                    child["body"]
+                    for child in item["children"]
+                    if child["tag"] == "topic"
+                ),
+                None,
+            )
+            content = item["body"]
+            summary = next(
+                (
+                    child["body"]
+                    for child in item["children"]
+                    if child["tag"] == "summary"
+                ),
+                None,
+            )
+            result.append({"topic": topic, "content": content, "summary": summary})
         else:
             result.extend(parse_content_dict(item))
     return result
 
+
 # Here we generate a summary, given a document
 async def reformat_content(state: SummaryState):
     response = {}
+    content = (
+        [state["content"]]
+        if not isinstance(state["content"], list)
+        else state["content"]
+    )
+    next_page = (
+        [state["next_page_content"]]
+        if not isinstance(state["next_page_content"], list)
+        else state["next_page_content"]
+    )
+    prev_page = (
+        [state["prev_page_content"]]
+        if not isinstance(state["prev_page_content"], list)
+        else state["prev_page_content"]
+    )
+    content = "\n".join(
+        [
+            ((item.page_content if isinstance(item, Document) else item))
+            for item in content
+        ]
+    )
+    next_page = "\n".join(
+        [
+            (item.page_content if isinstance(item, Document) else repr(item))
+            for item in next_page
+        ]
+    )
+    next_page = next_page[:1000] if len(next_page) > 1000 else next_page
+    prev_page = "\n".join(
+        [
+            (item.page_content if isinstance(item, Document) else repr(item))
+            for item in prev_page
+        ]
+    )
+    prev_page = prev_page[-1000:] if len(prev_page) > 1000 else prev_page
     if state["instructions"] is not None:
         response = await get_chain("text_formatter_guided").ainvoke(
             {
-                "context": (
-                    state["content"].page_content
-                    if isinstance(state["content"], Document)
-                    else state["content"]
-                ),
-                "next_page": state["next_page_content"],
-                "prev_page": state["prev_page_content"],
+                "context": content,
+                "next_page": next_page,
+                "prev_page": prev_page,
                 "instructions": state["instructions"],
             }
         )
     else:
         response = await get_chain("text_formatter").ainvoke(
             {
-                "context": (
-                    state["content"].page_content
-                    if isinstance(state["content"], Document)
-                    else state["content"]
-                ),
-                "next_page": state["next_page_content"],
-                "prev_page": state["prev_page_content"],
+                "context": content,
+                "next_page": next_page,
+                "prev_page": prev_page,
             }
         )
     metadata = {}
@@ -299,26 +338,42 @@ async def reformat_content(state: SummaryState):
         parsed_content = parse_content_dict(response["parsed"])
         items = []
         for i, topic in enumerate(parsed_content):
-            items.append({
-                "document": Document(page_content=topic["content"], metadata={**metadata, "topic": i+1}),
-                "topic_index": i+1,
-                "topic": topic["topic"],
-                "summary": topic["summary"],
-            })
+            items.append(
+                {
+                    "document": Document(
+                        page_content=topic["content"],
+                        metadata={**metadata, "topic": i + 1},
+                    ),
+                    "topic_index": i + 1,
+                    "topic": topic["topic"],
+                    "summary": topic["summary"],
+                }
+            )
         if len(items) > 1:
-            average_lengths = [len(item["document"].page_content) for item in items[:-1]]
-            average_length = sum(average_lengths) / len(average_lengths) if average_lengths else 0
+            average_lengths = [
+                len(item["document"].page_content) for item in items[:-1]
+            ]
+            average_length = (
+                sum(average_lengths) / len(average_lengths) if average_lengths else 0
+            )
             if len(items[-1]["document"].page_content) > average_length * 1.5:
                 last_item = items.pop()
                 last_item["topic_index"] = 0
-                last_item["summary"] = last_item["summary"] if last_item["summary"] is not None else last_item["document"].page_content[:200] + "..."
-                last_item["topic"] = last_item["topic"] if last_item["topic"] is not None else "Overview"
+                last_item["summary"] = (
+                    last_item["summary"]
+                    if last_item["summary"] is not None
+                    else last_item["document"].page_content[:200] + "..."
+                )
+                last_item["topic"] = (
+                    last_item["topic"] if last_item["topic"] is not None else "Overview"
+                )
 
                 items.insert(0, last_item)
 
-
     else:
-        doc = Document(page_content=get_text_from_completion(response), metadata=metadata)
+        doc = Document(
+            page_content=get_text_from_completion(response), metadata=metadata
+        )
         topics = []
         summaries = []
         if tags is not None:
@@ -327,19 +382,17 @@ async def reformat_content(state: SummaryState):
             if "summary" in tags:
                 summaries = str(tags["summary"]).split("\n\n")
 
-        items = [{
-            "document" : doc,
-            "topic": topics,
-            "summary": summaries,
-        }]
+        items = [
+            {
+                "document": doc,
+                "topic": topics,
+                "summary": summaries,
+            }
+        ]
 
     return {
         "reformatted_txt": [
-            {
-                "index": state["index"],
-                "page": state["page"],
-                "items": items
-            }
+            {"index": state["index"], "page": state["page"], "items": items}
         ]
     }
 
@@ -358,14 +411,16 @@ def map_reformat(state: ProcessTextState):
                 "instructions": (
                     state["instructions"] if "instructions" in state else None
                 ),
-                "prev_page_content": (
-                    state["contents"][page - 1].page_content[:1000] if page > 0 else ""
-                ),
+                "prev_page_content": (state["contents"][page - 1] if page > 0 else ""),
                 "next_page_content": (
-                    state["contents"][page + 1].page_content[-1000:] if page < len(state["contents"]) - 1 else ""
+                    state["contents"][page + 1]
+                    if page < len(state["contents"]) - 1
+                    else ""
                 ),
                 "page": (
-                    state["page"] if "page" in state and state["page"] != -1 else (page + 1)
+                    state["page"]
+                    if "page" in state and state["page"] != -1
+                    else (page + 1)
                 ),
                 "index": page,
                 "filename": state["filename"] if "filename" in state else None,
@@ -407,12 +462,23 @@ async def concat_reformat(state: ProcessTextState, config: RunnableConfig):
             for item in result["items"]
         ],
         "summary": "\n".join(
-            ["\n".join(item["summary"] or "" for result in sorted_reformat for item in result["items"])]
+            [
+                "\n".join(
+                    item["summary"] or ""
+                    for result in sorted_reformat
+                    for item in result["items"]
+                )
+            ]
         ),
         "topics": set(
-            [item["topic"] or "" for result in sorted_reformat for item in result["items"]]
+            [
+                item["topic"] or ""
+                for result in sorted_reformat
+                for item in result["items"]
+            ]
         ),
     }
+
 
 async def finalize_content(state: ProcessTextState, config: RunnableConfig):
     instructions = state["instructions"] if "instructions" in state else None

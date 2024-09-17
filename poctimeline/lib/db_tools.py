@@ -376,15 +376,14 @@ def delete_db_concept(concept_id: str, commit: bool = True):
     if commit:
         database_session.commit()
 
+
 def update_db_concept_rag(
     source: str,
     categories: List[str],
     concepts: List[ConceptData] = None,
 ):
     category_id = "-".join(categories)
-    defined_concept_ids = (
-        [(category_id + "-" + concept.id) for concept in concepts] if concepts else []
-    )
+    defined_concept_ids = [concept.id for concept in concepts] if concepts else []
 
     existing_concepts = (
         database_session.query(ConceptDataTable)
@@ -412,10 +411,6 @@ def update_db_concept_rag(
             category_id=category_id, concepts=concepts
         )
         for concept, concept_chunks, concept_ids, concept_metadatas in resp:
-            concept.id = category_id + "-" + concept.id
-            if concept.parent_id is not None:
-                concept.parent_id = category_id + "-" + concept.parent_id
-
             rag_chunks.extend(concept_chunks)
             rag_ids.extend(concept_ids)
             rag_metadatas.extend(concept_metadatas)
@@ -427,12 +422,15 @@ def update_db_concept_rag(
     existing_chroma_collections = []
     handled_concepts = []
 
+    concept_ids = []
+
     if existing_concepts is not None:
         for concept in existing_concepts:
             existing_chroma_ids.extend(concept.chroma_ids)
             existing_chroma_collections.extend(concept.chroma_collections)
 
             if concept.id in concepts_by_id:
+                concept_ids.append(concept.id)
                 new_concept: ConceptData = concepts_by_id[str(concept.id)]["concept"]
                 parent_id = concept.parent_id or new_concept.parent_id
                 if parent_id is not concept.parent_id:
@@ -483,7 +481,7 @@ def update_db_concept_rag(
                     )
                     defined_concept_ids.remove(concept.id)
                     defined_concept_ids.append(new_id)
-
+                concept_ids.append(new_id)
                 new_concept = ConceptDataTable(
                     id=new_id,
                     parent_id=parent_id,
@@ -510,7 +508,20 @@ def update_db_concept_rag(
         existing_chroma_collections,
     )
 
+    existing_source = (
+        database_session.query(SourceDataTable)
+        .filter(SourceDataTable.source == source)
+        .first()
+    )
+
+    if existing_source is not None:
+        existing_source.source_concepts = list(
+            set(list(existing_source.source_concepts) + concept_ids)
+        )
+        existing_source.last_updated = datetime.now()
+
     database_session.commit()
+
 
 def update_db_source_rag(
     source: str,

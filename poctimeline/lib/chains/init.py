@@ -47,6 +47,7 @@ from lib.prompts.actions import (
 )
 from lib.prompts.formatters import (
     text_formatter,
+    text_formatter_simple,
     text_formatter_compress,
     text_formatter_guided,
     md_formatter,
@@ -273,6 +274,7 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
     "task": ("instruct_0", action, False),
     "grader": ("structured", grader, False),
     "check": ("instruct_0", check, False),
+    "text_formatter_simple": ("instruct", text_formatter_simple, False),
     "text_formatter": ("instruct", text_formatter, False),
     "text_formatter_compress": ("instruct", text_formatter_compress, False),
     "text_formatter_guided": (

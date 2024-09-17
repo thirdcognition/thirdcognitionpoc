@@ -45,6 +45,26 @@ TAXONOMY_TAGS: List[str] = taxonomy_examples_yaml["tags"]
 TAXONOMY_OPTIONAL_TAGS: List[str] = taxonomy_examples_yaml["optional_tags"]
 TAXONOMY_ALL_TAGS: List[str] = TAXONOMY_TAGS + TAXONOMY_OPTIONAL_TAGS
 
+text_formatter_simple = PromptFormatter(
+    system=textwrap.dedent(
+        f"""
+        Act as a document formatter.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
+        Rewrite the text specified by the user between the context start and context end in full detail using natural language.
+        Don't use html tags or markdown. Remove all mentions of confidentiality. Use only information from the available in the text.
+        """
+    ),
+    user=textwrap.dedent(
+        """
+        Context start
+        {context}
+        Context end
+
+        Format the text in the context.
+        """
+    ),
+)
+
 text_formatter = PromptFormatter(
     system=textwrap.dedent(
         f"""
@@ -241,7 +261,8 @@ concept_taxonomy = PromptFormatter(
         {KEEP_PRE_THINK_TOGETHER}
         Extract content taxonomy category tags from the context the provided template structure.
         The category tags are used to organize the ideas, topics, or subjects that can be found from the context.
-        Prioritize using existing tags instead of providing new ones.
+        Prioritize using existing tags instead of providing new ones. Do not export or rewrite the existing taxonomy,
+        only use it as a reference to define new taxanomy.
 
         Use the following templates and examples as guide:
 
@@ -257,6 +278,9 @@ concept_taxonomy = PromptFormatter(
         Context start
         {context}
         Context end
+
+        Do not export or rewrite the existing taxonomy,
+        only use it as a reference to define new taxanomy.
         """
     ),
 )

@@ -40,6 +40,7 @@ from lib.models.sqlite_tables import (
     SourceContentPage,
     SourceReference,
     convert_concept_category_tag_to_dict,
+    convert_taxonomy_dict_to_tag_simple_structure_string,
     convert_taxonomy_dict_to_tag_structure_string,
     convert_taxonomy_tags_to_dict,
 )
@@ -64,6 +65,7 @@ class FindConceptsState(TypedDict):
     summary: str
     topics: Set[str]
     instructions: str
+    get_source_complete: bool = False
     split_reformatted_complete: bool = False
     search_concepts_complete: bool = False
     collapse_concepts_complete: bool = False
@@ -78,8 +80,9 @@ class FindConceptsConfig(TypedDict):
 
 
 class ProcessConceptsState(TypedDict):
+    categories: List[str]
+    filename: str
     url: str
-    file: str
     topic: SourceContentPage
     taxonomy: Dict
 
@@ -142,17 +145,19 @@ def get_specific_tag(items, tag="category_tag") -> List[dict]:
 #     }
 
 
-async def search_for_taxonomy(state: FindConceptsState, config:RunnableConfig):
+async def search_for_taxonomy(state: FindConceptsState, config: RunnableConfig):
     existing_concept_taxonomy: List[ConceptTaxonomy] = get_taxonomy_item_list(
         reset=True, categories=state["categories"]
     )
 
     pretty_print(existing_concept_taxonomy, "Existing taxonomy")
 
+    taxonomy_ids = [taxonomy_item.id for taxonomy_item in existing_concept_taxonomy]
+
     existing_taxonomy = ""
     existing_taxonomy += "\n\n".join(
         [
-            convert_taxonomy_dict_to_tag_structure_string(
+            convert_taxonomy_dict_to_tag_simple_structure_string(
                 convert_concept_category_tag_to_dict(v)
             )
             for v in existing_concept_taxonomy
@@ -163,24 +168,64 @@ async def search_for_taxonomy(state: FindConceptsState, config:RunnableConfig):
 
     topics = state["source_content_topics"]
 
-    nex_taxonomy = ""
+    nex_taxonomy_str = ""
     new_taxonomy_items = []
+    cat_for_id = "-".join(state["categories"]).replace(" ", "-").lower()
     for topic in topics:
-        snippet_taxonomy = await get_chain("concept_taxonomy").ainvoke(
+        topic_taxonomy = await get_chain("concept_taxonomy").ainvoke(
             {
-                "existing_taxonomy": existing_taxonomy + nex_taxonomy,
-                "context": f"{topic.topic}:\n\n{topic.page_content}",
+                "existing_taxonomy": existing_taxonomy + "\n" + nex_taxonomy_str,
+                "context": f"{topic.topic}: \n\n{topic.page_content}",
             }
         )
-        category_tags = get_specific_tag(snippet_taxonomy["parsed"]["children"] or [])
-        if len(category_tags) == 0:
-            print(f"No category tag found for snippet: {topic.page_content[:100]}...")
+        found_new_taxonomy_items = get_specific_tag(
+            topic_taxonomy["parsed"]["children"] or []
+        )
+        if len(found_new_taxonomy_items) == 0:
+            print(
+                f"No new category taxonomy found for topic: {topic.page_content[:100]}..."
+            )
             continue
-        if len(category_tags) > 0:
-            for item in category_tags:
-                new_taxonomy_items.append(
-                    convert_taxonomy_tags_to_dict(item, TAXONOMY_ALL_TAGS)
-                )
+        if len(found_new_taxonomy_items) > 0:
+            for item in found_new_taxonomy_items:
+                try:
+                    new_taxonomy = convert_taxonomy_tags_to_dict(
+                        item, TAXONOMY_ALL_TAGS
+                    )
+                    new_id = (
+                        new_taxonomy["category_tag"]["id"]
+                        if "id" in new_taxonomy["category_tag"]
+                        and new_taxonomy["category_tag"]["id"] not in taxonomy_ids
+                        else cat_for_id
+                        + "-"
+                        + get_unique_id(
+                            new_taxonomy["category_tag"]["taxonomy"], taxonomy_ids
+                        )
+                    )
+                    taxonomy_ids.append(new_id)
+                    new_taxonomy["category_tag"]["id"] = new_id
+                    parent_id = (
+                        new_taxonomy["category_tag"]["parent_id"]
+                        if "parent_id" in new_taxonomy["category_tag"]
+                        else cat_for_id
+                        + "-"
+                        + get_unique_id(
+                            new_taxonomy["category_tag"]["parent_taxonomy"], []
+                        )
+                    )
+                    if parent_id in taxonomy_ids:
+                        new_taxonomy["category_tag"]["parent_id"] = parent_id
+                    new_taxonomy_items.append(new_taxonomy)
+                    nex_taxonomy_str += (
+                        convert_taxonomy_dict_to_tag_simple_structure_string(
+                            new_taxonomy
+                        )
+                        + "\n"
+                    )
+                except Exception as e:
+                    print(f"Error parsing taxonomy: {e}")
+                    pretty_print(item, "Error parsing taxonomy", force=True)
+                    continue
 
     global _new_ids
     _new_ids[state["filename"] if "filename" in state else state["url"]] = []
@@ -198,11 +243,14 @@ async def map_search_concepts(state: FindConceptsState):
 
     new_taxonomy: Dict[str, Dict] = state["taxonomy"]
     state_taxonomy = [
-        convert_taxonomy_dict_to_tag_structure_string(
+        convert_taxonomy_dict_to_tag_simple_structure_string(
             convert_concept_category_tag_to_dict(item)
         )
         for item in taxonomy
-    ] + [convert_taxonomy_dict_to_tag_structure_string(item) for item in new_taxonomy]
+    ] + [
+        convert_taxonomy_dict_to_tag_simple_structure_string(item)
+        for item in new_taxonomy
+    ]
 
     pretty_print(new_taxonomy, "Taxonomy items")
 
@@ -212,6 +260,7 @@ async def map_search_concepts(state: FindConceptsState):
             {
                 "url": state["url"] if "url" in state else None,
                 "filename": state["filename"] if "filename" in state else None,
+                "categories": state["categories"],
                 "topic": topic,
                 "taxonomy": state_taxonomy,
             },
@@ -285,9 +334,11 @@ async def search_concepts(state: ProcessConceptsState, config: RunnableConfig):
         state["filename"] if "filename" in state else state["url"]
     ]
     new_ids = []
+    cat_for_id = "-".join(state["categories"]).replace(" ", "-").lower()
     for concept in new_concepts:
         concept.id = get_unique_id(
-            concept.title, get_existing_concept_ids() + new_ids + global_new_ids
+            cat_for_id + "-" + concept.title,
+            get_existing_concept_ids() + new_ids + global_new_ids,
         )
         new_ids.append(concept.id)
         concept.page_number = topic.page_number
@@ -471,11 +522,11 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
         ).ainvoke(
             {
                 "existing_taxonomy": "\n".join(
-                    convert_taxonomy_dict_to_tag_structure_string(item)
+                    convert_taxonomy_dict_to_tag_simple_structure_string(item)
                     for item in existing_taxonomy
                 ),
                 "new_taxonomy": "\n".join(
-                    convert_taxonomy_dict_to_tag_structure_string(item)
+                    convert_taxonomy_dict_to_tag_simple_structure_string(item)
                     for item in new_concept_taxonomy
                 ),
                 "concepts": "\n".join(
@@ -528,8 +579,8 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
             print("\n\nRetrying concept hierarchy...")
             concept_hierarchy = await concept_hierarchy_task()
 
-        pretty_print(concept_taxonomy, "Concept taxonomy", force=True)
-        pretty_print(concept_hierarchy, "Concept hierarchy", force=True)
+        pretty_print(concept_taxonomy, "Concept taxonomy")
+        pretty_print(concept_hierarchy, "Concept hierarchy")
 
         unwrapped_hierarchy = unwrap_concept_hierarchy(concept_hierarchy)
         inverted_hierarchy: Dict[str, str] = {}
@@ -537,16 +588,22 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
             for item in value:
                 inverted_hierarchy[item] = key
 
-        pretty_print(unwrapped_hierarchy, "Unwrapped hierarchy")
-        pretty_print(inverted_hierarchy, "Inverted hierarchy")
+        # pretty_print(unwrapped_hierarchy, "Unwrapped hierarchy")
+        # pretty_print(inverted_hierarchy, "Inverted hierarchy")
 
-        existing_concept_category_ids = existing_taxonomy_by_id.keys()
+        existing_concept_category_ids = list(existing_taxonomy_by_id.keys())
         new_category_ids = []
+        cat_for_id = "-".join(state["categories"]).replace(" ", "-").lower()
+        all_new_ids = list(
+            set([category.id.strip() for category in concept_taxonomy.taxonomy])
+        )
+        all_possible_ids = list(set(existing_concept_category_ids + new_category_ids))
         for category in concept_taxonomy.taxonomy:
             category.id = (
                 category.id
                 or get_unique_id(
-                    category.tag, list(existing_concept_category_ids) + new_category_ids
+                    cat_for_id + "-" + category.taxonomy,
+                    list(existing_concept_category_ids) + new_category_ids,
                 )
             ).strip()
             new_id = category.id
@@ -578,10 +635,16 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
                 )
             else:
                 new_category_ids.append(new_id)
+                parent_id = (
+                    category.parent_id.strip()
+                    if category.parent_id is not None
+                    and category.parent_id.strip() in all_possible_ids
+                    else None
+                )
                 changes = True
                 existing_taxonomy_by_id[new_id] = ConceptTaxonomy(
                     id=new_id,
-                    parent_id=category.parent_id,
+                    parent_id=parent_id,
                     title=category.title.replace("\n", " ").strip(),
                     tag=category.tag.strip(),
                     description=category.description.replace("\n", " ").strip(),
@@ -595,11 +658,16 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
                 )
 
             if category.parent_id:
-                changes = (
-                    changes
-                    or existing_taxonomy_by_id[new_id].parent_id != category.parent_id
+                parent_id = (
+                    category.parent_id.strip()
+                    if category.parent_id is not None
+                    and category.parent_id.strip() in all_possible_ids
+                    else existing_taxonomy_by_id[new_id].parent_id
                 )
-                existing_taxonomy_by_id[new_id].parent_id = category.parent_id
+                changes = (
+                    changes or existing_taxonomy_by_id[new_id].parent_id != parent_id
+                )
+                existing_taxonomy_by_id[new_id].parent_id = parent_id
 
             if changes:
                 pretty_print(existing_taxonomy_by_id[new_id], "Updated category")
@@ -630,7 +698,9 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
                     if id is not None and id in found_concepts_by_id.keys()
                     else sum_concept
                 )
-                new_id = concept.id or get_unique_id(concept.title, all_ids)
+                new_id = concept.id or cat_for_id + "-" + get_unique_id(
+                    concept.title, all_ids
+                )
                 new_concept = ConceptData(
                     id=new_id,
                     parent_id=(
@@ -762,9 +832,7 @@ async def collapse_concept(i: int, concepts: List[ConceptData], concept: Concept
 
     if len(concept.contents) > 1:
         reformat = get_text_from_completion(
-            await get_chain("text_formatter").ainvoke(
-                {"context": joined, "prev_page": "", "next_page": ""}
-            )
+            await get_chain("text_formatter_simple").ainvoke({"context": joined})
         )
         concept.contents = [reformat]
         joined = reformat
@@ -825,6 +893,7 @@ find_concepts_graph.add_node("search_for_taxonomy", search_for_taxonomy)
 find_concepts_graph.add_node("search_concepts", search_concepts)
 find_concepts_graph.add_node("combine_concepts", combine_concepts)
 find_concepts_graph.add_node("collapse_concepts", collapse_concepts)
+find_concepts_graph.add_node("finalize_concepts", finalize_concepts)
 find_concepts_graph.add_node("rag_concepts", rag_concepts)
 
 
@@ -838,7 +907,8 @@ find_concepts_graph.add_conditional_edges(
 
 find_concepts_graph.add_edge("search_concepts", "combine_concepts")
 find_concepts_graph.add_edge("combine_concepts", "collapse_concepts")
-find_concepts_graph.add_conditional_edges("collapse_concepts", should_rag)
+find_concepts_graph.add_edge("collapse_concepts", "finalize_concepts")
+find_concepts_graph.add_conditional_edges("finalize_concepts", should_rag)
 find_concepts_graph.add_edge("rag_concepts", END)
 
 find_concepts = find_concepts_graph.compile()

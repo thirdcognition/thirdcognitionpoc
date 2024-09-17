@@ -231,7 +231,7 @@ async def manage_file(filename):
                     st.success("Markdown rewrite complete")
                     rewrite_text[filename] = text
 
-                text_tab1, text_tab2 = st.tabs(["Combined", "Pages"])
+                text_tab1, text_tab2 = st.tabs(["Combined", "Pages/Topics"])
                 with text_tab1:
                     if text != None and len(text) > 0:
 

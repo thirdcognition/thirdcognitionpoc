@@ -80,6 +80,7 @@ class ProcessTextState(TypedDict):
     topics: Set[str]
     source_contents: SourceContents
     instructions: str
+    get_source_complete: bool = False
     split_complete: bool = False
     reformat_complete: bool = False
     collapse_complete: bool = False
@@ -219,6 +220,7 @@ async def get_source_content(state: Dict, config: RunnableConfig):
         "reformat_complete": True,
         # "reformat_contents": source_data.texts,
         "source_content_topics": source_data.source_contents.formatted_topics,
+        "get_source_complete": True,
         "summary": source_data.source_contents.summary,
         "topics": source_data.source_contents.topics,
     }
@@ -276,7 +278,7 @@ async def reformat_content(state: SummaryState):
             }
         )
     metadata = {}
-    if isinstance("content", Document):
+    if isinstance(state["content"], Document):
         metadata = state["content"].metadata.copy()
 
     if "file" in state and state["file"] is not None:

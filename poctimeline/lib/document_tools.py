@@ -20,7 +20,7 @@ from langchain.schema.document import Document
 
 from lib.load_env import SETTINGS
 from lib.chains.init import get_embeddings
-from lib.models.sqlite_tables import ConceptData, SourceContents
+from lib.models.sqlite_tables import ConceptData, SourceContentPage, SourceContents
 
 
 @cache
@@ -364,4 +364,53 @@ def get_concept_rag_chunks(
             for j in range(len(concept_split))
         ]
         response.append((concept, concept_split, concept_ids, concept_metadatas))
+    return response
+
+def get_topic_rag_chunks(
+    topics: List[SourceContentPage],
+    source: str,
+    categories: List[str],
+) -> List[tuple[ConceptData, List[str], List[Dict[str, Dict]], List[Dict]]]:
+    response = []
+    category_id = ",".join(categories).lower().strip().replace(" ", "_")
+    for i, topic in enumerate(topics):
+        # topic_split = []
+        # topic_ids = []
+        # topic_metadatas = []
+        topic_split = split_text(
+            "\n".join(topic.page_content),
+            SETTINGS.default_embeddings.default.char_limit,
+            SETTINGS.default_embeddings.default.overlap,
+        )
+        # topic_split += topic_split
+        id = f"{topic.topic.lower().strip().replace(' ', '_')}"
+        topic_ids = [
+            (
+                (
+                    (category_id + "-" + id)
+                    if category_id not in id
+                    else id
+                )
+                + "_"
+                + str(i)
+                + "_"
+                + str(j)
+            ).replace(" ", "_")
+            for j in range(len(topic_split))
+        ]
+
+        topic_metadatas = [
+            {
+                "source": source,
+                "topic": topic.topic,
+                "topic_id": id,
+                "categories": ", ".join(categories),
+                "split": str(i) + "_" + str(j),
+                **topic.metadata,
+            }
+            for j in range(len(topic_split))
+        ]
+        topic.chroma_collections = list(set(["rag_" + cat + "_topic" for cat in categories]))
+        topic.chroma_ids = list(set(topic_ids))
+        response.append((topic, topic_split, topic_ids, topic_metadatas))
     return response

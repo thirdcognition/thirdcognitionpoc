@@ -80,6 +80,10 @@ class ParsedConcept(BaseModel):
         description="An human readable id for this concept using letters and _ if available. If not available, leave blank.",
         title="Id",
     )
+    parent_id: Optional[str] = Field(
+        description="An human readable id for this concept using letters and _ if available. If not available, leave blank.",
+        title="Id",
+    )
     page_number: Optional[int] = Field(
         description="Page number where this concept was identified",
         title="Reference",
@@ -96,6 +100,10 @@ class ParsedConceptIds(BaseModel):
     id: Optional[str] = Field(
         description="An human readable id for this concept using letters and _ if available. If not available, leave blank.",
         title="Id",
+    )
+    parent_id: Optional[str] = Field(
+        description="An human readable id for the parent concept using letters and _ if available. If not available, leave blank.",
+        title="Parent Id",
     )
     combined_ids: Optional[List[str]] = Field(
         description="List of IDs that were combined into this 1 concept. If not available, leave blank.",
@@ -296,6 +304,8 @@ class SourceContentPage(BaseModel):
     topic_index: int
     metadata: Dict
     topic: str
+    chroma_collections: Optional[List[str]]
+    chroma_ids: Optional[List[str]]
 
 
 class SourceContents(BaseModel):

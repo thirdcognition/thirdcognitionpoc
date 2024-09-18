@@ -12,7 +12,7 @@ from chromadb.utils.embedding_functions import create_langchain_embedding
 from chromadb.config import Settings as ChromaSettings
 import streamlit as st
 from lib.chains.init import get_embeddings
-from lib.document_tools import get_source_rag_chunks, get_concept_rag_chunks
+from lib.document_tools import get_source_rag_chunks, get_concept_rag_chunks, get_topic_rag_chunks
 from lib.load_env import SETTINGS
 from lib.models.journey import JourneyModel
 from lib.models.sqlite_tables import (
@@ -21,6 +21,7 @@ from lib.models.sqlite_tables import (
     ConceptTaxonomy,
     ConceptDataTable,
     ConceptData,
+    SourceContentPage,
     SourceContents,
     SourceData,
     SourceDataTable,
@@ -168,6 +169,7 @@ def update_rag(
     rag_metadatas: List[str],
     existing_ids: List[str] = None,
     existing_collections: List[str] = None,
+    type="",
 ):
     if (
         existing_ids is not None
@@ -184,9 +186,9 @@ def update_rag(
     collections = []
 
     for cat in categories:
-        collections.append("rag_" + cat)
+        collections.append("rag_" + cat + ("_" + type if type else ""))
         vectorstore = get_chroma_collections(
-            "rag_" + cat
+            "rag_" + cat + ("_" + type if type else "")
         )  # get_vectorstore("rag_" + cat)
         store_complete = False
         retries = 0
@@ -446,10 +448,10 @@ def update_db_concept_rag(
                 concept.taxonomy = new_concept.taxonomy
                 concept.parent_id = parent_id
                 concept.chroma_ids = concepts_by_id[str(concept.id)]["rag_ids"]
-                concept.chroma_collections = ["rag_" + cat for cat in categories]
+                concept.chroma_collections = ["rag_" + cat + "_concept" for cat in categories]
                 concept.category_tags = categories
                 concept.last_updated = datetime.now()
-                concept.sources = set(list(concept.sources) + [source])
+                concept.sources = list(set(list(concept.sources) + [source]))
                 handled_concepts.append(concept.id)
 
     if concepts is not None:
@@ -489,7 +491,7 @@ def update_db_concept_rag(
                     taxonomy=concept.taxonomy,
                     category_tags=categories,
                     chroma_ids=concepts_by_id[str(concept.id)]["rag_ids"],
-                    chroma_collections=["rag_" + cat for cat in categories],
+                    chroma_collections=["rag_" + cat + "_concept" for cat in categories],
                     last_updated=datetime.now(),
                 )
                 database_session.add(new_concept)
@@ -506,6 +508,7 @@ def update_db_concept_rag(
         rag_metadatas,
         existing_chroma_ids,
         existing_chroma_collections,
+        type="concept"
     )
 
     existing_source = (
@@ -547,9 +550,15 @@ def update_db_source_rag(
         texts, source, categories, contents, filetype
     )
 
-    rag_chunks.extend(source_rag_chunks)
-    rag_ids.extend(source_rag_ids)
-    rag_metadatas.extend(source_rag_metadatas)
+    resp: List[tuple[SourceContentPage, List, List, List]] = get_topic_rag_chunks(
+        contents.formatted_topics, source, categories
+    )
+
+    topic_rag_chunks = []
+    topic_rag_ids = []
+    topic_rag_metadatas = []
+
+
 
     existing_chroma_ids = (
         existing_source.chroma_ids if existing_source is not None else []
@@ -563,6 +572,35 @@ def update_db_source_rag(
         None if len(existing_chroma_collections) == 0 else existing_chroma_collections
     )
 
+    existing_topic_chroma_ids = []
+    existing_topic_chroma_collections = []
+    if existing_source is not None and existing_source.source_contents is not None:
+        source_contents: SourceContents = existing_source.source_contents
+        for existing_topic_source in source_contents.formatted_topics:
+            existing_topic_chroma_ids.extend(
+                existing_topic_source.chroma_ids
+            )
+            existing_topic_chroma_collections.extend(
+                existing_topic_source.chroma_collections
+            )
+
+    existing_topic_chroma_ids = None if len(existing_topic_chroma_ids) == 0 else existing_topic_chroma_ids
+    existing_topic_chroma_collections = (
+        None if len(existing_topic_chroma_collections) == 0 else existing_topic_chroma_collections
+    )
+
+    new_topics = []
+
+    for topic, topic_chunks, topic_ids, topic_metadatas in resp:
+        topic_rag_chunks.extend(topic_chunks)
+        topic_rag_ids.extend(topic_ids)
+        topic_rag_metadatas.extend(topic_metadatas)
+        new_topics.append(topic)
+
+    rag_chunks.extend(source_rag_chunks)
+    rag_ids.extend(source_rag_ids)
+    rag_metadatas.extend(source_rag_metadatas)
+
     update_rag(
         categories,
         rag_ids,
@@ -571,6 +609,17 @@ def update_db_source_rag(
         existing_chroma_ids,
         existing_chroma_collections,
     )
+
+    update_rag(
+        categories,
+        topic_rag_ids,
+        topic_rag_chunks,
+        topic_rag_metadatas,
+        existing_topic_chroma_ids,
+        existing_topic_chroma_collections,
+        type="topic"
+    )
+    contents.formatted_topics = new_topics
 
     existing_source.texts = texts  # Update the text field with the new content
     existing_source.source_contents = contents

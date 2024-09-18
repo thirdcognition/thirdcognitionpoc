@@ -1,4 +1,5 @@
 import asyncio
+from collections import defaultdict
 from optparse import Option
 import os
 import sys
@@ -12,8 +13,11 @@ sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 from lib.helpers import pretty_print
 from lib.models.sqlite_tables import ConceptData, ConceptDataTable, ConceptTaxonomy
 from lib.db_tools import (
+    get_concept_by_id,
+    get_concept_category_tag_by_id,
     get_db_concept_taxonomy,
     get_db_concepts,
+    get_db_sources,
     init_db,
 )
 
@@ -85,8 +89,6 @@ def build_hierarchy(
             else:
                 hierarchy[item.id] = {}
 
-
-
     return hierarchy
 
 
@@ -96,7 +98,10 @@ def concept_hierarchy(categories: List[str]):
         concepts = get_db_concepts(categories=[category])
         concepts_by_id = {concept.id: concept for concept in concepts}
         hierarchy = build_hierarchy(concepts)
-
+        # pretty_print({
+        #     "hierarchy": hierarchy,
+        #     "concepts": [concept.concept_contents.model_dump_json(indent=2) for concept in concepts]
+        # }, "Concept Hierarchy", force=True)
         for id in hierarchy.keys():
             children = hierarchy[id].get("children", [])
             if len(children) > 0:
@@ -154,6 +159,10 @@ def taxonomy_hierarchy(taxonomy: Dict[str, List[ConceptTaxonomy]]):
 
         st.header(category)
         hierarchy = build_hierarchy(taxonomy[category])
+        # pretty_print({
+        #     "hierarchy": hierarchy,
+        #     "taxonomy": [taxonomy_item.model_dump_json(indent=2) for taxonomy_item in taxonomy[category]]
+        # }, "Taxonomy Hierarchy", force=True)
         break_reset = True
 
         for id in hierarchy.keys():
@@ -210,6 +219,40 @@ def by_taxonomy_items(taxonomy: Dict[str, List[ConceptTaxonomy]]):
             manage_taxonomy(item)
 
 
+def by_source(source_name:str):
+    file_entry = get_db_sources(source=source_name)[source_name]
+    tagged_concepts: Dict[str, List[ConceptData]] = defaultdict(list)
+    tags:Dict[str, ConceptTaxonomy] = {}
+    st.subheader(f"{source_name}")
+    with st.container():
+        for concept_id in file_entry.source_concepts:
+            db_concept = get_concept_by_id(concept_id)
+            concept_inst:ConceptData = db_concept.concept_contents
+            display_concept(concept_inst)
+        #     for tag in concept_inst.taxonomy:
+        #         tagged_concepts[tag].append(concept_inst)
+        #         if tag not in tags:
+        #             tag_inst = get_concept_category_tag_by_id(tag)
+        #             if tag_inst:
+        #                 tags[tag] = tag_inst.concept_category_tag
+
+        # for concept_tag, concepts in tagged_concepts.items():
+        #     if concept_tag in tags:
+        #         st.write(f"### {tags[concept_tag].title}:")
+        #         st.write(tags[concept_tag].description)
+        #         # with st.expander("Concept instances"):
+        #         for concept_inst in concepts:
+        #             with st.expander(f"Concept: {concept_inst.title}"):
+        #                 st.write(f"#### {concept_inst.id}")
+        #                 st.code(concept_inst.id)
+        #                 sub_col1, sub_col2  = st.columns([1,2])
+        #                 sub_col1.write("References:")
+        #                 sub_col1.write(ref for ref in concept_inst.references)
+        #                 sub_col1.write("Taxonomy:")
+        #                 sub_col1.write(concept_inst.taxonomy)
+        #                 sub_col2.write(f"##### Summary:\n{concept_inst.summary}")
+        #                 sub_col2.write(f"##### Content:\n{'\n'.join(concept_inst.contents)}")
+
 async def main():
 
     init_db()
@@ -249,7 +292,11 @@ async def main():
         with tab2:
             taxonomy_hierarchy(taxonomy)
         with tab3:
-            st.write("TODO")
+            files = get_db_sources(categories=categories)
+            source = st.selectbox("Available sources", files.keys(), index=None)
+            # for file in files.keys():
+            if source is not None:
+                by_source(source)
 
         with tab4:
             by_taxonomy_items(taxonomy)

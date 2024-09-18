@@ -464,6 +464,8 @@ async def concat_reformat(state: ProcessTextState, config: RunnableConfig):
                 topic_index=item["topic_index"],
                 metadata=item["document"].metadata,
                 topic=item["topic"] or "",
+                chroma_ids=[],
+                chroma_collections=[]
             )
             for result in sorted_reformat
             for item in list(
@@ -499,22 +501,36 @@ async def concat_reformat(state: ProcessTextState, config: RunnableConfig):
 
 async def finalize_content(state: ProcessTextState, config: RunnableConfig):
     instructions = state["instructions"] if "instructions" in state else None
+
+    contents_str = "\n".join(
+        [page.page_content for page in state["source_content_topics"]]
+    )
+    if len(contents_str) < SETTINGS.default_llms.instruct.char_limit:
+        formatted_content = get_chain("stuff_documents").ainvoke({
+            "context": [Document(page_content=page.topic + "\n" + page.page_content, metadata=page.metadata) for page in state["source_content_topics"]]
+        })
+    else:
+        formatted_content = get_chain("text_formatter_simple").ainvoke(
+            {
+                "context": contents_str
+            }
+        )
+
     summary_collapsed = ""
     if config["configurable"]["summarize"]:
         if instructions is not None:
-            response = await get_chain("summary_guided").ainvoke(
+            response = get_chain("summary_guided").ainvoke(
                 {
                     "context": state["summary"],
                     "instructions": instructions,
                 }
             )
         else:
-            response = await get_chain("summary").ainvoke({"context": state["summary"]})
-        summary_collapsed = get_text_from_completion(response)
+            response = get_chain("summary").ainvoke({"context": state["summary"]})
 
-    formatted_content = "\n".join(
-        [page.page_content for page in state["source_content_topics"]]
-    )
+        summary_collapsed = get_text_from_completion(await response)
+
+    formatted_content = get_text_from_completion(await formatted_content)
 
     flat_contents: List[Document] = []
     for item in state["contents"]:
@@ -553,7 +569,9 @@ async def rag_content(state: ProcessTextState, config: RunnableConfig):
     if state["filename"] is not None:
         filetype = os.path.basename(state["filename"]).split(".")[-1]
 
-    if config["configurable"]["overwrite_sources"] or state.get("split_complete", False):
+    if config["configurable"]["overwrite_sources"] or state.get(
+        "split_complete", False
+    ):
         texts = [page.page_content for page in state["final_contents"]]
         update_db_source_rag(
             state["filename"] or state["url"],

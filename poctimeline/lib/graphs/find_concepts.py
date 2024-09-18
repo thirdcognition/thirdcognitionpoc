@@ -1,6 +1,8 @@
 import asyncio
 import io
+import itertools
 import operator
+from optparse import Option
 from typing import Annotated, Dict, List, Literal, Set, TypedDict, Union
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage
@@ -528,6 +530,110 @@ def unwrap_concept_hierarchy(
     return result
 
 
+def get_concept_str(
+    concepts: List,
+    as_array: bool = False,
+    summary: bool = False,
+    content: bool = False,
+    taxonomy: bool = False,
+    page_number: bool = False,
+    combined_ids: bool = False,
+    sources: bool = False,
+    children: bool = False,
+    references: bool = False,
+) -> str:
+    ret_str = []
+    for concept in concepts:
+        if isinstance(concept, ConceptData):
+            ret_str.append(
+                (f"ParentID({concept.parent_id})" if concept.parent_id else "")
+                + f"ID({concept.id})"
+                + (
+                    f"ChildIDs({', '.join(concept.children)})"
+                    if children and concept.children and len(concept.children) > 0
+                    else ""
+                )
+                + (
+                    f"TaxonomyIDs({', '.join(concept.taxonomy)})"
+                    if taxonomy and concept.taxonomy and len(concept.taxonomy) > 0
+                    else ""
+                )
+                + (
+                    f"Sources({', '.join(concept.sources)})"
+                    if sources and concept.sources and len(concept.sources) > 0
+                    else ""
+                )
+                + (
+                    f"References({'-'.join([f'{reference.source}:{reference.page_number}' for reference in concept.references])})"
+                    if references and concept.references and len(concept.references) > 0
+                    else ""
+                )
+                + f"\n{concept.title.strip()}:"
+                + (
+                    f"\nSummary: {concept.summary.replace('\n', ' ').strip()}\n"
+                    if summary and concept.summary
+                    else ""
+                )
+                + (
+                    f"\nContent:\n{'\n'.join(concept.contents).strip()}"
+                    if content and concept.contents
+                    else ""
+                )
+            )
+        if isinstance(concept, ParsedConcept):
+            ret_str.append(
+                (f"ParentID({concept.parent_id})" if concept.parent_id else "")
+                + f"ID({concept.id})"
+                + (
+                    f"Page({concept.page_number})"
+                    if page_number and concept.page_number
+                    else ""
+                )
+                + (
+                    f"TaxonomyIDs({', '.join(concept.taxonomy)})"
+                    if taxonomy and concept.taxonomy and len(concept.taxonomy) > 0
+                    else ""
+                )
+                + f"\n{concept.title.strip()}:"
+                + (
+                    f"\nSummary: {concept.summary.replace('\n', ' ').strip()}\n"
+                    if summary and concept.summary
+                    else ""
+                )
+                + (
+                    f"\nContent:\n{concept.content.strip()}"
+                    if content and concept.content
+                    else ""
+                )
+            )
+        if isinstance(concept, ParsedConceptIds):
+            ret_str.append(
+                (f"ParentID({concept.parent_id})" if concept.parent_id else "")
+                + f"ID({concept.id})"
+                + (
+                    f"CombinedIDs({', '.join(concept.combined_ids)})"
+                    if combined_ids
+                    and concept.combined_ids
+                    and len(concept.combined_ids) > 0
+                    else ""
+                )
+                + (
+                    f"TaxonomyIDs({', '.join(concept.taxonomy)})"
+                    if taxonomy and concept.taxonomy and len(concept.taxonomy) > 0
+                    else ""
+                )
+                + f"\n{concept.title.strip()}:"
+                + (
+                    f"\nSummary: {concept.summary.replace('\n', ' ').strip()}\n"
+                    if summary and concept.summary
+                    else ""
+                )
+            )
+    if as_array:
+        return ret_str
+    return "\n".join(ret_str)
+
+
 async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
     concepts: List[ConceptData] = []  # state["concepts"] if "concepts" in state else []
     all_concept_ids = get_existing_concept_ids(refresh=True)
@@ -560,16 +666,22 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
                 previous_concepts[concept.id] = ConceptData(**concept.concept_contents)
         global _divider
 
-        existing_concepts_content = "\n".join(
-            [
-                f"Id({concept.id}): {concept.title}\nSummary: {concept.summary.strip().replace('\n', ' ')}\nTaxonomy IDs: {', '.join(concept.taxonomy)}"
-                for concept in previous_concepts.values()
-            ]
+        existing_concepts_content = get_concept_str(
+            previous_concepts.values(), summary=True, taxonomy=True
         )
-        new_concepts_content = [
-            f"Id({concept.id}): {concept.title}\nSummary: {concept.summary.strip().replace('\n', ' ')}\nTaxonomy IDs: {', '.join(concept.taxonomy)}"
-            for concept in found_concepts
-        ]
+        # "\n".join(
+        #     [
+        #         f"Id({concept.id}): {concept.title}\nSummary: {concept.summary.strip().replace('\n', ' ')}\nTaxonomy IDs: {', '.join(concept.taxonomy)}"
+        #         for concept in previous_concepts.values()
+        #     ]
+        # )
+        new_concepts_content = get_concept_str(
+            found_concepts, summary=True, taxonomy=True, as_array=True
+        )
+        # [
+        #     f"Id({concept.id}): {concept.title}\nSummary: {concept.summary.strip().replace('\n', ' ')}\nTaxonomy IDs: {', '.join(concept.taxonomy)}"
+        #     for concept in found_concepts
+        # ]
 
         unique_contents: List[tuple] = []
         if (
@@ -598,6 +710,7 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
 
         # print(f"Found {len(found_concepts)} concepts, optimizing for unique concepts.")
         uniq_concepts: List[ParsedConceptIds] = []
+        combined_ids: Dict[str, List[str]] = {}
         for uniq_item in unique_contents:
             item_unique_concepts: ParsedUniqueConceptList = await get_unique_concepts(
                 uniq_item[0], uniq_item[1]
@@ -608,13 +721,28 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
                 item_unique_concepts = await get_unique_concepts(
                     uniq_item[0], uniq_item[1]
                 )
+            for item in item_unique_concepts.concepts:
+                if (
+                    item.id is not None
+                    and item.combined_ids is not None
+                    and len(item.combined_ids) > 0
+                ):
+                    if item.id in combined_ids:
+                        combined_ids[item.id] = list(
+                            set(item.combined_ids + combined_ids[item.id])
+                        )
+                    else:
+                        combined_ids[item.id] = item.combined_ids
             uniq_concepts.extend(item_unique_concepts.concepts)
 
         if len(unique_contents) > 1:
-            new_concepts_content = [
-                f"Id({concept.id}): {concept.title}\nSummary: {concept.summary.strip().replace('\n', ' ')}\nTaxonomy IDs: {', '.join(concept.taxonomy)}"
-                for concept in uniq_concepts
-            ]
+            new_concepts_content = get_concept_str(
+                uniq_concepts, summary=True, taxonomy=True, as_array=True
+            )
+            # [
+            #     f"Id({concept.id}): {concept.title}\nSummary: {concept.summary.strip().replace('\n', ' ')}\nTaxonomy IDs: {', '.join(concept.taxonomy)}"
+            #     for concept in uniq_concepts
+            # ]
             item_unique_concepts: ParsedUniqueConceptList = await get_unique_concepts(
                 existing_concepts_content, new_concepts_content
             )
@@ -624,16 +752,55 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
                 item_unique_concepts = await get_unique_concepts(
                     existing_concepts_content, new_concepts_content
                 )
-            uniq_concepts.extend(item_unique_concepts.concepts)
+            uniq_concepts = item_unique_concepts.concepts
+
+        for item in uniq_concepts:
+            if (
+                item.id is not None
+                and item.combined_ids is not None
+                and len(item.combined_ids) > 0
+            ):
+                if item.id in combined_ids:
+                    combined_ids[item.id] = list(
+                        set(item.combined_ids + combined_ids[item.id])
+                    )
+                else:
+                    combined_ids[item.id] = item.combined_ids
+
+        reverse_combined_ids: Dict[str, str] = {}
+        all_combined_ids = list(set(itertools.chain(*combined_ids.values())))
+        for parent_id, value in combined_ids.items():
+            found = True
+            while parent_id in all_combined_ids and found:
+                found = True
+                for new_parent_id, par_values in combined_ids.items():
+                    if parent_id in par_values:
+                        parent_id = new_parent_id
+                        found = True
+                        break
+                    found = False
+
+            for child_id in value:
+                reverse_combined_ids[child_id] = parent_id
+
+        for concept in uniq_concepts:
+            if (
+                concept.parent_id is not None
+                and concept.parent_id in reverse_combined_ids
+            ):
+                concept.parent_id = reverse_combined_ids[concept.parent_id]
 
         pretty_print(uniq_concepts, "New unique concepts")
 
         concept_hierarchy_task = lambda: get_chain("concept_hierarchy").ainvoke(
             {
-                "existing_concepts": "\n".join(
-                    f"Id({concept.id}): {concept.title}\n{concept.summary}"
-                    for concept in uniq_concepts
-                )
+                "existing_concepts": get_concept_str(
+                    uniq_concepts, summary=True, taxonomy=True
+                ),
+                # "\n".join(
+                #     f"{f'ParentId({concept.parent_id})' if concept.parent_id is not None else ''} Id({concept.id if concept.id is not None else 'not_set'}): {concept.title}\n{concept.summary}"
+                #     for concept in uniq_concepts
+                # )
             }
         )
 
@@ -649,10 +816,11 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
                     convert_taxonomy_dict_to_tag_simple_structure_string(item)
                     for item in new_concept_taxonomy
                 ),
-                "concepts": "\n".join(
-                    f"Id({concept.id}): {concept.title}\nSummary: {concept.summary}\nTaxonomy IDs: {', '.join(concept.taxonomy)}"
-                    for concept in uniq_concepts
-                ),
+                "concepts": get_concept_str(uniq_concepts, summary=True, taxonomy=True),
+                # "\n".join(
+                #     f"{f'ParentId({concept.parent_id})' if concept.parent_id is not None else ''} Id({concept.id if concept.id is not None else 'not_set'}): {concept.title}\nSummary: {concept.summary}\nTaxonomy IDs: {', '.join(concept.taxonomy)}"
+                #     for concept in uniq_concepts
+                # ),
             }
         )
 
@@ -789,7 +957,7 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
             id = sum_concept.id
             old_concept_item = False
             new_concept: ConceptData
-            if id is None or id not in all_concept_ids:
+            if id is None or id not in all_concept_ids or id not in previous_concepts.keys():
                 concept = (
                     found_concepts_by_id[id]
                     if id is not None and id in found_concepts_by_id.keys()
@@ -798,13 +966,14 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
                 new_id = concept.id or cat_for_id + "-" + get_unique_id(
                     concept.title, all_ids
                 )
+                parent_id = inverted_hierarchy.get(new_id, None)
+
+                if parent_id is not None and parent_id in reverse_combined_ids:
+                    parent_id = reverse_combined_ids[parent_id]
+
                 new_concept = ConceptData(
                     id=new_id,
-                    parent_id=(
-                        inverted_hierarchy[new_id]
-                        if new_id in inverted_hierarchy.keys()
-                        else None
-                    ),
+                    parent_id=parent_id,
                     title=sum_concept.title,
                     summary=sum_concept.summary,
                     contents=(
@@ -830,7 +999,7 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
                         if child_id in all_ids
                     ],
                 )
-            elif id in found_concepts_by_id.keys():
+            elif id in found_concepts_by_id.keys() and id in previous_concepts.keys():
                 concept = found_concepts_by_id[id]
                 new_concept = previous_concepts[id]
                 new_concept.contents.extend(concept.content.split(_divider))
@@ -883,9 +1052,12 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
                             set(new_concept.sources + previous_concepts[id].sources)
                         )
                         new_concept.children.append(previous_concepts[id].id)
-                        new_concept.parent_id = (
+                        parent_id = (
                             new_concept.parent_id or previous_concepts[id].parent_id
                         )
+                        if parent_id in reverse_combined_ids.keys():
+                            parent_id = reverse_combined_ids[parent_id]
+                        new_concept.parent_id = parent_id
                     if id in found_concepts_by_id.keys():
                         concept = found_concepts_by_id[id]
                         new_concept.contents.extend(concept.content.split(_divider))

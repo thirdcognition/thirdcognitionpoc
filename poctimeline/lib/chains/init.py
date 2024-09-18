@@ -276,7 +276,7 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
     "grader": ("structured", grader, False),
     "check": ("instruct_0", check, False),
     "text_formatter_simple": ("instruct", text_formatter_simple, False),
-    "text_formatter": ("instruct", text_formatter, False),
+    "text_formatter": ("instruct", text_formatter, True),
     "text_formatter_compress": ("instruct", text_formatter_compress, False),
     "text_formatter_guided": (
         "instruct_detailed_0" if not DEVMODE else "instruct_0",
@@ -297,14 +297,14 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
     "concept_taxonomy_refine": (
         "instruct_detailed" if not DEVMODE else "instruct",
         concept_taxonomy_refine,
-        False,
+        True,
     ),
-    "concept_structured": ("structured", concept_structured, True),
-    "concept_more": ("structured", concept_more, True),
+    "concept_structured": ("structured", concept_structured, False),
+    "concept_more": ("structured", concept_more, False),
     "concept_unique": (
         "structured_detailed" if not DEVMODE else "structured",
         concept_unique,
-        False,
+        True,
     ),
     "concept_hierarchy": (
         "structured_detailed" if not DEVMODE else "structured",

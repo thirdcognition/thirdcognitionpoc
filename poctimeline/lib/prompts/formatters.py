@@ -299,7 +299,7 @@ concept_taxonomy_refine = PromptFormatter(
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         {PRE_THINK_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
-        Combine, refine and reduce the taxonomy defined within
+        Combine and refine the taxonomy defined within
         the new taxonomy items where possible.
         The existing taxonomy should be used as a reference to
         define new taxonomy and cannot be modified.

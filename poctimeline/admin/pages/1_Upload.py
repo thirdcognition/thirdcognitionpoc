@@ -230,7 +230,7 @@ async def process_source(
             filename=filename,
             url=url,
             file=file,
-            overwrite=False,
+            overwrite=overwrite,
             # collect_concepts=True,
         )
 

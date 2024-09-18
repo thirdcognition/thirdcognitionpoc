@@ -300,6 +300,7 @@ async def manage_file(filename):
                     file_entry.chroma_collections,
                     placeholder="Choose one",
                     index=None,
+                    key=f"rag_id_{filename}",
                 )
                 # print("RAG ID:", rag_id)
 

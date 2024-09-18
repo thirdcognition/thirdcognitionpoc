@@ -859,9 +859,7 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
         existing_concept_category_ids = list(existing_taxonomy_by_id.keys())
         new_category_ids = []
         cat_for_id = "-".join(state["categories"]).replace(" ", "-").lower()
-        all_new_ids = list(
-            set([category.id.strip() for category in concept_taxonomy.taxonomy])
-        )
+
         all_possible_ids = list(set(existing_concept_category_ids + new_category_ids))
         for category in concept_taxonomy.taxonomy:
             category.id = (

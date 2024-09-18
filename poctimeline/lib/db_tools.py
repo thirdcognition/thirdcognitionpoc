@@ -29,6 +29,7 @@ from lib.models.sqlite_tables import (
     SourceType,
 )
 from lib.chains.prompt_generator import CustomPrompt, CustomPromptContainer
+from lib.helpers import pretty_print
 
 chroma_client = None
 database_session = None
@@ -96,6 +97,7 @@ def get_db_sources(
 def db_commit():
     database_session.commit()
     get_db_sources(reset=True)
+    get_db_concept_taxonomy(reset=True)
 
 
 def delete_db_source(filename: str, commit: bool = True):
@@ -280,8 +282,18 @@ def get_db_concept_taxonomy(
     #     db_concept_taxonomy = new_db_concept_taxonomy
     return db_concept_taxonomy
 
+def delete_db_concept_taxonomy(taxonomy_id: str, commit: bool = True):
+    instance = (
+        database_session.query(ConceptCategoryDataTable)
+        .where(ConceptCategoryDataTable.id == taxonomy_id)
+        .first()
+    )
+    database_session.delete(instance)
+    if commit:
+        database_session.commit()
 
-def update_concept_category(tag: ConceptTaxonomy, categories=List[str]):
+
+def update_concept_taxonomy(tag: ConceptTaxonomy, categories=List[str], commit: bool = True):
     if db_concept_category_tag_id_exists(tag.id):
         # print(f"\n\nUpdate existing tag:\n\n{tag.model_dump_json(indent=4)}")
         concept_category = (
@@ -305,7 +317,8 @@ def update_concept_category(tag: ConceptTaxonomy, categories=List[str]):
         )
         database_session.add(concept_category)
 
-    database_session.commit()
+    if commit:
+        database_session.commit()
 
 
 @cache
@@ -344,7 +357,10 @@ def get_db_concepts(
     concepts = database_session.query(ConceptDataTable).all()
 
     if source is not None:
+        print(f"Filtering concepts by source: {source}")
+        pretty_print([{"sources": concept.sources, "id": concept.id} for concept in concepts], force=True)
         concepts = [concept for concept in concepts if source in concept.sources]
+        pretty_print(concepts, "filtered concepts", force=True)
     if taxonomy is not None:
         concepts = [
             concept for concept in concepts if str(taxonomy.id) in concept.taxonomy
@@ -490,6 +506,7 @@ def update_db_concept_rag(
                     concept_contents=concept,
                     taxonomy=concept.taxonomy,
                     category_tags=categories,
+                    sources=list(set(list(concept.sources) + [source])),
                     chroma_ids=concepts_by_id[str(concept.id)]["rag_ids"],
                     chroma_collections=["rag_" + cat + "_concept" for cat in categories],
                     last_updated=datetime.now(),

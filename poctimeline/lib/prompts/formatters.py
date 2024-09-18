@@ -413,11 +413,10 @@ concept_more.parser = PydanticOutputParser(pydantic_object=ParsedConceptList)
 concept_unique = PromptFormatter(
     system=textwrap.dedent(
         f"""
-        Act as a concept unique compiler who is finding all unique concepts from a list.
+        Act as a concept compiler who is finding all unique concepts from a list.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
-        You are provided with a list of concepts extracted from a document.
-        Check that all the concepts are unique. If there are any duplicates, remove or combine them.
-        The concepts are the main ideas, topics, or subjects.
+        Check that all the concepts within the list are unique.
+        If there are any duplicate or overlapping concepts combine them.
         """
     ),
     user=textwrap.dedent(
@@ -434,9 +433,10 @@ concept_unique = PromptFormatter(
         {format_instructions}
         format instructions end
         ----------------
-        Using the existing and new concepts find the all unique concepts and extract them using the specified format.
-        Don't export duplicate concepts, combine them if possible and only use existing ids. Don't create any more
-        new concepts. Format the context data using the format instructions.
+        Using the concepts find the all unique concepts and extract them using the specified format.
+        Don't export duplicate concepts, combine them if possible and only use existing ids where defined.
+        Don't create any new concepts.
+        Format the resulting concepts using the format instructions.
         Return only the properly formatted JSON object with the formatted data.
         """
     ),

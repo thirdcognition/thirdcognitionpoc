@@ -72,9 +72,6 @@ def display_concept(
             )
 
 
-
-
-
 def build_hierarchy(
     items: Union[List[ConceptDataTable], List[ConceptTaxonomy]],
     parent_id=None,
@@ -82,7 +79,7 @@ def build_hierarchy(
     hierarchy = {}
     for item in items:
         children = None
-        if item.parent_id == parent_id:
+        if item.parent_id == parent_id or item.parent_id == "" and parent_id is None:
             children = build_hierarchy(items, parent_id=item.id)
             if children:
                 hierarchy[item.id] = {"children": children}
@@ -105,7 +102,7 @@ def concept_hierarchy(categories: List[str]):
         for id in hierarchy.keys():
             children = hierarchy[id].get("children", [])
             if len(children) > 0:
-                st.write("---")
+                # st.write("---")
                 st.subheader(f"{concepts_by_id[id].concept_contents.title}")
 
             display_concept(
@@ -122,7 +119,7 @@ def concept_hierarchy(categories: List[str]):
 def manage_taxonomy(
     taxonomy: ConceptTaxonomy = None,
     taxonomy_by_id: Dict[str, List[ConceptTaxonomy]] = None,
-    id: str=None,
+    id: str = None,
     children: dict = None,
     header: str = None,
 ):
@@ -150,6 +147,7 @@ def manage_taxonomy(
                     else None
                 ),
             )
+
 
 def taxonomy_hierarchy(taxonomy: Dict[str, List[ConceptTaxonomy]]):
     for category in taxonomy.keys():
@@ -219,15 +217,18 @@ def by_taxonomy_items(taxonomy: Dict[str, List[ConceptTaxonomy]]):
             manage_taxonomy(item)
 
 
-def by_source(source_name:str):
+def by_source(source_name: str):
     file_entry = get_db_sources(source=source_name)[source_name]
     tagged_concepts: Dict[str, List[ConceptData]] = defaultdict(list)
-    tags:Dict[str, ConceptTaxonomy] = {}
+    tags: Dict[str, ConceptTaxonomy] = {}
     st.subheader(f"{source_name}")
     with st.container():
         for concept_id in file_entry.source_concepts:
             db_concept = get_concept_by_id(concept_id)
-            concept_inst:ConceptData = db_concept.concept_contents
+            concept_inst: ConceptData = db_concept.concept_contents
+            pretty_print(
+                concept_inst.model_dump_json(indent=2), "Concept Data", force=True
+            )
             display_concept(concept_inst)
         #     for tag in concept_inst.taxonomy:
         #         tagged_concepts[tag].append(concept_inst)
@@ -252,6 +253,7 @@ def by_source(source_name:str):
         #                 sub_col1.write(concept_inst.taxonomy)
         #                 sub_col2.write(f"##### Summary:\n{concept_inst.summary}")
         #                 sub_col2.write(f"##### Content:\n{'\n'.join(concept_inst.contents)}")
+
 
 async def main():
 

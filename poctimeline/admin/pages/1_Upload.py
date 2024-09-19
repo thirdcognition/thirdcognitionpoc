@@ -17,15 +17,11 @@ from langchain_core.messages import BaseMessage
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
+from lib.db.source import get_db_sources
+from lib.db.sqlite import init_db
 from lib.graphs.find_concepts import find_concepts
-from lib.graphs.process_text import process_text
-from lib.models.sqlite_tables import SourceContents
-from lib.db_tools import (
-    SourceDataTable,
-    # JourneyDataTable,
-    get_db_sources,
-    init_db,
-)
+from lib.graphs.find_topics import find_topics
+from lib.models.sqlite_tables import SourceContents, SourceDataTable
 
 from lib.document_parse import load_pymupdf
 from lib.document_tools import split_markdown, split_text

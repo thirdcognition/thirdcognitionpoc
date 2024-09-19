@@ -25,7 +25,29 @@ PRE_THINK_INSTRUCT = """
         If you detect that you made a mistake in your reasoning at any point, correct yourself inside <reflection> tags.
         """
 PRE_THINK_TAGS = ["thinking", "reflection"]
-SUMMARIZE_INSTRUCT = """
+PAGE_INSTRUCT = """
+        Use <thinking>-tag to consider the contents of the page and how to rewrite them. Explain your reasoning using
+        <reflect>-tag and make sure to cover all topics separately.
+
+        Rewrite the page in a way that contains all the information about the topic that is available within the context.
+        Use the <output>-tag to wrap the content, add <topic>-tag to specify the topic and <summary>-tag to specify the summary of the content.
+        Use following format for each topic:
+        <output>
+        <topic>
+        Topic
+        </topic>
+        Formatted content in full detail.
+        <summary>
+        Summary of the content
+        </summary>
+        </output>
+
+        Always use <[tag]> and </[tag]>-tags, e.g. <topic> and </topic> when tags are specified.
+        There should only be one of <ouptut>, <topic> and <summary>-tags. If the page
+        contains multiple topics, combine them into one topic.
+        """
+PAGE_INSTRUCT_TAGS = ["topic", "summary"]
+TOPIC_INSTRUCT = """
         Use <thinking>-tag to identify different topics that are contained within the page. Explain your reasoning using
         <reflect>-tag and make sure to cover all topics separately.
 
@@ -48,7 +70,7 @@ SUMMARIZE_INSTRUCT = """
         do not consider this to cover all content but just one slice of it.
         Always use <[tag]> and </[tag]>-tags, e.g. <topic> and </topic> when tags are specified.
         """
-SUMMARIZE_INSTRUCT_TAGS = ["topic", "summary"]
+TOPIC_INSTRUCT_TAGS = ["topic", "summary"]
 ACTOR_INTRODUCTIONS = "You are a world-class AI system, capable of complex reasoning and reflection called Virtual Buddy."
 # For example:
 

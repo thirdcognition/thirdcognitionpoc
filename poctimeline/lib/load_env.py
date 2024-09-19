@@ -164,7 +164,7 @@ class Settings(BaseModel):
     file_tablename: str
     journey_tablename: str
     concepts_tablename: str
-    concept_category_tags_tablename: str
+    concept_taxonomys_tablename: str
 
 
 SETTINGS = Settings(
@@ -175,7 +175,7 @@ SETTINGS = Settings(
     file_tablename="files",
     journey_tablename="journey",
     concepts_tablename="concepts",
-    concept_category_tags_tablename="concept_category_tags"
+    concept_taxonomys_tablename="concept_taxonomys"
 )
 
 SETTINGS.default_llms = ModelDefaults()

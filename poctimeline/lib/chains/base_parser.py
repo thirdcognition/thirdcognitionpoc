@@ -1,5 +1,5 @@
 import textwrap
-from typing import Dict
+from typing import Dict, List
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.output_parsers import (
@@ -16,7 +16,7 @@ from langchain_core.runnables import (
 )
 from pydantic import BaseModel, ValidationError
 from lib.chains.base import BaseChain
-from lib.helpers import print_params
+from lib.helpers import pretty_print, print_params
 from lib.prompts.base import PromptFormatter
 from lib.prompts.actions import error_retry
 
@@ -56,7 +56,9 @@ def retry_setup(params):
 
 def get_text_from_completion(completion):
     completion_content = repr(completion)
-    if isinstance(completion, tuple):
+    if isinstance(completion, List) and isinstance(completion[0], Document):
+        completion_content = "\n\n".join([doc.page_content.strip() for doc in completion])
+    elif isinstance(completion, tuple):
         if isinstance(completion[0], bool):
             completion_content = completion[1].strip()
         elif len(completion) == 2:
@@ -135,11 +137,12 @@ class BaseParserChain(BaseChain):
         )
 
         def rerun_parser(x):
-            print_params("Rerun format parser", x)
-            x["completion"] = get_text_from_completion(x["completion"])
+            completion = x["completion"]
+
+            completion = get_text_from_completion(completion)
             try:
                 return retry_parser.parse_with_prompt(
-                    x["completion"], x["prompt_value"]
+                    completion, x["prompt_value"]
                 )
             except ValidationError as e:
                 completion = parser_retry_chain.invoke(
@@ -153,10 +156,13 @@ class BaseParserChain(BaseChain):
 
         async def arerun_parser(x):
             print_params("Rerun format parser", x)
-            x["completion"] = get_text_from_completion(x["completion"])
+
+            completion = x["completion"]
+
+            completion = get_text_from_completion(completion)
             try:
                 return await retry_parser.aparse_with_prompt(
-                    x["completion"], x["prompt_value"]
+                    completion, x["prompt_value"]
                 )
             except ValidationError as e:
                 completion = parser_retry_chain.ainvoke(

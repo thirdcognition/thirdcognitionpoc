@@ -9,11 +9,13 @@ from langchain_core.messages import BaseMessage
 from langgraph.graph.state import CompiledStateGraph
 
 from lib.chains.init import get_chain
-from lib.db_tools import SourceDataTable, init_db
+from lib.db.sqlite import init_db
 from lib.document_tools import markdown_to_text
 
+from lib.graphs.process_text import process_text
 from lib.graphs.find_concepts import find_concepts
-from lib.graphs.process_text import ProcessTextState, process_text
+from lib.graphs.find_topics import find_topics
+from lib.models.sqlite_tables import SourceDataTable
 
 with open("admin_auth.yaml") as file:
     auth_config = yaml.load(file, Loader=SafeLoader)
@@ -99,6 +101,16 @@ async def graph_call(
                 "search_concepts": "Search for concepts based on taxonomy",
                 "combine_concepts": "Combine found concepts",
                 "collapse_concepts": "Format concepts and taxonomy"
+            }
+        )
+    elif graph == find_topics:
+        states.update(
+            {
+                "split": "Read and analyse document",
+                "reformat": "Rewrite document",
+                "summary": "Write summary",
+                "collapse": "Collapse contents",
+                "finalize": "Combine contents",
             }
         )
     else:

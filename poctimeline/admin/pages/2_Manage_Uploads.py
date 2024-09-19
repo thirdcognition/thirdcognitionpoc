@@ -7,25 +7,22 @@ import streamlit as st
 
 from langchain_core.messages import BaseMessage
 
+from lib.db.rag import get_chroma_collections
+from lib.db.taxonomy import get_concept_taxonomy_by_id
+
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
+from lib.db.concept import get_concept_by_id
+from lib.db.source import delete_db_source, get_db_sources
+from lib.db.sqlite import db_commit, init_db
 from lib.helpers import pretty_print
-from lib.models.sqlite_tables import ConceptData, ConceptDataTable, ConceptTaxonomy, SourceContents
+from lib.models.sqlite_tables import ConceptData, ConceptDataTable, ConceptTaxonomy, SourceContents, SourceDataTable
 from lib.chains.init import get_chain
 from lib.document_tools import create_document_lists, split_text
 from lib.load_env import SETTINGS
-from lib.db_tools import (
-    SourceDataTable,
-    db_commit,
-    delete_db_source,
-    get_chroma_collections,
-    get_concept_by_id,
-    get_concept_category_tag_by_id,
-    get_db_sources,
-    init_db,
-)
+
 from lib.document_tools import markdown_to_text
 from lib.streamlit_tools import check_auth, get_all_categories, llm_edit
 
@@ -269,9 +266,9 @@ async def manage_file(filename):
                     for tag in concept_inst.taxonomy:
                         tagged_concepts[tag].append(concept_inst)
                         if tag not in tags:
-                            tag_inst = get_concept_category_tag_by_id(tag)
+                            tag_inst = get_concept_taxonomy_by_id(tag)
                             if tag_inst:
-                                tags[tag] = tag_inst.concept_category_tag
+                                tags[tag] = tag_inst.concept_taxonomy
 
                 for concept_tag, concepts in tagged_concepts.items():
                     if concept_tag in tags:

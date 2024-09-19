@@ -9,11 +9,10 @@ import yaml
 
 from lib.chains.init import get_base_chain, get_chain
 from lib.chains.rag_chain import get_rag_chain
-from lib.db_tools import (
-    get_db_sources,
-    get_db_journey,
-    init_db,
-)
+
+from lib.db.journey import get_db_journey
+from lib.db.source import get_db_sources
+from lib.db.sqlite import init_db
 from lib.document_tools import markdown_to_text
 from lib.document_tools import create_document_lists
 from lib.load_env import SETTINGS

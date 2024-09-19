@@ -8,6 +8,7 @@ from langchain_core.messages import BaseMessage
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
+from lib.db.sqlite import init_db
 from lib.models.journey import (
     TaskStructure,
     JourneyModel,
@@ -26,11 +27,6 @@ from lib.journey_shared import (
     llm_gen_update_tasks,
     save_journey,
 )
-from lib.db_tools import (
-    get_db_journey,
-    init_db,
-)
-
 from lib.load_env import SETTINGS
 
 from lib.streamlit_tools import check_auth, get_all_categories

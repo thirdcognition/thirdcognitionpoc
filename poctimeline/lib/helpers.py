@@ -2,13 +2,14 @@ import pprint as pp
 from pydantic import BaseModel
 import streamlit as st
 import yaml
-from lib.load_env import DEBUGMODE
+from langchain_core.documents import Document
 from langchain_core.runnables import (
     RunnableSequence,
     RunnableWithMessageHistory,
 )
 from langchain_community.chat_message_histories.in_memory import ChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
+from lib.load_env import DEBUGMODE
 
 
 def print_params(msg="", params=""):
@@ -71,3 +72,68 @@ def read_and_load_yaml(file_path):
         content = file.read().replace("\t", "    ")
         data = yaml.safe_load(content)
     return data
+
+def parse_content_dict(data):
+    result = []
+    for item in data["children"]:
+        if item["tag"] == "output":
+            topic = next(
+                (
+                    child["body"]
+                    for child in item["children"]
+                    if child["tag"] == "topic"
+                ),
+                None,
+            )
+            content = item["body"]
+            summary = next(
+                (
+                    child["body"]
+                    for child in item["children"]
+                    if child["tag"] == "summary"
+                ),
+                None,
+            )
+            result.append({"topic": topic, "content": content, "summary": summary})
+        else:
+            result.extend(parse_content_dict(item))
+    return result
+
+def prepare_contents(content:str, prev_page:str = "", next_page:str = "", max_length:int = 1000):
+    content = (
+        [content]
+        if not isinstance(content, list)
+        else content
+    )
+    next_page = (
+        [next_page]
+        if not isinstance(next_page, list)
+        else next_page
+    )
+    prev_page = (
+        [prev_page]
+        if not isinstance(prev_page, list)
+        else prev_page
+    )
+    content = "\n".join(
+        [
+            ((item.page_content if isinstance(item, Document) else item))
+            for item in content
+        ]
+    )
+    next_page = "\n".join(
+        [
+            (item.page_content if isinstance(item, Document) else repr(item))
+            for item in next_page
+        ]
+    )
+    next_page = next_page[:max_length] if len(next_page) > max_length else next_page
+    prev_page = "\n".join(
+        [
+            (item.page_content if isinstance(item, Document) else repr(item))
+            for item in prev_page
+        ]
+    )
+    prev_page = prev_page[-max_length:] if len(prev_page) > max_length else prev_page
+
+    return (content, prev_page, next_page)

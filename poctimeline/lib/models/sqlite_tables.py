@@ -170,23 +170,23 @@ class ConceptTaxonomy(BaseModel):
     )
 
 
-def convert_concept_category_tag_to_dict(concept_category_tag: ConceptTaxonomy) -> dict:
+def convert_concept_taxonomy_to_dict(concept_taxonomy: ConceptTaxonomy) -> dict:
     return {
         "category_tag": {
-            "title": concept_category_tag.title,
-            "taxonomy": concept_category_tag.taxonomy,
-            "parent_taxonomy": concept_category_tag.parent_taxonomy,
-            "tag": concept_category_tag.tag,
-            "type": concept_category_tag.type,
-            "id": concept_category_tag.id,
-            "parent_id": concept_category_tag.parent_id,
-            "description": concept_category_tag.description,
+            "title": concept_taxonomy.title,
+            "taxonomy": concept_taxonomy.taxonomy,
+            "parent_taxonomy": concept_taxonomy.parent_taxonomy,
+            "tag": concept_taxonomy.tag,
+            "type": concept_taxonomy.type,
+            "id": concept_taxonomy.id,
+            "parent_id": concept_taxonomy.parent_id,
+            "description": concept_taxonomy.description,
         }
     }
 
 
 def convert_taxonomy_dict_to_tag_structure_string(data: dict) -> str:
-    category_tag_data:Dict = data["category_tag"]
+    category_tag_data: Dict = data["category_tag"]
     tag_structure = f"""
     <category_tag>
         {f'<id>{category_tag_data["id"]}</id>' if 'id' in category_tag_data.keys() else ''}
@@ -202,8 +202,10 @@ def convert_taxonomy_dict_to_tag_structure_string(data: dict) -> str:
     return textwrap.dedent(tag_structure)
 
 
-def convert_taxonomy_dict_to_tag_simple_structure_string(data: dict, show_description: bool = False) -> str:
-    category_tag_data:Dict = data["category_tag"]
+def convert_taxonomy_dict_to_tag_simple_structure_string(
+    data: dict, show_description: bool = False, children: List[str] = None
+) -> str:
+    category_tag_data: Dict = data["category_tag"]
     tag_structure = (
         (
             f'parent_id({category_tag_data["parent_id"]}) > '
@@ -218,9 +220,14 @@ def convert_taxonomy_dict_to_tag_simple_structure_string(data: dict, show_descri
         )
         + f'taxonomy({category_tag_data.get("taxonomy", "")}) '
         + f'tag({category_tag_data.get("tag", "")}) '
+        + (f'connected_concepts({", ".join(children)}) ' if children else "")
         + f'type({category_tag_data.get("type", "")}): '
         + f'{category_tag_data.get("title", "")}'
-        + (f'\n{str(category_tag_data.get("description", "")).replace("\n", " ")}\n\n' if show_description else "")
+        + (
+            f'\n{str(category_tag_data.get("description", "")).replace("\n", " ")}\n\n'
+            if show_description
+            else ""
+        )
     )
     return tag_structure
 
@@ -235,7 +242,7 @@ def convert_taxonomy_tags_to_dict(input_dict, tags):
     return output_dict
 
 
-def convert_taxonomy_dict_to_concept_category_tag(data: dict) -> ConceptTaxonomy:
+def convert_taxonomy_dict_to_concept_taxonomy(data: dict) -> ConceptTaxonomy:
     category_tag_data: Dict = data.get("category_tag", {})
     if not category_tag_data:
         raise ValueError("Invalid data format. 'category_tag' key not found.")
@@ -353,13 +360,13 @@ class ConceptDataTable(Base):
     disabled = sqla.Column(sqla.Boolean, default=False)
 
 
-class ConceptCategoryDataTable(Base):
-    __tablename__ = SETTINGS.concept_category_tags_tablename
+class ConceptTaxonomyDataTable(Base):
+    __tablename__ = SETTINGS.concept_taxonomys_tablename
 
     # id = Column(Integer, primary_key=True)
     id = sqla.Column(sqla.String, primary_key=True)
     parent_id = sqla.Column(sqla.String)
-    concept_category_tag = sqla.Column(sqla.PickleType, default=None)
+    concept_taxonomy = sqla.Column(sqla.PickleType, default=None)
     category_tags = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
     last_updated = sqla.Column(sqla.DateTime)
     disabled = sqla.Column(sqla.Boolean, default=False)

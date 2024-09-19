@@ -50,6 +50,10 @@ from lib.prompts.formatters import (
     text_formatter_simple,
     text_formatter_compress,
     text_formatter_guided,
+    page_formatter,
+    page_formatter_guided,
+    topic_formatter,
+    topic_formatter_guided,
     md_formatter,
     md_formatter_guided,
     concept_taxonomy,
@@ -256,6 +260,7 @@ def init_chain(
         validation_llm=(
             get_llm(validate_id) if (check_for_hallucinations and not DEVMODE) else None
         ),
+        async_mode=True
     )
 
 
@@ -276,7 +281,7 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
     "grader": ("structured", grader, False),
     "check": ("instruct_0", check, False),
     "text_formatter_simple": ("instruct", text_formatter_simple, False),
-    "text_formatter": ("instruct", text_formatter, True),
+    "text_formatter": ("instruct", text_formatter, False),
     "text_formatter_compress": ("instruct", text_formatter_compress, False),
     "text_formatter_guided": (
         "instruct_detailed_0" if not DEVMODE else "instruct_0",
@@ -287,6 +292,18 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
     "md_formatter_guided": (
         "instruct_detailed_0" if not DEVMODE else "instruct_0",
         md_formatter_guided,
+        True,
+    ),
+    "page_formatter": ("instruct", page_formatter, True),
+    "page_formatter_guided": (
+        "instruct_detailed_0" if not DEVMODE else "instruct_0",
+        page_formatter_guided,
+        True,
+    ),
+    "topic_formatter": ("instruct", topic_formatter, True),
+    "topic_formatter_guided": (
+        "instruct_detailed_0" if not DEVMODE else "instruct_0",
+        topic_formatter_guided,
         True,
     ),
     "concept_taxonomy": (

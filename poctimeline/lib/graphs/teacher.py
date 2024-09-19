@@ -11,11 +11,7 @@ from langchain_core.messages import BaseMessage, AIMessage
 from langchain_core.runnables import RunnableConfig
 from lib.chains.chain import Chain
 from lib.chat import DELIMITER, init_journey_chat
-from lib.db_tools import (
-    JourneyModel,
-    get_db_journey,
-    get_vectorstore,
-)
+
 from lib.chains.init import (
     get_chain,
     get_llm,
@@ -23,7 +19,9 @@ from lib.chains.init import (
 
 from typing import Annotated, List, TypedDict
 
-from lib.models.journey import TaskStructure, SubjectModel, StepStructure
+from lib.db.journey import get_db_journey
+from lib.db.rag import get_vectorstore
+from lib.models.journey import JourneyModel, TaskStructure, SubjectModel, StepStructure
 from lib.models.teaching import TeachingTask, TeachingItemPlan, UserData
 from lib.prompts.journey import JourneyPrompts
 from lib.prompts.journey import plan

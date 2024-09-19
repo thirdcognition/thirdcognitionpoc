@@ -8,7 +8,8 @@ import streamlit as st
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
-from lib.models.journey import SubjectModel
+from lib.db.sqlite import init_db
+from lib.models.journey import JourneyModel, SubjectModel
 from lib.prompts.journey import JourneyPrompts
 from lib.journey_shared import (
     create_subject_prompt_editor,
@@ -17,11 +18,7 @@ from lib.journey_shared import (
     save_journey,
     llm_gen_title_summary,
 )
-from lib.db_tools import (
-    JourneyModel,
-    get_db_journey,
-    init_db,
-)
+
 
 from lib.streamlit_tools import check_auth, get_all_categories
 

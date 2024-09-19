@@ -13,9 +13,11 @@ from lib.models.sqlite_tables import (
 from lib.prompts.base import (
     KEEP_PRE_THINK_TOGETHER,
     MAINTAIN_CONTENT_AND_USER_LANGUAGE,
+    PAGE_INSTRUCT,
+    PAGE_INSTRUCT_TAGS,
     PRE_THINK_INSTRUCT,
-    SUMMARIZE_INSTRUCT,
-    SUMMARIZE_INSTRUCT_TAGS,
+    TOPIC_INSTRUCT,
+    TOPIC_INSTRUCT_TAGS,
     PromptFormatter,
     TagsParser,
 )
@@ -71,7 +73,6 @@ text_formatter = PromptFormatter(
         Act as a document formatter.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         {PRE_THINK_INSTRUCT}
-        {SUMMARIZE_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
         Rewrite the text specified by the user between the context start and context end in full detail using natural language.
         Don't use html tags or markdown. Remove all mentions of confidentiality. Use only information from the available in the text.
@@ -93,13 +94,7 @@ text_formatter = PromptFormatter(
         """
     ),
 )
-text_formatter.parser = TagsParser(
-    min_len=100,
-    tags=SUMMARIZE_INSTRUCT_TAGS,
-    optional_tags=["thinking", "reflection"],
-    all_tags_required=True,
-    return_tag=True,
-)
+text_formatter.parser = TagsParser(min_len=100)
 
 text_formatter_compress = PromptFormatter(
     system=textwrap.dedent(
@@ -132,7 +127,6 @@ text_formatter_guided = PromptFormatter(
         Act as a document formatter.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         {PRE_THINK_INSTRUCT}
-        {SUMMARIZE_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
         Rewrite the text between the context start and context end using only information and follow the instructions exactly.
         Don't use html tags or markdown.
@@ -157,7 +151,149 @@ text_formatter_guided = PromptFormatter(
 )
 text_formatter_guided.parser = TagsParser(
     min_len=100,
-    tags=SUMMARIZE_INSTRUCT_TAGS,
+)
+
+page_formatter = PromptFormatter(
+    system=textwrap.dedent(
+        f"""
+        Act as a document formatter.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
+        {PRE_THINK_INSTRUCT}
+        {PAGE_INSTRUCT}
+        {KEEP_PRE_THINK_TOGETHER}
+        Rewrite the text specified by the user between the context start and context end in full detail using natural language.
+        Don't use html tags or markdown. Remove all mentions of confidentiality. Use only information from the available in the text.
+        """
+    ),
+    user=textwrap.dedent(
+        """
+        Previous page ending start
+        {prev_page}
+        Previous page ending end
+        Next page beginning start
+        {next_page}
+        Next page beginning end
+        Context start
+        {context}
+        Context end
+
+        Format the text in the context.
+        """
+    ),
+)
+page_formatter.parser = TagsParser(
+    min_len=100,
+    tags=PAGE_INSTRUCT_TAGS,
+    optional_tags=["thinking", "reflection"],
+    all_tags_required=True,
+    return_tag=True,
+)
+
+page_formatter_guided = PromptFormatter(
+    system=textwrap.dedent(
+        f"""
+        Act as a document formatter.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
+        {PRE_THINK_INSTRUCT}
+        {PAGE_INSTRUCT}
+        {KEEP_PRE_THINK_TOGETHER}
+        Rewrite the text between the context start and context end using only information and follow the instructions exactly.
+        Don't use html tags or markdown.
+        """
+    ),
+    user=textwrap.dedent(
+        """
+        Instructions: {instructions}
+        Previous page ending start
+        {prev_page}
+        Previous page ending end
+        Next page beginning start
+        {next_page}
+        Next page beginning end
+        Context start
+        {context}
+        Context end
+
+        Format the text in the context.
+        """
+    ),
+)
+page_formatter_guided.parser = TagsParser(
+    min_len=100,
+    tags=PAGE_INSTRUCT_TAGS,
+    optional_tags=["thinking", "reflection"],
+    all_tags_required=True,
+    return_tag=True,
+)
+
+topic_formatter = PromptFormatter(
+    system=textwrap.dedent(
+        f"""
+        Act as a document formatter.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
+        {PRE_THINK_INSTRUCT}
+        {TOPIC_INSTRUCT}
+        {KEEP_PRE_THINK_TOGETHER}
+        Rewrite the text specified by the user between the context start and context end in full detail using natural language.
+        Don't use html tags or markdown. Remove all mentions of confidentiality. Use only information from the available in the text.
+        """
+    ),
+    user=textwrap.dedent(
+        """
+        Previous page ending start
+        {prev_page}
+        Previous page ending end
+        Next page beginning start
+        {next_page}
+        Next page beginning end
+        Context start
+        {context}
+        Context end
+
+        Format the text in the context.
+        """
+    ),
+)
+topic_formatter.parser = TagsParser(
+    min_len=100,
+    tags=TOPIC_INSTRUCT_TAGS,
+    optional_tags=["thinking", "reflection"],
+    all_tags_required=True,
+    return_tag=True,
+)
+
+topic_formatter_guided = PromptFormatter(
+    system=textwrap.dedent(
+        f"""
+        Act as a document formatter.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
+        {PRE_THINK_INSTRUCT}
+        {TOPIC_INSTRUCT}
+        {KEEP_PRE_THINK_TOGETHER}
+        Rewrite the text between the context start and context end using only information and follow the instructions exactly.
+        Don't use html tags or markdown.
+        """
+    ),
+    user=textwrap.dedent(
+        """
+        Instructions: {instructions}
+        Previous page ending start
+        {prev_page}
+        Previous page ending end
+        Next page beginning start
+        {next_page}
+        Next page beginning end
+        Context start
+        {context}
+        Context end
+
+        Format the text in the context.
+        """
+    ),
+)
+topic_formatter_guided.parser = TagsParser(
+    min_len=100,
+    tags=TOPIC_INSTRUCT_TAGS,
     optional_tags=["thinking", "reflection"],
     all_tags_required=True,
     return_tag=True,
@@ -197,7 +333,6 @@ md_formatter = PromptFormatter(
         Act as a document formatter.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         {PRE_THINK_INSTRUCT}
-        {SUMMARIZE_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
         Rewrite the text between the context start and context end using markdown syntax. Use only information from the context.
         Remove all mentions of confidentiality.
@@ -215,10 +350,6 @@ md_formatter = PromptFormatter(
 )
 md_formatter.parser = TagsParser(
     min_len=100,
-    tags=SUMMARIZE_INSTRUCT_TAGS,
-    optional_tags=["thinking", "reflection"],
-    all_tags_required=True,
-    return_tag=True,
 )
 
 md_formatter_guided = PromptFormatter(
@@ -227,7 +358,6 @@ md_formatter_guided = PromptFormatter(
         Act as a document formatter.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         {PRE_THINK_INSTRUCT}
-        {SUMMARIZE_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
         Rewrite the text between the context start and context end using markdown syntax. Use only information from the context
         and follow the instructions exactly. Remove all mentions of confidentiality. Follow the instructions exactly.
@@ -247,9 +377,6 @@ md_formatter_guided = PromptFormatter(
 )
 md_formatter_guided.parser = TagsParser(
     min_len=100,
-    tags=SUMMARIZE_INSTRUCT_TAGS,
-    optional_tags=["thinking", "reflection"],
-    all_tags_required=True,
 )
 
 concept_taxonomy = PromptFormatter(
@@ -476,13 +603,13 @@ concept_hierarchy.parser = PydanticOutputParser(
 concept_taxonomy_structured = PromptFormatter(
     system=textwrap.dedent(
         f"""
-        Act as a taxonomy builder and a concept taxonomy compiler who is building and combining
-        a structured format out of new and existing taxonomy categories.
+        Act as a taxonomy compiler who is building a structured format
+        out of new and existing taxonomy categories.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
-        Connect the concepts to the taxonomy using tags and ids and define a hierarchy for the taxonomy.
-        Prefer using existing taxonomy over new taxonomy.
-        Do not create new concepts or taxonomy categories which are not defined in the
-        content. Only use the available information and items.
+        Define a hierarchy for the taxonomy using
+        taxonomy ids. Prefer using existing taxonomy over new taxonomy.
+        Where parent taxonomy is needed for hierarchy create new taxonomy
+        items to connect existing taxonomy together.
         Use the specified format and return your output in JSON only.
         """
     ),
@@ -496,18 +623,13 @@ concept_taxonomy_structured = PromptFormatter(
         {new_taxonomy}
         new taxonomy end
         ----------------
-        concepts start
-        {concepts}
-        concepts end
-        ----------------
         format instructions start
         {format_instructions}
         format instructions end
         ----------------
         Using the existing and new taxonomy combine them into a structured format.
-        Connect the concepts to the taxonomy using tags and concept ids
-        and define a hierarchy for the taxonomy.
-        Prefer using existing taxonomy over new taxonomy.
+        Prefer using existing taxonomy over new taxonomy but if not available
+        create new taxonomy items to connect existing taxonomy together.
         Format the context data using the format instructions.
         Return only the properly formatted JSON object with the formatted data.
         """

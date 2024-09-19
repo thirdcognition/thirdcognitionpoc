@@ -8,7 +8,7 @@ import fitz
 
 from rapidocr_onnxruntime import RapidOCR
 
-from lib.db_tools import db_source_exists, get_db_sources, save_db_source
+from lib.db.source import db_source_exists, get_db_sources, save_db_source
 from lib.document_tools import (
     a_semantic_splitter,
     semantic_splitter,

@@ -7,19 +7,17 @@ import time
 from typing import Dict, List, Union
 import streamlit as st
 
+from lib.db.source import get_db_sources
+from lib.db.sqlite import init_db
+from lib.db.taxonomy import get_db_concept_taxonomy
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
+from lib.db.concept import get_concept_by_id, get_db_concepts
 from lib.helpers import pretty_print
 from lib.models.sqlite_tables import ConceptData, ConceptDataTable, ConceptTaxonomy
-from lib.db_tools import (
-    get_concept_by_id,
-    get_concept_category_tag_by_id,
-    get_db_concept_taxonomy,
-    get_db_concepts,
-    get_db_sources,
-    init_db,
-)
+
 
 from lib.streamlit_tools import check_auth, get_all_categories
 
@@ -233,9 +231,9 @@ def by_source(source_name: str):
         #     for tag in concept_inst.taxonomy:
         #         tagged_concepts[tag].append(concept_inst)
         #         if tag not in tags:
-        #             tag_inst = get_concept_category_tag_by_id(tag)
+        #             tag_inst = get_concept_taxonomy_by_id(tag)
         #             if tag_inst:
-        #                 tags[tag] = tag_inst.concept_category_tag
+        #                 tags[tag] = tag_inst.concept_taxonomy
 
         # for concept_tag, concepts in tagged_concepts.items():
         #     if concept_tag in tags:

@@ -1,9 +1,7 @@
 import asyncio
-import io
-import os
 import re
 import operator
-from typing import Annotated, Dict, List, Literal, Set, TypedDict, Union
+from typing import Annotated, Dict, List, Literal, TypedDict, Union
 from langchain.chains.combine_documents.reduce import (
     acollapse_docs,
     split_list_of_docs,
@@ -12,25 +10,12 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.documents import Document
 from langgraph.constants import Send
 from langgraph.graph import END, START, StateGraph
-from langchain_community.document_loaders.url_playwright import PlaywrightURLLoader
 
 from lib.chains.base_parser import get_text_from_completion
 from lib.chains.init import get_chain
-from lib.db_tools import (
-    db_source_exists,
-    get_db_sources,
-    update_db_source_rag,
-)
-from lib.document_parse import SourceType, process_source_contents
-from lib.document_tools import (
-    a_semantic_splitter,
-    markdown_to_text,
-)
+from lib.document_tools import a_semantic_splitter
+from lib.helpers import parse_content_dict, prepare_contents
 from lib.load_env import SETTINGS
-from lib.models.sqlite_tables import (
-    SourceContentPage,
-    SourceContents,
-)
 
 
 def clean_dividers(text: str) -> str:
@@ -57,118 +42,31 @@ def length_function(documents: List[Union[Document, str]]) -> int:
 
 # This will be the overall state of the main graph.
 # It will contain the input document contents, corresponding
-# summaries, and a final summary.
-class ProcessTextState(TypedDict):
+# reformatted_contents, and a final summary.
+class OverallState(TypedDict):
     # Notice here we use the operator.add
-    # This is because we want combine all the summaries we generate
+    # This is because we want combine all the reformatted_contents we generate
     # from individual nodes back into one list - this is essentially
     # the "reduce" part
-    categories: List[str]
-    file: io.BytesIO
-    filename: str
-    url: str
-    source: str
-    # semantic_contents: List[Document]
-    contents: List[Union[Document, str]]  # Annotated[list[Document], operator.add]
-    final_contents: List[Document]
-    # reformat_contents: List[Document]  # Annotated[list[Document], operator.add]
-    source_content_topics: List[SourceContentPage]
-    reformatted_txt: Annotated[list, operator.add]
-    summary: str
-    topics: Set[str]
-    source_contents: SourceContents
+    contents: List[Document] #Annotated[list[Document], operator.add]
+    reformatted_contents: Annotated[list, operator.add]
+    collapsed_contents: List[Document]
+    results: Dict
     instructions: str
-    get_source_complete: bool = False
     split_complete: bool = False
     reformat_complete: bool = False
     collapse_complete: bool = False
-    finalize_complete: bool = False
-    rag_complete: bool = False
+    final_contents_complete: bool = False
 
 
 class ProcessTextConfig(TypedDict):
     instructions: str = None
-    overwrite_sources: bool = False
-    update_rag: bool = False
-    summarize: bool = True
-    rewrite_text: bool = True
-    run_split_for_source: bool = True
-
-
-async def should_rewrite_content(state: ProcessTextState, config: RunnableConfig):
-    source = state["filename"] if "filename" in state else state["url"]
-    if config["configurable"]["rewrite_text"] or not db_source_exists(source):
-        return "split_content"
-    else:
-        return "get_source_content"
-
+    collect_concepts: bool = False
 
 # Here we generate a summary, given a document
-async def split_content(state: ProcessTextState, config: RunnableConfig):
-    text = ""
-    if config["configurable"]["update_rag"] and (
-        "categories" not in state.keys()
-        or state["categories"] is None
-        or state["categories"] == []
-        or state["categories"] == ""
-    ):
-        raise ValueError("Category must be provided if update_rag is set True")
-    if "filename" in state.keys() and state["filename"] is not None:
-        if state["file"] is None or len(state["file"].getvalue()) == 0:
-            raise ValueError("File must be provided")
+async def split_content(state: OverallState, config: RunnableConfig):
 
-        filename = state["filename"]
-        filetype = os.path.basename(filename).split(".")[-1]
-        texts = await process_source_contents(
-            filename,
-            uploaded_file=state["file"],
-            categories=state["categories"],
-            overwrite=config["configurable"]["overwrite_sources"],
-        )
-        text = "\n\n".join(texts)
-        if filetype == "md":
-            text = markdown_to_text(text)
-    elif "url" in state.keys() and state["url"] is not None:
-        # TODO: Figure out image parsing.
-        if (
-            db_source_exists(state["url"])
-            and not config["configurable"]["overwrite_sources"]
-        ):
-            text = "\n\n".join(get_db_sources(state["url"])[state["url"]].texts)
-        else:
-            loader = PlaywrightURLLoader(
-                urls=[state["url"]],
-                remove_selectors=["header", "footer"],
-            )
-            content = await loader.aload()
-            texts = await process_source_contents(
-                state["url"],
-                type=SourceType.URL,
-                text_content="\n\n".join([doc.page_content for doc in content]),
-                categories=state["categories"],
-                overwrite=config["configurable"]["overwrite_sources"],
-            )
-            text = "\n\n".join(texts)
-    else:
-        if config["configurable"]["update_rag"] and (
-            "source" not in state.keys()
-            or state["source"] is None
-            or state["source"] == ""
-        ):
-            raise ValueError("Source must be provided if update_rag is set True")
-        if isinstance(state["contents"], List):
-            text = "\n".join(
-                [
-                    (
-                        doc.page_content.strip()
-                        if isinstance(doc, Document)
-                        else doc.strip()
-                    )
-                    for doc in state["contents"]
-                ]
-            )
-        else:
-            text = state["contents"]
+    text = get_text_from_completion(state["contents"])
 
     split = await a_semantic_splitter(text)
     split = [
@@ -181,7 +79,6 @@ async def split_content(state: ProcessTextState, config: RunnableConfig):
 
     return {
         "split_complete": True,
-        # "semantic_contents": split,
         "contents": response,
         "instructions": (
             config["configurable"]["instructions"]
@@ -191,120 +88,20 @@ async def split_content(state: ProcessTextState, config: RunnableConfig):
     }
 
 
-async def get_source_content(state: Dict, config: RunnableConfig):
-    source = state["filename"] if state["filename"] is not None else state["url"]
-    sources = get_db_sources(source)
-    source_data = sources[source]
-    if source_data is None:
-        raise ValueError(f"Source {source} not found")
-
-    if config["configurable"].get("run_split_for_source", False):
-        split = await a_semantic_splitter(source_data.texts)
-        split = [
-            Document(page_content=clean_dividers(doc), metadata={"snippet": i})
-            for i, doc in enumerate(split)
-        ]
-        response = split_list_of_docs(
-            split, length_function, SETTINGS.default_llms.instruct_detailed.char_limit
-        )
-    else:
-        print("Skip split")
-        split = []
-        response = []
-
-    return {
-        # "split_complete": True,
-        # "semantic_contents": split,
-        "contents": response,
-        "instructions": (
-            config["configurable"]["instructions"]
-            if "instructions" in config["configurable"]
-            else None
-        ),
-        "reformat_complete": True,
-        # "reformat_contents": source_data.texts,
-        "source_content_topics": source_data.source_contents.formatted_topics,
-        "get_source_complete": True,
-        "summary": source_data.source_contents.summary,
-        "topics": source_data.source_contents.topics,
-    }
-
-
+# This will be the state of the node that we will "map" all
+# documents to in order to generate reformatted_contents
 class SummaryState(TypedDict):
-    url: str
-    file: str
-    page: int
     content: Union[str, Document]
     instructions: str
-
-
-def parse_content_dict(data):
-    result = []
-    for item in data["children"]:
-        if item["tag"] == "output":
-            topic = next(
-                (
-                    child["body"]
-                    for child in item["children"]
-                    if child["tag"] == "topic"
-                ),
-                None,
-            )
-            content = item["body"]
-            summary = next(
-                (
-                    child["body"]
-                    for child in item["children"]
-                    if child["tag"] == "summary"
-                ),
-                None,
-            )
-            result.append({"topic": topic, "content": content, "summary": summary})
-        else:
-            result.extend(parse_content_dict(item))
-    return result
 
 
 # Here we generate a summary, given a document
 async def reformat_content(state: SummaryState):
     response = {}
-    content = (
-        [state["content"]]
-        if not isinstance(state["content"], list)
-        else state["content"]
-    )
-    next_page = (
-        [state["next_page_content"]]
-        if not isinstance(state["next_page_content"], list)
-        else state["next_page_content"]
-    )
-    prev_page = (
-        [state["prev_page_content"]]
-        if not isinstance(state["prev_page_content"], list)
-        else state["prev_page_content"]
-    )
-    content = "\n".join(
-        [
-            ((item.page_content if isinstance(item, Document) else item))
-            for item in content
-        ]
-    )
-    next_page = "\n".join(
-        [
-            (item.page_content if isinstance(item, Document) else repr(item))
-            for item in next_page
-        ]
-    )
-    next_page = next_page[:1000] if len(next_page) > 1000 else next_page
-    prev_page = "\n".join(
-        [
-            (item.page_content if isinstance(item, Document) else repr(item))
-            for item in prev_page
-        ]
-    )
-    prev_page = prev_page[-1000:] if len(prev_page) > 1000 else prev_page
+    content, prev_page, next_page = prepare_contents(state["content"], state["prev_page_content"], state["next_page_content"])
+
     if state["instructions"] is not None:
-        response = await get_chain("text_formatter_guided").ainvoke(
+        response = await get_chain("page_formatter_guided").ainvoke(
             {
                 "context": content,
                 "next_page": next_page,
@@ -313,23 +110,17 @@ async def reformat_content(state: SummaryState):
             }
         )
     else:
-        response = await get_chain("text_formatter").ainvoke(
+        response = await get_chain("page_formatter").ainvoke(
             {
                 "context": content,
                 "next_page": next_page,
                 "prev_page": prev_page,
             }
         )
-    metadata = {}
-    if isinstance(state["content"], Document):
-        metadata = state["content"].metadata.copy()
 
-    if "file" in state and state["file"] is not None:
-        metadata["filename"] = state["filename"]
-    if "page" in state and state["page"] is not None:
-        metadata["page"] = state["page"]
-    if "url" in state and state["url"] is not None:
-        metadata["url"] = state["url"]
+    metadata = {}
+    if isinstance("content", Document):
+        metadata = state["content"].metadata.copy()
 
     tags = None
 
@@ -353,28 +144,6 @@ async def reformat_content(state: SummaryState):
                     "summary": topic["summary"],
                 }
             )
-        if len(items) > 1:
-            average_lengths = [
-                len(item["document"].page_content) for item in items[:-1]
-            ]
-            average_length = (
-                sum(average_lengths) / len(average_lengths) if average_lengths else 0
-            )
-            last_item = items.pop()
-            last_item["topic_index"] = 0
-            last_item["summary"] = (
-                last_item["summary"]
-                if last_item["summary"] is not None
-                else last_item["document"].page_content[:200] + "..."
-            )
-            last_item["topic"] = (
-                f"Overview: " + last_item["topic"]
-                if last_item["topic"] is not None
-                else "Overview: "
-            )
-
-            items.insert(0, last_item)
-
     else:
         doc = Document(
             page_content=get_text_from_completion(response), metadata=metadata
@@ -395,8 +164,10 @@ async def reformat_content(state: SummaryState):
             }
         ]
 
+    doc = Document(page_content=get_text_from_completion(response), metadata=metadata)
+
     return {
-        "reformatted_txt": [
+        "reformatted_contents": [
             {"index": state["index"], "page": state["page"], "items": items}
         ]
     }
@@ -404,7 +175,7 @@ async def reformat_content(state: SummaryState):
 
 # Here we define the logic to map out over the documents
 # We will use this an edge in the graph
-def map_reformat(state: ProcessTextState):
+def map_reformatted_contents(state: OverallState):
     # We will return a list of `Send` objects
     # Each `Send` object consists of the name of a node in the graph
     # as well as the state to send to that node
@@ -413,72 +184,53 @@ def map_reformat(state: ProcessTextState):
             "reformat_content",
             {
                 "content": content,
-                "instructions": (
-                    state["instructions"] if "instructions" in state else None
-                ),
                 "prev_page_content": (state["contents"][page - 1] if page > 0 else ""),
                 "next_page_content": (
                     state["contents"][page + 1]
                     if page < len(state["contents"]) - 1
                     else ""
                 ),
+                "index": page,
+                "instructions": state["instructions"],
                 "page": (
                     state["page"]
                     if "page" in state and state["page"] != -1
                     else (page + 1)
                 ),
-                "index": page,
-                "filename": state["filename"] if "filename" in state else None,
-                "url": state["url"] if "url" in state else None,
             },
         )
         for page, content in enumerate(state["contents"])
     ]
 
 
-# async def combine_summaries(concept_summaries, concept_id, concepts: List[str]):
-#     concept_summaries[concept_id] = concepts[0]
+# async def combine_reformatted_contents(reformatted_contents, concept_id, concepts: List[str]):
+#     reformatted_contents[concept_id] = concepts[0]
 #     if len(concepts) > 1:
-#         concept_summaries[concept_id] = get_text_from_completion(
+#         reformatted_contents[concept_id] = get_text_from_completion(
 #             await get_chain("combine_bullets").ainvoke(
 #                 {"context": "\n- ".join(concepts)}
 #             )
 #         )
 
 
-async def concat_reformat(state: ProcessTextState, config: RunnableConfig):
+async def concat_content(state: OverallState, config: RunnableConfig):
     sorted_reformat: List[Dict] = sorted(
-        state["reformatted_txt"], key=lambda x: x["index"]
+        state["reformatted_contents"], key=lambda x: x["index"]
     )
     return {
         "reformat_complete": True,
-        # "reformat_contents": [
-        #     get_text_from_completion(result["document"]) for result in sorted_reformat
-        # ],
-        "source_content_topics": [
-            SourceContentPage(
-                page_content=get_text_from_completion(item["document"]),
-                page_number=(
-                    result["page"] if result["page"] != -1 else result["index"] + 1
-                ),
-                topic_index=item["topic_index"],
-                metadata=item["document"].metadata,
-                topic=item["topic"] or "",
-                chroma_ids=[],
-                chroma_collections=[]
-            )
+        "content_topics": [
+            {
+                "page_content": get_text_from_completion(item["document"]),
+                "topic": item["topic"] or "",
+            }
             for result in sorted_reformat
-            for item in list(
-                filter(
-                    lambda x: not str(x.get("topic", "")).startswith("Overview:"),
-                    result["items"],
-                )
-            )
+            for item in  result["items"]
         ],
         "summary": "\n".join(
             [
                 "\n".join(
-                    item["summary"] or ""
+                    (f"{item['topic'].strip()}:\n" if "topic" in item and item["topic"] else "") + item["summary"] or ""
                     for result in sorted_reformat
                     for item in result["items"]
                 )
@@ -488,126 +240,123 @@ async def concat_reformat(state: ProcessTextState, config: RunnableConfig):
             [
                 item.get("topic", "")
                 for result in sorted_reformat
-                for item in list(
-                    filter(
-                        lambda x: not str(x.get("topic", "")).startswith("Overview:"),
-                        result["items"],
-                    )
-                )
+                for item in  result["items"]
             ]
         ),
+        "collapsed_contents": [
+            (f"{item['topic'].strip()}:\n" if "topic" in item and item["topic"] else "") + get_text_from_completion(item["document"])
+            for result in sorted_reformat
+            for item in  result["items"]
+        ],
     }
 
 
-async def finalize_content(state: ProcessTextState, config: RunnableConfig):
+async def collapse(results: List, doc_list, callback):
+    results.append(await acollapse_docs(doc_list, callback))
+
+
+# Add node to collapse reformatted_contents
+async def collapse_content(state: OverallState):
+    doc_lists = split_list_of_docs(
+        state["collapsed_contents"],
+        length_function,
+        SETTINGS.default_llms.instruct_detailed.context_size,
+    )
+    results = []
     instructions = state["instructions"] if "instructions" in state else None
 
-    contents_str = "\n".join(
-        [page.page_content for page in state["source_content_topics"]]
-    )
-    if len(contents_str) < SETTINGS.default_llms.instruct.char_limit:
-        formatted_content = get_chain("stuff_documents").ainvoke({
-            "context": [Document(page_content=page.topic + "\n" + page.page_content, metadata=page.metadata) for page in state["source_content_topics"]]
-        })
-    else:
-        formatted_content = get_chain("text_formatter_simple").ainvoke(
-            {
-                "context": contents_str
-            }
+    async def process_doc_with_instructions(x):
+        nonlocal instructions
+        return get_text_from_completion(
+            await get_chain("text_formatter_compress_guided").ainvoke(
+                {"context": x, "instructions": instructions}
+            )
         )
 
-    summary_collapsed = ""
-    if config["configurable"]["summarize"]:
-        if instructions is not None:
-            response = get_chain("summary_guided").ainvoke(
-                {
-                    "context": state["summary"],
-                    "instructions": instructions,
-                }
-            )
-        else:
-            response = get_chain("summary").ainvoke({"context": state["summary"]})
+    async def process_doc(x):
+        return get_text_from_completion(
+            await get_chain("text_formatter_compress").ainvoke({"context": x})
+        )
 
-        summary_collapsed = get_text_from_completion(await response)
+    tasks = None
+    if instructions is not None:
+        tasks = [
+            collapse(results, doc_list, process_doc_with_instructions)
+            for doc_list in doc_lists
+        ]
+    else:
+        tasks = [collapse(results, doc_list, process_doc) for doc_list in doc_lists]
 
-    formatted_content = get_text_from_completion(await formatted_content)
+    await asyncio.gather(*tasks)
 
-    flat_contents: List[Document] = []
+    return {
+        "collapse_complete": True,
+        "collapsed_contents": results
+    }
+
+
+# This represents a conditional edge in the graph that determines
+# if we should collapse the reformatted_contents or not
+def should_collapse(
+    state: OverallState,
+) -> Literal["collapse_content", "finalize_content"]:
+    num_chars = length_function(state["collapsed_contents"])
+    if num_chars > SETTINGS.default_llms.instruct_detailed.char_limit:
+        return "collapse_content"
+    else:
+        return "finalize_content"
+
+# Here we will generate the final summary
+async def finalize_content(state: OverallState, config: RunnableConfig):
+    instructions = state["instructions"] if "instructions" in state else None
+    if instructions is not None:
+        response = await get_chain("summary_guided").ainvoke(
+            {"context": state["summary"], "instructions": instructions}
+        )
+    else:
+        response = await get_chain("summary").ainvoke(
+            {"context": state["summary"]}
+        )
+
+    summary_collapsed = get_text_from_completion(response)
+
+    flat_contents:List[Document] = []
     for item in state["contents"]:
         if isinstance(item, Document):
             flat_contents.append(item)
         elif isinstance(item, List):
             flat_contents.extend(item)
         else:
-            # print(f"{state["contents"]}")
+            print(f"{state["contents"]}")
             raise ValueError(f"Unknown type {type(item)}: {item=}")
 
     return {
-        "summarize_complete": True,
-        "collapse_complete": True,
-        "finalize_complete": True,
-        "final_contents": flat_contents,
-        "source_contents": SourceContents(
-            formatted_topics=state["source_content_topics"],
-            formatted_content=formatted_content,
-            topics=state["topics"],
-            summary=summary_collapsed,
-        ),
+        "final_contents_complete": True,
+        "results": {
+            "content": state["collapsed_contents"],
+            "content_topics": state["content_topics"],
+            "summary": summary_collapsed,
+        }
     }
-
-
-async def should_rag(state: ProcessTextState, config: RunnableConfig):
-    if config["configurable"]["update_rag"]:
-        return "rag_content"
-    else:
-        return END
-
-
-async def rag_content(state: ProcessTextState, config: RunnableConfig):
-    content = state["source_contents"]
-    filetype = None
-    if state["filename"] is not None:
-        filetype = os.path.basename(state["filename"]).split(".")[-1]
-
-    if config["configurable"]["overwrite_sources"] or state.get(
-        "split_complete", False
-    ):
-        texts = [page.page_content for page in state["final_contents"]]
-        update_db_source_rag(
-            state["filename"] or state["url"],
-            state["categories"],
-            texts,
-            content,
-            filetype=filetype,
-        )
-
-    return {"rag_complete": True}
 
 
 # Construct the graph
 # Nodes:
-process_text_graph = StateGraph(ProcessTextState, ProcessTextConfig)
+process_text_graph = StateGraph(OverallState, ProcessTextConfig)
 process_text_graph.add_node("split_content", split_content)
 process_text_graph.add_node("reformat_content", reformat_content)  # same as before
-process_text_graph.add_node("concat_reformat", concat_reformat)
-process_text_graph.add_node("get_source_content", get_source_content)
-# process_text_graph.add_node("collapse_content", collapse_content)
+process_text_graph.add_node("concat_content", concat_content)
+process_text_graph.add_node("collapse_content", collapse_content)
 process_text_graph.add_node("finalize_content", finalize_content)
-process_text_graph.add_node("rag_content", rag_content)
 
 # Edges:
-process_text_graph.add_conditional_edges(START, should_rewrite_content)
-# process_text_graph.add_edge(START, "split_content")
+process_text_graph.add_edge(START, "split_content")
 process_text_graph.add_conditional_edges(
-    "split_content", map_reformat, ["reformat_content"]
+    "split_content", map_reformatted_contents, ["reformat_content"]
 )
-process_text_graph.add_edge("reformat_content", "concat_reformat")
-process_text_graph.add_edge("concat_reformat", "finalize_content")
-# process_text_graph.add_conditional_edges("concat_reformat", should_collapse)
-# process_text_graph.add_edge("collapse_content", "finalize_content")
-process_text_graph.add_edge("get_source_content", "finalize_content")
-
-process_text_graph.add_conditional_edges("finalize_content", should_rag)
-process_text_graph.add_edge("rag_content", END)
+process_text_graph.add_edge("reformat_content", "concat_content")
+process_text_graph.add_conditional_edges("concat_content", should_collapse)
+process_text_graph.add_conditional_edges("collapse_content", should_collapse)
+process_text_graph.add_edge("finalize_content", END)
 
 process_text = process_text_graph.compile()

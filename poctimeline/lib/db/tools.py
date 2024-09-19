@@ -17,8 +17,8 @@ from lib.load_env import SETTINGS
 from lib.models.journey import JourneyModel
 from lib.models.sqlite_tables import (
     Base,
-    ConceptTaxonomyDataTable,
-    ConceptTaxonomy,
+    TaxonomyDataTable,
+    Taxonomy,
     ConceptDataTable,
     ConceptData,
     SourceContentPage,

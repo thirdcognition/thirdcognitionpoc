@@ -9,14 +9,14 @@ import streamlit as st
 
 from lib.db.source import get_db_sources
 from lib.db.sqlite import init_db
-from lib.db.taxonomy import get_db_concept_taxonomy
+from lib.db.taxonomy import get_db_taxonomy
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
 from lib.db.concept import get_concept_by_id, get_db_concepts
 from lib.helpers import pretty_print
-from lib.models.sqlite_tables import ConceptData, ConceptDataTable, ConceptTaxonomy
+from lib.models.sqlite_tables import ConceptData, ConceptDataTable, Taxonomy
 
 
 from lib.streamlit_tools import check_auth, get_all_categories
@@ -71,7 +71,7 @@ def display_concept(
 
 
 def build_hierarchy(
-    items: Union[List[ConceptDataTable], List[ConceptTaxonomy]],
+    items: Union[List[ConceptDataTable], List[Taxonomy]],
     parent_id=None,
 ):
     hierarchy = {}
@@ -115,8 +115,8 @@ def concept_hierarchy(categories: List[str]):
 
 
 def manage_taxonomy(
-    taxonomy: ConceptTaxonomy = None,
-    taxonomy_by_id: Dict[str, List[ConceptTaxonomy]] = None,
+    taxonomy: Taxonomy = None,
+    taxonomy_by_id: Dict[str, List[Taxonomy]] = None,
     id: str = None,
     children: dict = None,
     header: str = None,
@@ -147,7 +147,7 @@ def manage_taxonomy(
             )
 
 
-def taxonomy_hierarchy(taxonomy: Dict[str, List[ConceptTaxonomy]]):
+def taxonomy_hierarchy(taxonomy: Dict[str, List[Taxonomy]]):
     for category in taxonomy.keys():
         taxonomy_by_id = {
             taxonomy_item.id: taxonomy_item for taxonomy_item in taxonomy[category]
@@ -188,14 +188,14 @@ def taxonomy_hierarchy(taxonomy: Dict[str, List[ConceptTaxonomy]]):
         #         st.write("---")
 
 
-def by_taxonomy_items(taxonomy: Dict[str, List[ConceptTaxonomy]]):
+def by_taxonomy_items(taxonomy: Dict[str, List[Taxonomy]]):
     sel_col1, sel_col2 = st.columns([1, 1])
 
     keys = ["parent_taxonomy", "taxonomy", "type", "tag"]
     desc = ["Parent taxonomy", "Taxonomy", "Type", "Tag"]
     structure_by = keys[desc.index(sel_col1.selectbox("Structure by", desc))]
 
-    structured_taxonomy: Dict[str, List[ConceptTaxonomy]] = None
+    structured_taxonomy: Dict[str, List[Taxonomy]] = None
     for category in taxonomy.keys():
         structured_taxonomy = {}
         for item in taxonomy[category]:
@@ -218,7 +218,7 @@ def by_taxonomy_items(taxonomy: Dict[str, List[ConceptTaxonomy]]):
 def by_source(source_name: str):
     file_entry = get_db_sources(source=source_name)[source_name]
     tagged_concepts: Dict[str, List[ConceptData]] = defaultdict(list)
-    tags: Dict[str, ConceptTaxonomy] = {}
+    tags: Dict[str, Taxonomy] = {}
     st.subheader(f"{source_name}")
     with st.container():
         for concept_id in file_entry.source_concepts:
@@ -231,7 +231,7 @@ def by_source(source_name: str):
         #     for tag in concept_inst.taxonomy:
         #         tagged_concepts[tag].append(concept_inst)
         #         if tag not in tags:
-        #             tag_inst = get_concept_taxonomy_by_id(tag)
+        #             tag_inst = get_taxonomy_by_id(tag)
         #             if tag_inst:
         #                 tags[tag] = tag_inst.concept_taxonomy
 
@@ -269,7 +269,7 @@ async def main():
     #     return
 
     if categories:
-        taxonomy: Dict[str, List[ConceptTaxonomy]] = get_db_concept_taxonomy(
+        taxonomy: Dict[str, List[Taxonomy]] = get_db_taxonomy(
             categories=categories
         )
 

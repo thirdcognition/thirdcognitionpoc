@@ -43,16 +43,20 @@ def length_function(documents: List[Union[Document, str]]) -> int:
 # This will be the overall state of the main graph.
 # It will contain the input document contents, corresponding
 # reformatted_contents, and a final summary.
-class OverallState(TypedDict):
+class ProcessTextState(TypedDict):
     # Notice here we use the operator.add
     # This is because we want combine all the reformatted_contents we generate
     # from individual nodes back into one list - this is essentially
     # the "reduce" part
     contents: List[Document] #Annotated[list[Document], operator.add]
+    instructions: str
+    #generated
     reformatted_contents: Annotated[list, operator.add]
+    content_topics: List[Dict]
+    summary: str
+    topics: List[str]
     collapsed_contents: List[Document]
     results: Dict
-    instructions: str
     split_complete: bool = False
     reformat_complete: bool = False
     collapse_complete: bool = False
@@ -62,20 +66,24 @@ class OverallState(TypedDict):
 class ProcessTextConfig(TypedDict):
     instructions: str = None
     collect_concepts: bool = False
+    run_split: bool = True
 
 # Here we generate a summary, given a document
-async def split_content(state: OverallState, config: RunnableConfig):
+async def setup_content(state: ProcessTextState, config: RunnableConfig):
 
-    text = get_text_from_completion(state["contents"])
+    if config["configurable"].get("run_split", False):
+        text = get_text_from_completion(state["contents"])
 
-    split = await a_semantic_splitter(text)
-    split = [
-        Document(page_content=clean_dividers(doc), metadata={"snippet": i})
-        for i, doc in enumerate(split)
-    ]
-    response = split_list_of_docs(
-        split, length_function, SETTINGS.default_llms.instruct_detailed.char_limit
-    )
+        split = await a_semantic_splitter(text)
+        split = [
+            Document(page_content=clean_dividers(doc), metadata={"snippet": i})
+            for i, doc in enumerate(split)
+        ]
+        response = split_list_of_docs(
+            split, length_function, SETTINGS.default_llms.instruct_detailed.char_limit
+        )
+    else:
+        response = [state["contents"]] if not isinstance(state["contents"], List) else state["contents"]
 
     return {
         "split_complete": True,
@@ -175,7 +183,7 @@ async def reformat_content(state: SummaryState):
 
 # Here we define the logic to map out over the documents
 # We will use this an edge in the graph
-def map_reformatted_contents(state: OverallState):
+def map_reformatted_contents(state: ProcessTextState):
     # We will return a list of `Send` objects
     # Each `Send` object consists of the name of a node in the graph
     # as well as the state to send to that node
@@ -213,7 +221,7 @@ def map_reformatted_contents(state: OverallState):
 #         )
 
 
-async def concat_content(state: OverallState, config: RunnableConfig):
+async def concat_content(state: ProcessTextState, config: RunnableConfig):
     sorted_reformat: List[Dict] = sorted(
         state["reformatted_contents"], key=lambda x: x["index"]
     )
@@ -230,7 +238,7 @@ async def concat_content(state: OverallState, config: RunnableConfig):
         "summary": "\n".join(
             [
                 "\n".join(
-                    (f"{item['topic'].strip()}:\n" if "topic" in item and item["topic"] else "") + item["summary"] or ""
+                    (f"{item['topic'].strip()}:\n" if "topic" in item and item["topic"] else "") + (item["summary"] or "")
                     for result in sorted_reformat
                     for item in result["items"]
                 )
@@ -244,7 +252,7 @@ async def concat_content(state: OverallState, config: RunnableConfig):
             ]
         ),
         "collapsed_contents": [
-            (f"{item['topic'].strip()}:\n" if "topic" in item and item["topic"] else "") + get_text_from_completion(item["document"])
+            Document((f"{item['topic'].strip()}:\n" if "topic" in item and item["topic"] else "") + get_text_from_completion(item["document"]))
             for result in sorted_reformat
             for item in  result["items"]
         ],
@@ -256,7 +264,7 @@ async def collapse(results: List, doc_list, callback):
 
 
 # Add node to collapse reformatted_contents
-async def collapse_content(state: OverallState):
+async def collapse_content(state: ProcessTextState):
     doc_lists = split_list_of_docs(
         state["collapsed_contents"],
         length_function,
@@ -298,7 +306,7 @@ async def collapse_content(state: OverallState):
 # This represents a conditional edge in the graph that determines
 # if we should collapse the reformatted_contents or not
 def should_collapse(
-    state: OverallState,
+    state: ProcessTextState,
 ) -> Literal["collapse_content", "finalize_content"]:
     num_chars = length_function(state["collapsed_contents"])
     if num_chars > SETTINGS.default_llms.instruct_detailed.char_limit:
@@ -307,7 +315,7 @@ def should_collapse(
         return "finalize_content"
 
 # Here we will generate the final summary
-async def finalize_content(state: OverallState, config: RunnableConfig):
+async def finalize_content(state: ProcessTextState, config: RunnableConfig):
     instructions = state["instructions"] if "instructions" in state else None
     if instructions is not None:
         response = await get_chain("summary_guided").ainvoke(
@@ -342,17 +350,17 @@ async def finalize_content(state: OverallState, config: RunnableConfig):
 
 # Construct the graph
 # Nodes:
-process_text_graph = StateGraph(OverallState, ProcessTextConfig)
-process_text_graph.add_node("split_content", split_content)
+process_text_graph = StateGraph(ProcessTextState, ProcessTextConfig)
+process_text_graph.add_node("setup_content", setup_content)
 process_text_graph.add_node("reformat_content", reformat_content)  # same as before
 process_text_graph.add_node("concat_content", concat_content)
 process_text_graph.add_node("collapse_content", collapse_content)
 process_text_graph.add_node("finalize_content", finalize_content)
 
 # Edges:
-process_text_graph.add_edge(START, "split_content")
+process_text_graph.add_edge(START, "setup_content")
 process_text_graph.add_conditional_edges(
-    "split_content", map_reformatted_contents, ["reformat_content"]
+    "setup_content", map_reformatted_contents, ["reformat_content"]
 )
 process_text_graph.add_edge("reformat_content", "concat_content")
 process_text_graph.add_conditional_edges("concat_content", should_collapse)

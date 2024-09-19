@@ -1,12 +1,12 @@
 from datetime import datetime
 from enum import Enum
 import textwrap
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Union
 from pydantic import BaseModel, Field
 import sqlalchemy as sqla
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.ext.mutable import MutableList
-
+from langchain_core.documents import Document
 from lib.helpers import pretty_print
 from lib.load_env import SETTINGS
 
@@ -18,7 +18,7 @@ class SourceType(Enum):
     file = "file"
 
 
-class ParsedConceptTaxonomy(BaseModel):
+class ParsedTaxonomy(BaseModel):
     parent_id: Optional[str] = Field(
         description=f"A previously defined category taxonomy id if available. If not available, leave blank. This is used to create a hierarchy of taxonomy categories. The parent_id should be the id of the parent taxonomy.",
         title="Parent Id",
@@ -47,14 +47,10 @@ class ParsedConceptTaxonomy(BaseModel):
     description: str = Field(
         description="The description of the taxonomy category", title="Description"
     )
-    connected_concepts: List[str] = Field(
-        description="A list of concept ids that are connected to this taxonomy category",
-        title="Connected Concepts",
-    )
 
 
-class ParsedConceptTaxonomyList(BaseModel):
-    taxonomy: List[ParsedConceptTaxonomy] = Field(
+class ParsedTaxonomyList(BaseModel):
+    taxonomy: List[ParsedTaxonomy] = Field(
         description="A list of new category taxonomy build from the provided list of taxonomy and concepts. Each taxonomy category should be generic and applicable for varied subjects.",
         title="Taxonomy",
     )
@@ -145,7 +141,7 @@ class ParsedConceptStructureList(BaseModel):
     )
 
 
-class ConceptTaxonomy(BaseModel):
+class Taxonomy(BaseModel):
     parent_id: Optional[str] = Field(
         description="Id of the parent concept category tag if available.",
         title="Parent Id",
@@ -170,17 +166,17 @@ class ConceptTaxonomy(BaseModel):
     )
 
 
-def convert_concept_taxonomy_to_dict(concept_taxonomy: ConceptTaxonomy) -> dict:
+def convert_taxonomy_to_dict(taxonomy: Taxonomy) -> dict:
     return {
         "category_tag": {
-            "title": concept_taxonomy.title,
-            "taxonomy": concept_taxonomy.taxonomy,
-            "parent_taxonomy": concept_taxonomy.parent_taxonomy,
-            "tag": concept_taxonomy.tag,
-            "type": concept_taxonomy.type,
-            "id": concept_taxonomy.id,
-            "parent_id": concept_taxonomy.parent_id,
-            "description": concept_taxonomy.description,
+            "title": taxonomy.title,
+            "taxonomy": taxonomy.taxonomy,
+            "parent_taxonomy": taxonomy.parent_taxonomy,
+            "tag": taxonomy.tag,
+            "type": taxonomy.type,
+            "id": taxonomy.id,
+            "parent_id": taxonomy.parent_id,
+            "description": taxonomy.description,
         }
     }
 
@@ -242,11 +238,11 @@ def convert_taxonomy_tags_to_dict(input_dict, tags):
     return output_dict
 
 
-def convert_taxonomy_dict_to_concept_taxonomy(data: dict) -> ConceptTaxonomy:
+def convert_taxonomy_dict_to_taxonomy(data: dict) -> Taxonomy:
     category_tag_data: Dict = data.get("category_tag", {})
     if not category_tag_data:
         raise ValueError("Invalid data format. 'category_tag' key not found.")
-    return ConceptTaxonomy(
+    return Taxonomy(
         id=category_tag_data.get("id", ""),
         parent_id=category_tag_data.get("parent_id", ""),
         title=category_tag_data.get("title", ""),
@@ -305,6 +301,110 @@ class ConceptData(BaseModel):
     )
 
 
+def get_concept_str(
+    concepts: List,
+    as_array: bool = False,
+    summary: bool = False,
+    content: bool = False,
+    taxonomy: bool = False,
+    page_number: bool = False,
+    combined_ids: bool = False,
+    sources: bool = False,
+    children: bool = False,
+    references: bool = False,
+) -> str:
+    ret_str = []
+    for concept in concepts:
+        if isinstance(concept, ConceptData):
+            ret_str.append(
+                (f"ParentID({concept.parent_id}) " if concept.parent_id else "")
+                + f"ID({concept.id}) "
+                + (
+                    f"ChildIDs({', '.join(concept.children)}) "
+                    if children and concept.children and len(concept.children) > 0
+                    else ""
+                )
+                + (
+                    f"TaxonomyIDs({', '.join(concept.taxonomy)}) "
+                    if taxonomy and concept.taxonomy and len(concept.taxonomy) > 0
+                    else ""
+                )
+                + (
+                    f"Sources({', '.join(concept.sources)}) "
+                    if sources and concept.sources and len(concept.sources) > 0
+                    else ""
+                )
+                + (
+                    f"References({', '.join([f'{reference.source}:{reference.page_number}' for reference in concept.references])}) "
+                    if references and concept.references and len(concept.references) > 0
+                    else ""
+                )
+                + f"\n{concept.title.strip()}:"
+                + (
+                    f"\nSummary: {concept.summary.replace('\n', ' ').strip()}\n"
+                    if summary and concept.summary
+                    else ""
+                )
+                + (
+                    f"\nContent:\n{'\n'.join(concept.contents).strip()}"
+                    if content and concept.contents
+                    else ""
+                )
+            )
+        if isinstance(concept, ParsedConcept):
+            ret_str.append(
+                (f"ParentID({concept.parent_id}) " if concept.parent_id else "")
+                + f"ID({concept.id}) "
+                + (
+                    f"Page({concept.page_number}) "
+                    if page_number and concept.page_number
+                    else ""
+                )
+                + (
+                    f"TaxonomyIDs({', '.join(concept.taxonomy)}) "
+                    if taxonomy and concept.taxonomy and len(concept.taxonomy) > 0
+                    else ""
+                )
+                + f"\n{concept.title.strip()}:"
+                + (
+                    f"\nSummary: {concept.summary.replace('\n', ' ').strip()}\n"
+                    if summary and concept.summary
+                    else ""
+                )
+                + (
+                    f"\nContent:\n{concept.content.strip()}"
+                    if content and concept.content
+                    else ""
+                )
+            )
+        if isinstance(concept, ParsedConceptIds):
+            ret_str.append(
+                (f"ParentID({concept.parent_id}) " if concept.parent_id else "")
+                + f"ID({concept.id}) "
+                + (
+                    f"CombinedIDs({', '.join(concept.combined_ids)}) "
+                    if combined_ids
+                    and concept.combined_ids
+                    and len(concept.combined_ids) > 0
+                    else ""
+                )
+                + (
+                    f"TaxonomyIDs({', '.join(concept.taxonomy)}) "
+                    if taxonomy and concept.taxonomy and len(concept.taxonomy) > 0
+                    else ""
+                )
+                + f"\n{concept.title.strip()}:"
+                + (
+                    f"\nSummary: {concept.summary.replace('\n', ' ').strip()}\n"
+                    if summary and concept.summary
+                    else ""
+                )
+            )
+    if as_array:
+        return ret_str
+    return "\n\n".join(ret_str)
+
+
 class SourceContentPage(BaseModel):
     page_content: str
     page_number: int
@@ -342,6 +442,43 @@ class SourceData(BaseModel):
     source_concepts: Optional[List[str]] = None
 
 
+def topic_to_dict(topic: SourceContentPage) -> Dict:
+    return {
+        "topic": topic.topic,
+        "page_content": topic.page_content,
+        "page_number": topic.page_number,
+        "topic_index": topic.topic_index,
+        "metadata": topic.metadata,
+    }
+
+
+def split_topics(
+    topics: Union[List[SourceContentPage], List[Dict]],
+    char_count: int = SETTINGS.default_llms.instruct.char_limit // 2,
+) -> List[List[Union[SourceContentPage, Dict]]]:
+    topic_lists = []
+    topic_list = []
+    cur_content = ""
+    for topic in topics:
+        topic_list.append(topic)
+        if isinstance(topic, SourceContentPage):
+            cur_content += topic.page_content
+        elif isinstance(topic, dict) and "page_content" in topic:
+            cur_content += (
+                topic["page_content"].page_content
+                if isinstance(topic["page_content"], Document)
+                else topic["page_content"]
+            )
+        if len(cur_content) > char_count:
+            topic_lists.append(topic_list)
+            topic_list = []
+            cur_content = ""
+
+    if len(topic_list) > 0:
+        topic_lists.append(topic_list)
+    return topic_lists
+
+
 class ConceptDataTable(Base):
     __tablename__ = SETTINGS.concepts_tablename
 
@@ -360,7 +497,7 @@ class ConceptDataTable(Base):
     disabled = sqla.Column(sqla.Boolean, default=False)
 
 
-class ConceptTaxonomyDataTable(Base):
+class TaxonomyDataTable(Base):
     __tablename__ = SETTINGS.concept_taxonomys_tablename
 
     # id = Column(Integer, primary_key=True)

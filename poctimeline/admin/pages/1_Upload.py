@@ -14,13 +14,14 @@ from streamlit.runtime.uploaded_file_manager import UploadedFile
 from streamlit.elements.lib.mutable_status_container import StatusContainer
 from langchain_core.messages import BaseMessage
 
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
+from lib.graphs.handle_source import handle_source
+from lib.helpers import pretty_print
 from lib.db.source import get_db_sources
 from lib.db.sqlite import init_db
-from lib.graphs.find_concepts import find_concepts
-from lib.graphs.find_topics import find_topics
 from lib.models.sqlite_tables import SourceContents, SourceDataTable
 
 from lib.document_parse import load_pymupdf
@@ -43,7 +44,7 @@ This is an *extremely* cool admin tool!
 database_session = init_db()
 
 
-def validate_category(category:str) -> bool:
+def validate_category(category: str) -> bool:
     # Check length
     if not 3 <= len(category) <= 63:
         return False
@@ -70,7 +71,7 @@ def write_categories(add_new=True) -> Union[List, None]:
     st.write(f"Current categories: {', '.join(file_categories)}")
 
     cat_col1, cat_col2 = st.columns([5, 1], vertical_alignment="bottom")
-    new_categories:List[str] = []
+    new_categories: List[str] = []
     valid = True
     with cat_col1:
         new_categories_input = st.text_input(
@@ -227,18 +228,21 @@ async def process_source(
             url=url,
             file=file,
             overwrite=overwrite,
+            graph=handle_source,
             # collect_concepts=True,
         )
 
-        taxonomy = await graph_call(
-            categories=categories,
-            filename=filename,
-            url=url,
-            file=file,
-            overwrite=overwrite,
-            graph=find_concepts
-            # collect_concepts=True,
-        )
+        pretty_print(result)
+
+        # taxonomy = await graph_call(
+        #     categories=categories,
+        #     filename=filename,
+        #     url=url,
+        #     file=file,
+        #     overwrite=overwrite,
+        #     graph=find_concepts
+        #     # collect_concepts=True,
+        # )
         # with st.spinner("Processing"):
 
         if "source_contents" in result:
@@ -246,17 +250,17 @@ async def process_source(
         else:
             contents = result["content_summaries"]
 
-        if "collected_concepts" in taxonomy:
-            concepts = taxonomy["collected_concepts"]
-        else:
-            concepts = taxonomy["concepts"]
+        # if "collected_concepts" in taxonomy:
+        #     concepts = taxonomy["collected_concepts"]
+        # else:
+        #     concepts = taxonomy["concepts"]
 
         with st.container(height=400, border=False):
             st.write(f"### Summary")
             st.write(contents.summary)
             st.write(f"### Found concepts")
-            for concept in concepts:
-                st.write(concept)
+            # for concept in concepts:
+            #     st.write(concept)
 
 
 async def main():
@@ -382,7 +386,11 @@ async def main():
         if filename in new_files_details:
             file_data = new_files_details[filename]
         else:
-            file_data = {"file": file, "name": filename, "categories": default_categories}
+            file_data = {
+                "file": file,
+                "name": filename,
+                "categories": default_categories,
+            }
 
         with col1:
             file_data["name"] = st.text_input(
@@ -410,7 +418,9 @@ async def main():
             elif filename in new_files_details:
                 det = new_files_details[filename]
 
-            await process_source(det["categories"], filename=filename, file=det["file"], overwrite=True)
+            await process_source(
+                det["categories"], filename=filename, file=det["file"], overwrite=True
+            )
 
         get_db_sources(reset=True)
 

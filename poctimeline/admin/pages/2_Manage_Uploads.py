@@ -8,7 +8,7 @@ import streamlit as st
 from langchain_core.messages import BaseMessage
 
 from lib.db.rag import get_chroma_collections
-from lib.db.taxonomy import get_concept_taxonomy_by_id
+from lib.db.taxonomy import get_taxonomy_by_id
 
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -18,7 +18,7 @@ from lib.db.concept import get_concept_by_id
 from lib.db.source import delete_db_source, get_db_sources
 from lib.db.sqlite import db_commit, init_db
 from lib.helpers import pretty_print
-from lib.models.sqlite_tables import ConceptData, ConceptDataTable, ConceptTaxonomy, SourceContents, SourceDataTable
+from lib.models.sqlite_tables import ConceptData, ConceptDataTable, Taxonomy, SourceContents, SourceDataTable
 from lib.chains.init import get_chain
 from lib.document_tools import create_document_lists, split_text
 from lib.load_env import SETTINGS
@@ -259,14 +259,14 @@ async def manage_file(filename):
 
             with tab4:
                 tagged_concepts: Dict[str, List[ConceptData]] = defaultdict(list)
-                tags:Dict[str, ConceptTaxonomy] = {}
+                tags:Dict[str, Taxonomy] = {}
                 for concept_id in file_entry.source_concepts:
                     db_concept = get_concept_by_id(concept_id)
                     concept_inst:ConceptData = db_concept.concept_contents
                     for tag in concept_inst.taxonomy:
                         tagged_concepts[tag].append(concept_inst)
                         if tag not in tags:
-                            tag_inst = get_concept_taxonomy_by_id(tag)
+                            tag_inst = get_taxonomy_by_id(tag)
                             if tag_inst:
                                 tags[tag] = tag_inst.concept_taxonomy
 

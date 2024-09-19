@@ -87,6 +87,8 @@ async def graph_call(
             "rewrite_text": overwrite,
             "update_rag": (source != None or file != None or url != None)
             and categories != None,
+            "update_concepts": (source != None or file != None or url != None)
+            and categories != None,
             "guidance": guidance,
             "summarize": summarize,
         }
@@ -154,8 +156,8 @@ async def graph_call(
         config=config,
         version="v2",
     ):
-        # if event["event"] != "on_chat_model_stream":
-        #     print(f"\n\n\n{event['name']=} - {event['event']=}\n\n")
+        if event["event"] != "on_chat_model_stream":
+            print(f"\n\n\n{event['name']=} - {event['event']=}\n\n")
         if show_progress and (
             event["event"] == "on_chain_start" or event["event"] == "on_chain_end"
         ):

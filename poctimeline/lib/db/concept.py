@@ -8,7 +8,7 @@ from lib.db.sqlite import db_session
 from lib.document_tools import get_concept_rag_chunks
 
 from lib.models.sqlite_tables import (
-    ConceptTaxonomy,
+    Taxonomy,
     ConceptDataTable,
     ConceptData,
     SourceDataTable,
@@ -43,7 +43,7 @@ def get_db_concepts(
     id: str = None,
     source: str = None,
     categories: List[str] = None,
-    taxonomy: ConceptTaxonomy = None,
+    taxonomy: Taxonomy = None,
 ) -> Union[ConceptDataTable, List[ConceptDataTable]]:
     if id is not None:
         return (

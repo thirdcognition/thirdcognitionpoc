@@ -6,38 +6,41 @@ import sqlalchemy as sqla
 import streamlit as st
 from lib.db.sqlite import db_session
 
+from lib.helpers import get_id_str, get_unique_id, pretty_print
 from lib.models.sqlite_tables import (
-    ConceptTaxonomyDataTable,
-    ConceptTaxonomy,
+    TaxonomyDataTable,
+    Taxonomy,
+    convert_taxonomy_tags_to_dict,
 )
+from lib.prompts.taxonomy import TAXONOMY_ALL_TAGS
 
 
-def db_concept_taxonomy_exists(tag_id: str) -> bool:
+def db_taxonomy_exists(tag_id: str) -> bool:
     return (
         db_session()
-        .query(sqla.exists().where(ConceptTaxonomyDataTable.id == tag_id))
+        .query(sqla.exists().where(TaxonomyDataTable.id == tag_id))
         .scalar()
     )
 
 
 @cache
-def get_concept_taxonomy_by_id(
+def get_taxonomy_by_id(
     concept_category_id: str,
-) -> ConceptTaxonomyDataTable:
+) -> TaxonomyDataTable:
     return (
         db_session()
-        .query(ConceptTaxonomyDataTable)
-        .filter(ConceptTaxonomyDataTable.id == concept_category_id)
+        .query(TaxonomyDataTable)
+        .filter(TaxonomyDataTable.id == concept_category_id)
         .first()
     )
 
 
-def get_db_concept_taxonomy(
+def get_db_taxonomy(
     categories: List[str] = None, reset: bool = False
-) -> Dict[str, List[ConceptTaxonomy]]:
-    db_concept_taxonomy: Dict[str, List[ConceptTaxonomy]] = None
+) -> Dict[str, List[Taxonomy]]:
+    db_concept_taxonomy: Dict[str, List[Taxonomy]] = None
     if "db_concept_taxonomy" not in st.session_state or reset:
-        found_categories = db_session().query(ConceptTaxonomyDataTable).distinct().all()
+        found_categories = db_session().query(TaxonomyDataTable).distinct().all()
 
         if categories is not None:
             found_categories = [
@@ -49,19 +52,19 @@ def get_db_concept_taxonomy(
         if "db_concept_taxonomy" not in st.session_state or reset:
             db_concept_taxonomy = {}
         else:
-            db_concept_taxonomy = st.session_state.db_concept_taxonomy
+            db_concept_taxonomy = st.session_state.db_taxonomy
         for category in found_categories:
             file_categories = category.category_tags
             for ict in file_categories:
                 if ict not in db_concept_taxonomy:
                     db_concept_taxonomy[ict] = []
-                concept_taxonomy = ConceptTaxonomy(**category.concept_taxonomy.__dict__)
+                concept_taxonomy = Taxonomy(**category.concept_taxonomy.__dict__)
                 concept_taxonomy.id = category.id
                 db_concept_taxonomy[ict].append(concept_taxonomy)
 
-        st.session_state.db_concept_taxonomy = db_concept_taxonomy
+        st.session_state.db_taxonomy = db_concept_taxonomy
     else:
-        db_concept_taxonomy = st.session_state.db_concept_taxonomy
+        db_concept_taxonomy = st.session_state.db_taxonomy
 
     # if isinstance(categories, str):
     #     categories = [categories]
@@ -75,11 +78,11 @@ def get_db_concept_taxonomy(
     return db_concept_taxonomy
 
 
-def delete_db_concept_taxonomy(taxonomy_id: str, commit: bool = True):
+def delete_db_taxonomy(taxonomy_id: str, commit: bool = True):
     instance = (
         db_session()
-        .query(ConceptTaxonomyDataTable)
-        .where(ConceptTaxonomyDataTable.id == taxonomy_id)
+        .query(TaxonomyDataTable)
+        .where(TaxonomyDataTable.id == taxonomy_id)
         .first()
     )
     db_session().delete(instance)
@@ -87,15 +90,15 @@ def delete_db_concept_taxonomy(taxonomy_id: str, commit: bool = True):
         db_session().commit()
 
 
-def update_concept_taxonomy(
-    taxonomy: ConceptTaxonomy, categories=List[str], commit: bool = True
+def update_db_taxonomy(
+    taxonomy: Taxonomy, categories=List[str], commit: bool = True
 ):
-    if db_concept_taxonomy_exists(taxonomy.id):
+    if db_taxonomy_exists(taxonomy.id):
         # print(f"\n\nUpdate existing taxonomy:\n\n{taxonomy.model_dump_json(indent=4)}")
         concept_category = (
             db_session()
-            .query(ConceptTaxonomyDataTable)
-            .filter(ConceptTaxonomyDataTable.id == taxonomy.id)
+            .query(TaxonomyDataTable)
+            .filter(TaxonomyDataTable.id == taxonomy.id)
             .first()
         )
         concept_category.concept_taxonomy = taxonomy
@@ -105,7 +108,7 @@ def update_concept_taxonomy(
         concept_category.last_updated = datetime.now()
     else:
         # print(f"\n\nCreate new tag:\n\n{tag.model_dump_json(indent=4)}")
-        concept_category = ConceptTaxonomyDataTable(
+        concept_category = TaxonomyDataTable(
             id=taxonomy.id,
             parent_id=taxonomy.parent_id,
             concept_taxonomy=taxonomy,
@@ -116,3 +119,58 @@ def update_concept_taxonomy(
 
     if commit:
         db_session().commit()
+
+def get_taxonomy_item_list(categories: List[str], reset=False) -> List[Taxonomy]:
+    concepts = get_db_taxonomy(categories=categories, reset=reset)
+    all_concepts: List[Taxonomy] = []
+
+    for category, concept_list in concepts.items():
+        for concept in concept_list:
+            all_concepts.append(concept)
+    return all_concepts
+
+def handle_new_taxonomy_item(
+    item, taxonomy_ids: List, cat_for_id: str, existing_id=None, existing_parent_id=None
+):
+    try:
+        new_taxonomy = convert_taxonomy_tags_to_dict(item, TAXONOMY_ALL_TAGS)
+        new_id = (
+            (
+                new_taxonomy["category_tag"]["id"]
+                if (
+                    "id" in new_taxonomy["category_tag"]
+                    and new_taxonomy["category_tag"]["id"] not in taxonomy_ids
+                )
+                else (
+                    get_unique_id(
+                        cat_for_id + "-" +  get_id_str(new_taxonomy["category_tag"]["taxonomy"]),
+                        taxonomy_ids,
+                    )
+                )
+            )
+            if existing_id is None
+            else existing_id
+        )
+
+        new_taxonomy["category_tag"]["id"] = new_id
+        parent_id = (
+            (
+                new_taxonomy["category_tag"]["parent_id"]
+                if ("parent_id" in new_taxonomy["category_tag"])
+                else (
+                    get_unique_id(
+                        cat_for_id + "-" + get_id_str(new_taxonomy["category_tag"]["parent_taxonomy"]),
+                        [],
+                    )
+                )
+            )
+            if existing_parent_id is None
+            else existing_parent_id
+        )
+        if parent_id in taxonomy_ids:
+            new_taxonomy["category_tag"]["parent_id"] = parent_id
+        return new_taxonomy
+
+    except Exception as e:
+        print(f"Error parsing taxonomy: {e}")
+        pretty_print(item, "Error parsing taxonomy", force=True)

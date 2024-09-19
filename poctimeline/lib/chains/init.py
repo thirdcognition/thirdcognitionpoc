@@ -56,13 +56,18 @@ from lib.prompts.formatters import (
     topic_formatter_guided,
     md_formatter,
     md_formatter_guided,
-    concept_taxonomy,
-    concept_taxonomy_refine,
+
+)
+from lib.prompts.taxonomy import (
+    taxonomy,
+    taxonomy_refine,
+    taxonomy_structured,
+)
+from lib.prompts.concepts import (
     concept_structured,
     concept_more,
     concept_unique,
     concept_hierarchy,
-    concept_taxonomy_structured,
 )
 from lib.prompts.chat import chat, question, helper
 from lib.prompts.hyde import hyde, hyde_document
@@ -306,15 +311,20 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
         topic_formatter_guided,
         True,
     ),
-    "concept_taxonomy": (
+    "taxonomy": (
         "instruct",
-        concept_taxonomy,
+        taxonomy,
         False,
     ),
-    "concept_taxonomy_refine": (
+    "taxonomy_refine": (
         "instruct_detailed" if not DEVMODE else "instruct",
-        concept_taxonomy_refine,
+        taxonomy_refine,
         True,
+    ),
+    "taxonomy_structured": (
+        "structured_detailed" if not DEVMODE else "structured",
+        taxonomy_structured,
+        False,
     ),
     "concept_structured": ("structured", concept_structured, False),
     "concept_more": ("structured", concept_more, False),
@@ -326,11 +336,6 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
     "concept_hierarchy": (
         "structured_detailed" if not DEVMODE else "structured",
         concept_hierarchy,
-        False,
-    ),
-    "concept_taxonomy_structured": (
-        "structured_detailed" if not DEVMODE else "structured",
-        concept_taxonomy_structured,
         False,
     ),
     "journey_prompt_generator": (

@@ -1,4 +1,5 @@
 import pprint as pp
+import re
 from typing import Dict, List
 from pydantic import BaseModel
 import streamlit as st
@@ -11,6 +12,7 @@ from langchain_core.runnables import (
 from langchain_community.chat_message_histories.in_memory import ChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 from lib.load_env import DEBUGMODE
+
 
 def print_params(msg="", params=""):
     if DEBUGMODE:
@@ -98,7 +100,27 @@ def parse_content_dict(data):
                 ),
                 None,
             )
-            result.append({"topic": topic, "content": content, "summary": summary})
+            instruct = next(
+                (
+                    child["body"]
+                    for child in item["children"]
+                    if child["tag"] == "instruct"
+                ),
+                None,
+            )
+            id = next(
+                (child["body"] for child in item["children"] if child["tag"] == "id"),
+                None,
+            )
+            result.append(
+                {
+                    "topic": topic,
+                    "content": content,
+                    "summary": summary,
+                    "id": id,
+                    "instruct": instruct,
+                }
+            )
         else:
             result.extend(parse_content_dict(item))
     return result
@@ -143,12 +165,46 @@ def get_specific_tag(items, tag="category_tag") -> List[dict]:
             found_items.extend(get_specific_tag(item["children"], tag))
     return found_items
 
+
+def convert_tags_to_dict(input_dict, tags, output_tag="item"):
+    output_dict = {output_tag: {}}
+
+    for child in input_dict["children"]:
+        if child["tag"] in tags:
+            if child["tag"] in output_dict[output_tag]:
+                if isinstance(output_dict[output_tag][child["tag"]], list):
+                    output_dict[output_tag][child["tag"]].append(child["body"].strip())
+                else:
+                    output_dict[output_tag][child["tag"]] = [
+                        output_dict[output_tag][child["tag"]],
+                        child["body"].strip(),
+                    ]
+            else:
+                output_dict[output_tag][child["tag"]] = child["body"].strip()
+
+    return output_dict
+
+
 def get_id_str(item):
     if isinstance(item, list):
         item = "-".join(item)
     if isinstance(item, dict):
         item = "-".join(item.values())
-    return item.replace(" ", "-").lower()
+
+    item = re.sub(
+        r"[\'\(\)\"]", "", item
+    )  # remove single quotes, parentheses, and double quotes
+    item = re.sub(
+        r"[\n\t]+", " ", item
+    )  # replace newline and tab characters with a space
+    item = re.sub(r"\s+", " ", item)  # replace multiple whitespaces with a single space
+    item = item.replace(" ", "-")  # replace spaces with hyphens
+    item = re.sub(r"-+", "-", item)  # replace multiple hyphens with a single hyphen
+    item = item.lower()  # convert to lowercase
+    item = item.strip("-")  # remove leading and trailing hyphens
+    item = item.strip()  # remove leading and trailing hyphens
+    return item
+
 
 def get_unique_id(id_str: str, existing_ids: List[str]):
     id = get_id_str(id_str)
@@ -162,7 +218,6 @@ def get_unique_id(id_str: str, existing_ids: List[str]):
         if new_id not in existing_ids:
             return new_id
     return f"{id}_{id_index}"
-
 
 
 def unwrap_hierarchy(
@@ -190,6 +245,3 @@ def unwrap_hierarchy(
         traverse(node)
 
     return result
-
-
-

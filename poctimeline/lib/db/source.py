@@ -8,7 +8,7 @@ from lib.db.rag import get_chroma_collections, update_rag
 from lib.db.sqlite import db_commit, db_session
 from lib.document_tools import get_source_rag_chunks, get_topic_rag_chunks
 
-from lib.models.sqlite_tables import (
+from lib.models.source import (
     SourceContentPage,
     SourceContents,
     SourceData,

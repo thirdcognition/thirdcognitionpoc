@@ -18,7 +18,9 @@ from lib.db.concept import get_concept_by_id
 from lib.db.source import delete_db_source, get_db_sources
 from lib.db.sqlite import db_commit, init_db
 from lib.helpers import pretty_print
-from lib.models.sqlite_tables import ConceptData, ConceptDataTable, Taxonomy, SourceContents, SourceDataTable
+from lib.models.source import SourceContents, SourceDataTable
+from lib.models.concepts import  ConceptData, ConceptDataTable
+from lib.models.taxonomy import  Taxonomy
 from lib.chains.init import get_chain
 from lib.document_tools import create_document_lists, split_text
 from lib.load_env import SETTINGS

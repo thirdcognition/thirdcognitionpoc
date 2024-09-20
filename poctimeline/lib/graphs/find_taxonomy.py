@@ -22,15 +22,15 @@ from lib.helpers import (
 )
 from lib.load_env import SETTINGS
 
-from lib.models.sqlite_tables import (
+from lib.models.taxonomy import (
     Taxonomy,
     ParsedTaxonomy,
     ParsedTaxonomyList,
     convert_taxonomy_to_dict,
     convert_taxonomy_dict_to_taxonomy,
     convert_taxonomy_dict_to_tag_simple_structure_string,
-    split_topics,
 )
+from lib.models.source import split_topics
 
 
 class FindTaxonomyState(TypedDict):

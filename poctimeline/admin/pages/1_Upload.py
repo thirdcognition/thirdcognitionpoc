@@ -22,7 +22,7 @@ from lib.graphs.handle_source import handle_source
 from lib.helpers import pretty_print
 from lib.db.source import get_db_sources
 from lib.db.sqlite import init_db
-from lib.models.sqlite_tables import SourceContents, SourceDataTable
+from lib.models.source import SourceContents, SourceDataTable
 
 from lib.document_parse import load_pymupdf
 from lib.document_tools import split_markdown, split_text

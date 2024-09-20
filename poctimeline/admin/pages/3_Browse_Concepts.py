@@ -16,7 +16,8 @@ sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
 from lib.db.concept import get_concept_by_id, get_db_concepts
 from lib.helpers import pretty_print
-from lib.models.sqlite_tables import ConceptData, ConceptDataTable, Taxonomy
+from lib.models.concepts import ConceptData, ConceptDataTable
+from lib.models.taxonomy import Taxonomy
 
 
 from lib.streamlit_tools import check_auth, get_all_categories

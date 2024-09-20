@@ -6,11 +6,10 @@ import sqlalchemy as sqla
 import streamlit as st
 from lib.db.sqlite import db_session
 
-from lib.helpers import get_id_str, get_unique_id, pretty_print
-from lib.models.sqlite_tables import (
+from lib.helpers import convert_tags_to_dict, get_id_str, get_unique_id, pretty_print
+from lib.models.taxonomy import (
     TaxonomyDataTable,
-    Taxonomy,
-    convert_taxonomy_tags_to_dict,
+    Taxonomy
 )
 from lib.prompts.taxonomy import TAXONOMY_ALL_TAGS
 
@@ -133,17 +132,18 @@ def handle_new_taxonomy_item(
     item, taxonomy_ids: List, cat_for_id: str, existing_id=None, existing_parent_id=None
 ):
     try:
-        new_taxonomy = convert_taxonomy_tags_to_dict(item, TAXONOMY_ALL_TAGS)
+        new_taxonomy = convert_tags_to_dict(item, TAXONOMY_ALL_TAGS, "category_tag")
+        new_item = new_taxonomy["category_tag"]
         new_id = (
             (
-                new_taxonomy["category_tag"]["id"]
+                new_item["id"]
                 if (
-                    "id" in new_taxonomy["category_tag"]
-                    and new_taxonomy["category_tag"]["id"] not in taxonomy_ids
+                    "id" in new_item
+                    and new_item["id"] not in taxonomy_ids
                 )
                 else (
                     get_unique_id(
-                        cat_for_id + "-" +  get_id_str(new_taxonomy["category_tag"]["taxonomy"]),
+                        cat_for_id + "-" +  get_id_str(new_item["taxonomy"]),
                         taxonomy_ids,
                     )
                 )
@@ -152,14 +152,14 @@ def handle_new_taxonomy_item(
             else existing_id
         )
 
-        new_taxonomy["category_tag"]["id"] = new_id
+        new_item["id"] = new_id
         parent_id = (
             (
-                new_taxonomy["category_tag"]["parent_id"]
-                if ("parent_id" in new_taxonomy["category_tag"])
+                new_item["parent_id"]
+                if ("parent_id" in new_item)
                 else (
                     get_unique_id(
-                        cat_for_id + "-" + get_id_str(new_taxonomy["category_tag"]["parent_taxonomy"]),
+                        cat_for_id + "-" + get_id_str(new_item["parent_taxonomy"]),
                         [],
                     )
                 )
@@ -168,7 +168,7 @@ def handle_new_taxonomy_item(
             else existing_parent_id
         )
         if parent_id in taxonomy_ids:
-            new_taxonomy["category_tag"]["parent_id"] = parent_id
+            new_item["parent_id"] = parent_id
         return new_taxonomy
 
     except Exception as e:

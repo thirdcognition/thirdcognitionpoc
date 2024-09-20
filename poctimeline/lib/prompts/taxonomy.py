@@ -4,7 +4,7 @@ import random
 from typing import Any, Dict, List
 from lib.helpers import read_and_load_yaml
 from langchain_core.output_parsers import PydanticOutputParser
-from lib.models.sqlite_tables import ParsedTaxonomyList
+from lib.models.taxonomy import ParsedTaxonomyList
 from lib.prompts.base import (
     KEEP_PRE_THINK_TOGETHER,
     MAINTAIN_CONTENT_AND_USER_LANGUAGE,

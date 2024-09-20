@@ -17,7 +17,8 @@ from lib.models.journey import (
     SubjectModel,
     StepStructure,
 )
-from lib.models.sqlite_tables import ConceptData, SourceData
+from lib.models.concepts import ConceptData
+from lib.models.source import SourceData
 from lib.prompts.journey import JourneyPrompts, Step
 from lib.chains.init import get_base_chain, get_chain
 from lib.streamlit_tools import llm_edit

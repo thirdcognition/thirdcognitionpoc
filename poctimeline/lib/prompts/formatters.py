@@ -2,11 +2,7 @@ import textwrap
 from lib.prompts.base import (
     KEEP_PRE_THINK_TOGETHER,
     MAINTAIN_CONTENT_AND_USER_LANGUAGE,
-    PAGE_INSTRUCT,
-    PAGE_INSTRUCT_TAGS,
     PRE_THINK_INSTRUCT,
-    TOPIC_INSTRUCT,
-    TOPIC_INSTRUCT_TAGS,
     PromptFormatter,
     TagsParser,
 )
@@ -118,152 +114,6 @@ text_formatter_guided.parser = TagsParser(
     min_len=100,
 )
 
-page_formatter = PromptFormatter(
-    system=textwrap.dedent(
-        f"""
-        Act as a document formatter.
-        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
-        {PRE_THINK_INSTRUCT}
-        {PAGE_INSTRUCT}
-        {KEEP_PRE_THINK_TOGETHER}
-        Rewrite the text specified by the user between the context start and context end in full detail using natural language.
-        Don't use html tags or markdown. Remove all mentions of confidentiality. Use only information from the available in the text.
-        """
-    ),
-    user=textwrap.dedent(
-        """
-        Previous page ending start
-        {prev_page}
-        Previous page ending end
-        Next page beginning start
-        {next_page}
-        Next page beginning end
-        Context start
-        {context}
-        Context end
-
-        Format the text in the context.
-        """
-    ),
-)
-page_formatter.parser = TagsParser(
-    min_len=100,
-    tags=PAGE_INSTRUCT_TAGS,
-    optional_tags=["thinking", "reflection"],
-    all_tags_required=True,
-    return_tag=True,
-)
-
-page_formatter_guided = PromptFormatter(
-    system=textwrap.dedent(
-        f"""
-        Act as a document formatter.
-        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
-        {PRE_THINK_INSTRUCT}
-        {PAGE_INSTRUCT}
-        {KEEP_PRE_THINK_TOGETHER}
-        Rewrite the text between the context start and context end using only information and follow the instructions exactly.
-        Don't use html tags or markdown.
-        """
-    ),
-    user=textwrap.dedent(
-        """
-        Instructions: {instructions}
-        Previous page ending start
-        {prev_page}
-        Previous page ending end
-        Next page beginning start
-        {next_page}
-        Next page beginning end
-        Context start
-        {context}
-        Context end
-
-        Format the text in the context.
-        """
-    ),
-)
-page_formatter_guided.parser = TagsParser(
-    min_len=100,
-    tags=PAGE_INSTRUCT_TAGS,
-    optional_tags=["thinking", "reflection"],
-    all_tags_required=True,
-    return_tag=True,
-)
-
-topic_formatter = PromptFormatter(
-    system=textwrap.dedent(
-        f"""
-        Act as a document formatter.
-        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
-        {PRE_THINK_INSTRUCT}
-        {TOPIC_INSTRUCT}
-        {KEEP_PRE_THINK_TOGETHER}
-        Rewrite the text specified by the user between the context start and context end in full detail using natural language.
-        Don't use html tags or markdown. Remove all mentions of confidentiality. Use only information from the available in the text.
-        """
-    ),
-    user=textwrap.dedent(
-        """
-        Previous page ending start
-        {prev_page}
-        Previous page ending end
-        Next page beginning start
-        {next_page}
-        Next page beginning end
-        Context start
-        {context}
-        Context end
-
-        Format the text in the context.
-        """
-    ),
-)
-topic_formatter.parser = TagsParser(
-    min_len=100,
-    tags=TOPIC_INSTRUCT_TAGS,
-    optional_tags=["thinking", "reflection"],
-    all_tags_required=True,
-    return_tag=True,
-)
-
-topic_formatter_guided = PromptFormatter(
-    system=textwrap.dedent(
-        f"""
-        Act as a document formatter.
-        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
-        {PRE_THINK_INSTRUCT}
-        {TOPIC_INSTRUCT}
-        {KEEP_PRE_THINK_TOGETHER}
-        Rewrite the text between the context start and context end using only information and follow the instructions exactly.
-        Don't use html tags or markdown.
-        """
-    ),
-    user=textwrap.dedent(
-        """
-        Instructions: {instructions}
-        Previous page ending start
-        {prev_page}
-        Previous page ending end
-        Next page beginning start
-        {next_page}
-        Next page beginning end
-        Context start
-        {context}
-        Context end
-
-        Format the text in the context.
-        """
-    ),
-)
-topic_formatter_guided.parser = TagsParser(
-    min_len=100,
-    tags=TOPIC_INSTRUCT_TAGS,
-    optional_tags=["thinking", "reflection"],
-    all_tags_required=True,
-    return_tag=True,
-)
-
 text_formatter_compress_guided = PromptFormatter(
     system=textwrap.dedent(
         f"""
@@ -290,7 +140,8 @@ text_formatter_compress_guided = PromptFormatter(
         """
     ),
 )
-text_formatter_compress.parser = TagsParser(min_len=100)
+text_formatter_compress_guided.parser = TagsParser(min_len=100)
+
 
 md_formatter = PromptFormatter(
     system=textwrap.dedent(
@@ -343,4 +194,3 @@ md_formatter_guided = PromptFormatter(
 md_formatter_guided.parser = TagsParser(
     min_len=100,
 )
-

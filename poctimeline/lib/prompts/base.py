@@ -25,52 +25,7 @@ PRE_THINK_INSTRUCT = """
         If you detect that you made a mistake in your reasoning at any point, correct yourself inside <reflection> tags.
         """
 PRE_THINK_TAGS = ["thinking", "reflection"]
-PAGE_INSTRUCT = """
-        Use <thinking>-tag to consider the contents of the page and how to rewrite them. Explain your reasoning using
-        <reflect>-tag and make sure to cover all topics separately.
 
-        Rewrite the page in a way that contains all the information about the topic that is available within the context.
-        Use the <output>-tag to wrap the content, add <topic>-tag to specify the topic and <summary>-tag to specify the summary of the content.
-        Use following format for each topic:
-        <output>
-        <topic>
-        Topic
-        </topic>
-        Formatted content in full detail.
-        <summary>
-        Summary of the content
-        </summary>
-        </output>
-
-        Always use <[tag]> and </[tag]>-tags, e.g. <topic> and </topic> when tags are specified.
-        There should only be one of <ouptut>, <topic> and <summary>-tags. If the page
-        contains multiple topics, combine them into one topic.
-        """
-PAGE_INSTRUCT_TAGS = ["topic", "summary"]
-TOPIC_INSTRUCT = """
-        Use <thinking>-tag to identify different topics that are contained within the page. Explain your reasoning using
-        <reflect>-tag and make sure to cover all topics separately.
-
-        For each topic write content that contains all the information about the topic that is available within the context.
-        Use the <output>-tag to wrap the content, add <topic>-tag to specify the topic and <summary>-tag to specify the summary of the content.
-        Use following format for each topic:
-        <output>
-        <topic>
-        Topic
-        </topic>
-        Formatted content in full detail.
-        <summary>
-        Summary of the content
-        </summary>
-        </output>
-
-        If the content specifies multiple topics be sure to add a <topic>, <output> and <summary> for each topic.
-        Finally after writing <output>-tag for each topic, write a final <output>-tag with specified format
-        that covers the whole content within the context in full detail. If there's Previous or Next page defined
-        do not consider this to cover all content but just one slice of it.
-        Always use <[tag]> and </[tag]>-tags, e.g. <topic> and </topic> when tags are specified.
-        """
-TOPIC_INSTRUCT_TAGS = ["topic", "summary"]
 ACTOR_INTRODUCTIONS = "You are a world-class AI system, capable of complex reasoning and reflection called Virtual Buddy."
 # For example:
 
@@ -262,15 +217,19 @@ class TagsParser(BaseOutputParser[Union[str, Dict]]):
     return_tag: bool = False
     all_tags_required: bool = False
 
-    def get_child_content(self, node, tags=None) -> str:
+    def get_child_content(self, node, tags=None) -> tuple[int, str]:
         if tags is None:
             tags = self.tags
         content = ""
+        child_count = 0
         if node["tag"] in tags:
             content = str(node["body"]).strip() + "\n"
+            child_count += 1
         for child in node["children"]:
-            content += self.get_child_content(child, tags).strip() + "\n"
-        return content.strip()
+            child_content = self.get_child_content(child, tags)
+            child_count += child_content[0]
+            content += child_content[1].strip() + "\n"
+        return child_count, content.strip()
 
     def parse(self, text: Union[str, BaseMessage]) -> Union[str, Dict]:
         tag_html_parser = TagHTMLParser(
@@ -298,8 +257,9 @@ class TagsParser(BaseOutputParser[Union[str, Dict]]):
 
         pretty_print({"text": text, "parsed": parsed_content}, "Parsed content:")
 
-        content = {}
-        tag_contents_joined = {}
+        tag_content = {}
+        tag_children = {}
+        # tag_contents_joined = {}
 
         tags = self.tags + self.content_tags
         if isinstance(self.optional_tags, list):
@@ -311,7 +271,7 @@ class TagsParser(BaseOutputParser[Union[str, Dict]]):
                 # for node in parsed_content["children"]:
                 #     if node["tag"] == tag:
                 #         content[tag] += (
-                content[tag] = self.get_child_content(
+                child_content = self.get_child_content(
                         parsed_content,
                         [tag]
                         # (
@@ -319,38 +279,41 @@ class TagsParser(BaseOutputParser[Union[str, Dict]]):
                         #     if isinstance(self.optional_tags, list)
                         #     else self.tags
                         # ),
-                    ) + 2 * "\n"
+                    )
+                tag_children[tag] = child_content[0]
+                tag_content[tag] = child_content[1].strip()# + 2 * "\n"
                 #         )
-                content[tag] = content[tag].strip()
-                if len(content[tag]) == 0:
-                    del content[tag]
+                # tag_content[tag] = tag_content[tag].strip()
+                if len(tag_content[tag]) == 0:
+                    del tag_content[tag]
                 # tag_contents_joined[tag] = (
-                #     content[tag]
+                #     tag_content[tag]
                 #     if tag not in tag_contents_joined
-                #     else tag_contents_joined[tag] + "\n\n" + content[tag]
+                #     else tag_contents_joined[tag] + "\n\n" + tag_content[tag]
                 # )
 
         for tag in self.content_tags:
-            if tag in content:
-                del content[tag]
+            if tag in tag_content:
+                del tag_content[tag]
         #     if tag in tag_contents_joined:
         #         del tag_contents_joined[tag]
 
         text_contents_joined = str(parsed_content["body"]).strip()
         for node in parsed_content["children"]:
             if node["tag"] not in self.tags:
+                child_content = self.get_child_content(node, self.content_tags)
                 text_contents_joined += (
-                    self.get_child_content(node, self.content_tags) + 2 * "\n"
+                    child_content[1] + 2 * "\n"
                 )
         text_contents_joined = text_contents_joined.strip()
 
 
         if (
             self.min_len > 0
-            and len(repr(content)) > 2
+            and len(repr(tag_content)) > 2
             and len(text_contents_joined) == 0
         ):
-            found_tags = content.keys()
+            found_tags = tag_content.keys()
 
             excpect_msg = textwrap.dedent(
                 f"""
@@ -373,7 +336,7 @@ class TagsParser(BaseOutputParser[Union[str, Dict]]):
         if self.all_tags_required:
             missing_tags = []
             for tag in self.tags:
-                if tag not in content or len(content[tag]) == 0:
+                if (tag not in tag_content or len(tag_content[tag]) == 0) and (tag not in tag_children or tag_children[tag] == 0):
                     missing_tags.append(tag)
 
             if len(missing_tags) > 0:
@@ -384,7 +347,7 @@ class TagsParser(BaseOutputParser[Union[str, Dict]]):
         if self.return_tag:
             resp = {
                 "content": text_contents_joined,
-                "tags": {tag: content[tag] for tag in self.tags},
+                "tags": {tag: tag_content[tag] for tag in tag_content.keys() if tag in self.tags},
                 # "tags_joined": tag_contents_joined,
                 "parsed": parsed_content,
             }

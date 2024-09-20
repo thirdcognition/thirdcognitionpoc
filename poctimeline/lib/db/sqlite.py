@@ -1,14 +1,13 @@
 import sqlalchemy as sqla
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base
 
 from lib.load_env import SETTINGS
-from lib.models.sqlite_tables import (
-    Base,
-)
+
+Base = declarative_base()
 
 chroma_client = None
 database_session = None
-
 
 def init_db():
     global database_session

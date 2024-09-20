@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from io import BytesIO
 import re
 from typing import Dict, List
@@ -15,7 +16,7 @@ from lib.document_tools import markdown_to_text
 from lib.graphs.process_text import process_text
 from lib.graphs.find_concepts import find_concepts
 from lib.graphs.find_topics import find_topics
-from lib.models.sqlite_tables import SourceDataTable
+from lib.models.source import SourceDataTable
 
 with open("admin_auth.yaml") as file:
     auth_config = yaml.load(file, Loader=SafeLoader)
@@ -151,13 +152,26 @@ async def graph_call(
     if texts is not None:
         params["contents"] = texts
 
+    white_space = ""
+
+    prev_time = datetime.now()
+    prev_times = [prev_time]
+
     async for event in graph.astream_events(
         params,
         config=config,
         version="v2",
     ):
         if event["event"] != "on_chat_model_stream":
-            print(f"\n\n\n{event['name']=} - {event['event']=}\n\n")
+            now = datetime.now()
+            if "_end" in  event["event"]:
+                white_space = white_space[:-2]
+                prev_time = prev_times.pop()
+            if now - prev_time > timedelta(seconds=1):
+                print(f"+{now-prev_time}s:" + white_space + f"{event['name']} - {event['event']=}")
+            if "_start" in event["event"]:
+                white_space += "  "
+                prev_times.append(now)
         if show_progress and (
             event["event"] == "on_chain_start" or event["event"] == "on_chain_end"
         ):

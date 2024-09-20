@@ -24,9 +24,10 @@ from lib.models.journey import (
     StepModel,
     SubjectModel,
     StepStructure,
+    JourneyDataTable
 )
 from lib.models.prompts import CustomPrompt
-from lib.models.sqlite_tables import SourceContents, SourceData, JourneyDataTable
+from lib.models.source import SourceContents, SourceData
 from lib.prompts.journey import convert_to_journey_prompts
 from lib.prompts.journey import Step, Plan
 

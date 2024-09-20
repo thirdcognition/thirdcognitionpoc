@@ -1,6 +1,6 @@
 import textwrap
 from langchain_core.output_parsers import PydanticOutputParser
-from lib.models.sqlite_tables import (
+from lib.models.concepts import (
     ParsedConceptList,
     ParsedConceptStructureList,
     ParsedUniqueConceptList,

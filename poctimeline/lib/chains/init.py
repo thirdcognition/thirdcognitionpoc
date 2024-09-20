@@ -50,13 +50,15 @@ from lib.prompts.formatters import (
     text_formatter_simple,
     text_formatter_compress,
     text_formatter_guided,
+    md_formatter,
+    md_formatter_guided,
+)
+from lib.prompts.topics import (
     page_formatter,
     page_formatter_guided,
     topic_formatter,
     topic_formatter_guided,
-    md_formatter,
-    md_formatter_guided,
-
+    topic_combiner
 )
 from lib.prompts.taxonomy import (
     taxonomy,
@@ -311,6 +313,7 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
         topic_formatter_guided,
         True,
     ),
+    "topic_combiner": ("instruct_detailed" if not DEVMODE else "instruct", topic_combiner, True),
     "taxonomy": (
         "instruct",
         taxonomy,

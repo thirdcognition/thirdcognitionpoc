@@ -26,12 +26,12 @@ from lib.document_tools import (
 )
 from lib.helpers import pretty_print
 from lib.load_env import SETTINGS
-from lib.models.sqlite_tables import (
-    ConceptData,
+from lib.models.concepts import ConceptData
+from lib.models.taxonomy import Taxonomy
+from lib.models.source import (
+    topic_to_dict,
     SourceContentPage,
     SourceContents,
-    Taxonomy,
-    topic_to_dict,
 )
 from lib.graphs.process_text import process_text
 from lib.graphs.find_topics import find_topics
@@ -76,11 +76,16 @@ class ProcessSourceState(TypedDict):
     source: str
     instructions: str
     # generated
-    results: Dict
     contents: List[Union[Document, str]]  # Annotated[list[Document], operator.add]
-    content_topics: List[Dict]
-    new_taxonomy: List[Taxonomy]
-    collected_concepts: List[ConceptData]
+    process_text_complete: bool
+    process_text_result: Dict
+    find_topics_complete: bool
+    find_topics_result: Dict
+    find_taxonomy_complete: bool
+    find_taxonomy_result: List[Taxonomy]
+    find_concepts_complete: bool
+    find_concepts_result: List[ConceptData]
+    rag_complete:bool
 
 
 class ProcessSourceConfig(TypedDict):
@@ -237,8 +242,8 @@ async def process_text_step(state: ProcessSourceState, config: RunnableConfig):
     )
 
     return {
-        "results" : results,
         "process_text_complete": True,
+        "process_text_result" : results["results"],
     }
 
 async def find_topics_step(state: ProcessSourceState, config: RunnableConfig):
@@ -256,8 +261,8 @@ async def find_topics_step(state: ProcessSourceState, config: RunnableConfig):
     )
 
     return {
-        "topics_complete": True,
-        "content_topics": topics_results["content_topics"],
+        "find_topics_complete": True,
+        "find_topics_result": topics_results,
     }
 
 
@@ -271,12 +276,12 @@ async def find_taxonomy_step(state: ProcessSourceState, config: RunnableConfig):
             "filename": state.get("filename", None),
             "url": state.get("url", None),
             "source": state.get("source", None),
-            "content_topics": state["content_topics"],
+            "content_topics": state["find_topics_result"]["content_topics"],
             "instructions": state.get("instructions", None),
         }
     )
 
-    return {"taxonomy_complete": True, "new_taxonomy": taxonomy_results["results"]}
+    return {"find_taxonomy_complete": True, "find_taxonomy_result": taxonomy_results["results"]}
 
 
 async def find_concepts_step(state: ProcessSourceState, config: RunnableConfig):
@@ -289,14 +294,14 @@ async def find_concepts_step(state: ProcessSourceState, config: RunnableConfig):
             "filename": state.get("filename", None),
             "url": state.get("url", None),
             "source": state.get("source", None),
-            "content_topics": state["content_topics"],
+            "content_topics": state["find_topics_result"]["content_topics"],
             "instructions": state.get("instructions", None),
         }
     )
 
     return {
-        "concepts_complete": True,
-        "collected_concepts": concepts_results["collected_concepts"],
+        "find_concepts_complete": True,
+        "find_concepts_result": concepts_results["collected_concepts"],
     }
 
 
@@ -310,18 +315,20 @@ async def should_rag(state: ProcessSourceState, config: RunnableConfig):
 async def rag_content(state: ProcessSourceState, config: RunnableConfig):
     # texts = state["contents"]
     pretty_print(state, force=True)
-    final_contents = state["results"]["content"]
-    final_topics = state["results"]["topics"]
-    summary = state["results"]["summary"]
-    content_topics = state["content_topics"]
+    final_contents = state["process_text_result"]["content"]
+    final_topics = state["find_topics_result"]["all_topics"]
+    summary = state["process_text_result"]["summary"]
+    content_topics = state["find_topics_result"]["content_topics"]
 
     source_topics = [
         SourceContentPage(
-            page_content=get_text_from_completion(item["document"]),
-            page_number=item["page"],
+            page_content=get_text_from_completion(item["page_content"]),
+            page_number=item["page_number"],
             topic_index=item["topic_index"],
-            metadata=item["document"].metadata,
+            metadata=item["page_content"].metadata,
             topic=item["topic"] or "",
+            summary=item["summary"] or "",
+            id=item["id"] or "",
             chroma_ids=[],
             chroma_collections=[],
         )
@@ -342,7 +349,7 @@ async def rag_content(state: ProcessSourceState, config: RunnableConfig):
     if config["configurable"]["overwrite_sources"] or state.get(
         "split_complete", False
     ):
-        texts = [page.page_content for page in final_contents]
+        texts = [get_text_from_completion(page) for page in state["contents"]]
         update_db_source_rag(
             state["filename"] or state["url"],
             state["categories"],
@@ -361,7 +368,7 @@ async def rag_content(state: ProcessSourceState, config: RunnableConfig):
                 state["filename"] or state["url"],
                 state["categories"],
                 concepts=(
-                    state["collected_concepts"] if "collected_concepts" in state else None
+                    state["find_concepts_result"] if "find_concepts_result" in state else None
                 ),
             )
 

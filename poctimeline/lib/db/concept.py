@@ -7,29 +7,38 @@ from lib.db.rag import get_chroma_collections, update_rag
 from lib.db.sqlite import db_session
 from lib.document_tools import get_concept_rag_chunks
 
-from lib.models.sqlite_tables import (
+from lib.models.taxonomy import (
     Taxonomy,
+)
+from lib.models.concepts import (
     ConceptDataTable,
     ConceptData,
+)
+from lib.models.source import (
     SourceDataTable,
 )
 from lib.helpers import pretty_print
 
 existing_concept_ids = []
 
+
 def db_concept_id_exists(concept_id: str) -> bool:
-    return db_session().query(
-        sqla.exists().where(ConceptDataTable.id == concept_id)
-    ).scalar()
+    return (
+        db_session()
+        .query(sqla.exists().where(ConceptDataTable.id == concept_id))
+        .scalar()
+    )
 
 
 @cache
 def get_concept_by_id(concept_id: str) -> ConceptDataTable:
     return (
-        db_session().query(ConceptDataTable)
+        db_session()
+        .query(ConceptDataTable)
         .filter(ConceptDataTable.id == concept_id)
         .first()
     )
+
 
 def get_existing_concept_ids(refresh: bool = False) -> List[str]:
     global existing_concept_ids
@@ -39,6 +48,7 @@ def get_existing_concept_ids(refresh: bool = False) -> List[str]:
         ]
     return existing_concept_ids
 
+
 def get_db_concepts(
     id: str = None,
     source: str = None,
@@ -47,7 +57,8 @@ def get_db_concepts(
 ) -> Union[ConceptDataTable, List[ConceptDataTable]]:
     if id is not None:
         return (
-            db_session().query(ConceptDataTable)
+            db_session()
+            .query(ConceptDataTable)
             .filter(ConceptDataTable.id == id)
             .first()
         )
@@ -56,7 +67,10 @@ def get_db_concepts(
 
     if source is not None:
         print(f"Filtering concepts by source: {source}")
-        pretty_print([{"sources": concept.sources, "id": concept.id} for concept in concepts], force=True)
+        pretty_print(
+            [{"sources": concept.sources, "id": concept.id} for concept in concepts],
+            force=True,
+        )
         concepts = [concept for concept in concepts if source in concept.sources]
         pretty_print(concepts, "filtered concepts", force=True)
     if taxonomy is not None:
@@ -72,9 +86,11 @@ def get_db_concepts(
 
     return concepts
 
+
 def delete_db_concept(concept_id: str, commit: bool = True):
     instance = (
-        db_session().query(ConceptDataTable)
+        db_session()
+        .query(ConceptDataTable)
         .where(ConceptDataTable.id == concept_id)
         .first()
     )
@@ -101,7 +117,8 @@ def update_db_concept_rag(
     defined_concept_ids = [concept.id for concept in concepts] if concepts else []
 
     existing_concepts = (
-        db_session().query(ConceptDataTable)
+        db_session()
+        .query(ConceptDataTable)
         .filter(
             ConceptDataTable.id.in_(defined_concept_ids),
         )
@@ -161,7 +178,9 @@ def update_db_concept_rag(
                 concept.taxonomy = new_concept.taxonomy
                 concept.parent_id = parent_id
                 concept.chroma_ids = concepts_by_id[str(concept.id)]["rag_ids"]
-                concept.chroma_collections = ["rag_" + cat + "_concept" for cat in categories]
+                concept.chroma_collections = [
+                    "rag_" + cat + "_concept" for cat in categories
+                ]
                 concept.category_tags = categories
                 concept.last_updated = datetime.now()
                 concept.sources = list(set(list(concept.sources) + [source]))
@@ -205,7 +224,9 @@ def update_db_concept_rag(
                     category_tags=categories,
                     sources=list(set(list(concept.sources) + [source])),
                     chroma_ids=concepts_by_id[str(concept.id)]["rag_ids"],
-                    chroma_collections=["rag_" + cat + "_concept" for cat in categories],
+                    chroma_collections=[
+                        "rag_" + cat + "_concept" for cat in categories
+                    ],
                     last_updated=datetime.now(),
                 )
                 db_session().add(new_concept)
@@ -222,11 +243,12 @@ def update_db_concept_rag(
         rag_metadatas,
         existing_chroma_ids,
         existing_chroma_collections,
-        type="concept"
+        type="concept",
     )
 
     existing_source = (
-        db_session().query(SourceDataTable)
+        db_session()
+        .query(SourceDataTable)
         .filter(SourceDataTable.source == source)
         .first()
     )

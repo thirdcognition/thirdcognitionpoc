@@ -14,7 +14,7 @@ from langgraph.graph import END, START, StateGraph
 from lib.chains.base_parser import get_text_from_completion
 from lib.chains.init import get_chain
 from lib.document_tools import a_semantic_splitter
-from lib.helpers import parse_content_dict, prepare_contents
+from lib.helpers import get_id_str, parse_content_dict, prepare_contents, pretty_print
 from lib.load_env import SETTINGS
 
 
@@ -48,9 +48,9 @@ class ProcessTextState(TypedDict):
     # This is because we want combine all the reformatted_contents we generate
     # from individual nodes back into one list - this is essentially
     # the "reduce" part
-    contents: List[Document] #Annotated[list[Document], operator.add]
+    contents: List[Document]  # Annotated[list[Document], operator.add]
     instructions: str
-    #generated
+    # generated
     reformatted_contents: Annotated[list, operator.add]
     content_topics: List[Dict]
     summary: str
@@ -68,6 +68,7 @@ class ProcessTextConfig(TypedDict):
     collect_concepts: bool = False
     run_split: bool = True
 
+
 # Here we generate a summary, given a document
 async def setup_content(state: ProcessTextState, config: RunnableConfig):
 
@@ -83,7 +84,11 @@ async def setup_content(state: ProcessTextState, config: RunnableConfig):
             split, length_function, SETTINGS.default_llms.instruct_detailed.char_limit
         )
     else:
-        response = [state["contents"]] if not isinstance(state["contents"], List) else state["contents"]
+        response = (
+            [state["contents"]]
+            if not isinstance(state["contents"], List)
+            else state["contents"]
+        )
 
     return {
         "split_complete": True,
@@ -106,7 +111,9 @@ class SummaryState(TypedDict):
 # Here we generate a summary, given a document
 async def reformat_content(state: SummaryState):
     response = {}
-    content, prev_page, next_page = prepare_contents(state["content"], state["prev_page_content"], state["next_page_content"])
+    content, prev_page, next_page = prepare_contents(
+        state["content"], state["prev_page_content"], state["next_page_content"]
+    )
 
     if state["instructions"] is not None:
         response = await get_chain("page_formatter_guided").ainvoke(
@@ -150,6 +157,8 @@ async def reformat_content(state: SummaryState):
                     "topic_index": i + 1,
                     "topic": topic["topic"],
                     "summary": topic["summary"],
+                    "instruct": topic["instruct"] if "instruct" in topic else None,
+                    "id": f"{state['page' if 'page' in state else 'filename']}_{i+1}_{get_id_str(topic['id']) if 'id' in topic else get_id_str(topic['topic'])}",
                 }
             )
     else:
@@ -233,12 +242,17 @@ async def concat_content(state: ProcessTextState, config: RunnableConfig):
                 "topic": item["topic"] or "",
             }
             for result in sorted_reformat
-            for item in  result["items"]
+            for item in result["items"]
         ],
         "summary": "\n".join(
             [
                 "\n".join(
-                    (f"{item['topic'].strip()}:\n" if "topic" in item and item["topic"] else "") + (item["summary"] or "")
+                    (
+                        f"{item['topic'].strip()}:\n"
+                        if "topic" in item and item["topic"]
+                        else ""
+                    )
+                    + (item["summary"] or "")
                     for result in sorted_reformat
                     for item in result["items"]
                 )
@@ -248,13 +262,20 @@ async def concat_content(state: ProcessTextState, config: RunnableConfig):
             [
                 item.get("topic", "")
                 for result in sorted_reformat
-                for item in  result["items"]
+                for item in result["items"]
             ]
         ),
         "collapsed_contents": [
-            Document((f"{item['topic'].strip()}:\n" if "topic" in item and item["topic"] else "") + get_text_from_completion(item["document"]))
+            Document(
+                (
+                    f"{item['topic'].strip()}:\n"
+                    if "topic" in item and item["topic"]
+                    else ""
+                )
+                + get_text_from_completion(item["document"])
+            )
             for result in sorted_reformat
-            for item in  result["items"]
+            for item in result["items"]
         ],
     }
 
@@ -297,10 +318,7 @@ async def collapse_content(state: ProcessTextState):
 
     await asyncio.gather(*tasks)
 
-    return {
-        "collapse_complete": True,
-        "collapsed_contents": results
-    }
+    return {"collapse_complete": True, "collapsed_contents": results}
 
 
 # This represents a conditional edge in the graph that determines
@@ -314,6 +332,7 @@ def should_collapse(
     else:
         return "finalize_content"
 
+
 # Here we will generate the final summary
 async def finalize_content(state: ProcessTextState, config: RunnableConfig):
     instructions = state["instructions"] if "instructions" in state else None
@@ -322,29 +341,27 @@ async def finalize_content(state: ProcessTextState, config: RunnableConfig):
             {"context": state["summary"], "instructions": instructions}
         )
     else:
-        response = await get_chain("summary").ainvoke(
-            {"context": state["summary"]}
-        )
+        response = await get_chain("summary").ainvoke({"context": state["summary"]})
 
     summary_collapsed = get_text_from_completion(response)
 
-    flat_contents:List[Document] = []
+    flat_contents: List[Document] = []
     for item in state["contents"]:
         if isinstance(item, Document):
             flat_contents.append(item)
         elif isinstance(item, List):
             flat_contents.extend(item)
         else:
-            print(f"{state["contents"]}")
+            pretty_print(state['contents'])
             raise ValueError(f"Unknown type {type(item)}: {item=}")
 
     return {
         "final_contents_complete": True,
         "results": {
-            "content": state["collapsed_contents"],
+            "content": get_text_from_completion(state["collapsed_contents"]),
             "content_topics": state["content_topics"],
             "summary": summary_collapsed,
-        }
+        },
     }
 
 

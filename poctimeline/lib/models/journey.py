@@ -1,8 +1,28 @@
 from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
-
-from lib.models.sqlite_tables import ConceptData, SourceData
+import sqlalchemy as sqla
+from sqlalchemy.ext.mutable import MutableList
+from lib.db.sqlite import Base
+from lib.load_env import SETTINGS
+from lib.models.concepts import ConceptData
+from lib.models.source import SourceData
 from lib.prompts.journey import JourneyPrompts
+
+class JourneyDataTable(Base):
+    __tablename__ = SETTINGS.journey_tablename
+
+    # id = Column(Integer, primary_key=True)
+    journeyname = sqla.Column(sqla.String, primary_key=True)
+    files = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
+    subjects = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
+    chroma_collections = sqla.Column(
+        MutableList.as_mutable(sqla.PickleType), default=[]
+    )
+    disabled = sqla.Column(sqla.Boolean, default=False)
+    title = sqla.Column(sqla.String, default="")
+    summary = sqla.Column(sqla.Text, default="")
+    instructions = sqla.Column(sqla.Text, default="")
+    last_updated = sqla.Column(sqla.DateTime, default=None)
 
 class ResourceStructure(BaseModel):
     title: str = Field(

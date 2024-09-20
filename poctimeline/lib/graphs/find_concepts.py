@@ -24,20 +24,23 @@ from lib.models.prompts import TitledSummary
 from lib.document_tools import (
     split_text,
 )
-from lib.models.sqlite_tables import (
+from lib.models.taxonomy import (
     Taxonomy,
-    ConceptDataTable,
+    convert_taxonomy_to_dict,
+    convert_taxonomy_dict_to_tag_simple_structure_string,
+)
+from lib.models.concepts import (
     ParsedConcept,
+    ConceptDataTable,
     ParsedConceptIds,
     ParsedConceptList,
     ConceptData,
     ParsedConceptStructureList,
     ParsedUniqueConceptList,
-    SourceContentPage,
     SourceReference,
-    convert_taxonomy_to_dict,
-    convert_taxonomy_dict_to_tag_simple_structure_string,
     get_concept_str,
+)
+from lib.models.source import (
     split_topics,
 )
 
@@ -462,7 +465,7 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
                 + list(previous_concepts.keys())
             )
         )
-        existing_taxonomy: List[Taxonomy] = get_taxonomy_item_list(categories=state["categories"])
+        existing_taxonomy: List[Taxonomy] = get_taxonomy_item_list(categories=state["categories"], reset=True)
         existing_taxonomy_by_id = {item.id: item for item in existing_taxonomy}
         all_taxonomy_ids = list(existing_taxonomy_by_id.keys())
 

@@ -3,8 +3,8 @@ from typing import Dict
 import streamlit as st
 from lib.db.sqlite import db_session
 
-from lib.models.journey import JourneyModel
-from lib.models.sqlite_tables import (
+from lib.models.journey import (
+    JourneyModel,
     JourneyDataTable,
 )
 

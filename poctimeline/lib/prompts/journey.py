@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from langchain_core.output_parsers import PydanticOutputParser
 from lib.chains.prompt_generator import CustomPromptContainer
 from lib.models.prompts import CustomPrompt
-from lib.models.sqlite_tables import Taxonomy
+from lib.models.taxonomy import Taxonomy
 from lib.prompts.base import (
     ACTOR_INTRODUCTIONS,
     KEEP_PRE_THINK_TOGETHER,

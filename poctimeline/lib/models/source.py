@@ -10,6 +10,23 @@ from lib.db.sqlite import Base
 from lib.load_env import SETTINGS
 
 
+class ParsedTopicStructure(BaseModel):
+    id: str = Field(
+        description="Topic ID",
+        title="Id",
+    )
+    children: List["ParsedTopicStructure"] = Field(
+        description="A list of children using the defined cyclical structure of ParsedTopicStructure(id, children: List[ParsedTopicStructure]).",
+        title="Structure",
+    )
+
+
+class ParsedTopicStructureList(BaseModel):
+    structure: List[ParsedTopicStructure] = Field(
+        description="A list of topics identified in the context", title="Concepts"
+    )
+
+
 class SourceDataTable(Base):
     __tablename__ = SETTINGS.file_tablename
 
@@ -29,12 +46,14 @@ class SourceDataTable(Base):
     source_contents = sqla.Column(sqla.PickleType, default=None)
     source_concepts = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
 
+
 class SourceContentPage(BaseModel):
     page_content: str
     page_number: int
     topic_index: int
     metadata: Dict
     topic: str
+    instruct: str
     summary: str
     id: str
     chroma_collections: Optional[List[str]]
@@ -42,19 +61,22 @@ class SourceContentPage(BaseModel):
 
 
 class SourceContents(BaseModel):
-    topics: Set[str]
-    formatted_topics: List[SourceContentPage]
-    formatted_content: str
+    topic: str
     summary: str
+    formatted_content: str
+    all_topics: Set[str]
+    formatted_topics: List[SourceContentPage]
     # concepts: List[ConceptData]
     # concept_summaries: Dict[str, str] = Field(
     #     description="A dictionary of summaries for each concept where key is the concept id and value is the summary of all contents related to that concept",
     #     title="Summaries",
     # )
 
+
 class SourceType(Enum):
     url = "url"
     file = "file"
+
 
 class SourceData(BaseModel):
     source: str
@@ -108,3 +130,19 @@ def split_topics(
     return topic_lists
 
 
+
+def get_topic_str(
+    items: List,
+    as_array: bool = False,
+) -> str:
+    ret_str = []
+    for item in items:
+        ret_str.append(
+            f"TopicID({item['id'].replace('\n', ' ').strip()}) "
+            + f"{item['topic'].replace('\n', ' ').strip()}: "
+            + f"{item['summary'].replace('\n', ' ').strip()}"
+            )
+
+    if as_array:
+        return ret_str
+    return "\n\n".join(ret_str)

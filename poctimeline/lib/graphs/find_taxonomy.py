@@ -307,7 +307,7 @@ def parsed_to_taxonomy(
         id=new_id or taxonomy.id,
         parent_id=parent_id or taxonomy.parent_id,
         title=taxonomy.title.replace("\n", " ").strip(),
-        tag=taxonomy.tag.strip(),
+        tag=taxonomy.tag.strip() if taxonomy.tag is not None else None,
         description=taxonomy.description.replace("\n", " ").strip(),
         taxonomy=taxonomy.taxonomy.strip(),
         parent_taxonomy=(

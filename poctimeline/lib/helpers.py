@@ -1,9 +1,10 @@
 import pprint as pp
 import re
-from typing import Dict, List
+from typing import Callable, Dict, List
 from pydantic import BaseModel
 import streamlit as st
 import yaml
+from langchain_core.messages import BaseMessage
 from langchain_core.documents import Document
 from langchain_core.runnables import (
     RunnableSequence,
@@ -79,6 +80,37 @@ def read_and_load_yaml(file_path):
     return data
 
 
+def get_text_from_completion(completion):
+    completion_content = repr(completion)
+    if isinstance(completion, List) and isinstance(completion[0], Document):
+        completion_content = "\n\n".join(
+            [doc.page_content.strip() for doc in completion]
+        )
+    elif isinstance(completion, tuple):
+        if isinstance(completion[0], bool):
+            completion_content = completion[1].strip()
+        elif len(completion) == 2:
+            completion_content = (
+                f"<thinking> {completion[1].strip()} </thinking>"
+                if len(completion[1].strip()) > 0
+                else ""
+            ) + f"{completion[0].strip()}"
+        else:
+            completion_content = completion[0].strip()
+    elif isinstance(completion, BaseMessage):
+        completion_content = completion.content.strip()
+    elif isinstance(completion, Document):
+        completion_content = completion.page_content
+    elif isinstance(completion, BaseModel):
+        completion_content = completion.model_dump_json()
+    elif isinstance(completion, dict) and "content" in completion.keys():
+        completion_content = str(completion["content"]).strip()
+    elif isinstance(completion, str):
+        completion_content = completion.strip()
+
+    return completion_content
+
+
 def parse_content_dict(data):
     result = []
     for item in data["children"]:
@@ -126,32 +158,240 @@ def parse_content_dict(data):
     return result
 
 
+def create_doc_from_list_with_metadata(
+    content: list,
+    max_length=None,
+    crop_length: int = None,
+    crop_from_start: bool = True,
+    format_callback: Callable = None,
+) -> List[Document]:
+    if isinstance(content[0], Document):
+        metadata = combine_metadata(content)
+        for key in metadata.keys():
+            if isinstance(metadata[key], str):
+                metadata[key] = ", ".join(set(metadata[key].split(', ')))
+    elif isinstance(content, Document):
+        content = [content]
+        metadata = content[0].metadata
+    else:
+        metadata = {}
+    results: List[Document] = None
+    result: str = None
+
+    if max_length is not None and crop_length is None:
+        cur_str = ""
+        results = []
+        ith = 0
+        for item in content:
+            item_str = (
+                format_callback(item)
+                if format_callback is not None
+                else (
+                    f"{(item.metadata['title']+':\n') if 'title' in item.metadata else ''}{item.page_content}"
+                    if isinstance(item, Document)
+                    else repr(item)
+                )
+            )
+            if len(cur_str) + len(item_str) > max_length:
+                results.append(
+                    Document(
+                        page_content=cur_str, metadata={**metadata, "cut_index": ith}
+                    )
+                )
+                cur_str = ""
+                ith += 1
+            cur_str += item_str + "\n"
+        if len(cur_str) > 0:
+            results.append(
+                Document(page_content=cur_str, metadata={**metadata, "cut_index": ith})
+            )
+    else:
+        result = "\n".join(
+            [
+                (
+                    format_callback(item)
+                    if format_callback is not None
+                    else (
+                        f"{(item.metadata['title']+':\n') if 'title' in item.metadata else ''}{item.page_content}"
+                        if isinstance(item, Document)
+                        else repr(item)
+                    )
+                )
+                for item in content
+                if item is not None
+                and (
+                    isinstance(item, Document)
+                    and len(item.page_content) > 0
+                    or len(item) > 0
+                )
+            ]
+        )
+
+    if crop_length is not None and len(result) > crop_length:
+        if crop_from_start:
+            result = result[:crop_length]
+        else:
+            result = result[-crop_length:]
+
+    if result is not None:
+        result = Document(result, metadata=metadata or {})
+        results = [result]
+
+    return results
+
+
+def combine_metadata(docs: List[Document]) -> Dict[str, str]:
+    combined_metadata = {k: str(v) for k, v in docs[0].metadata.items()}
+    for doc in docs[1:]:
+        for k, v in doc.metadata.items():
+            if k in combined_metadata:
+                combined_metadata[k] += f", {v}"
+            else:
+                combined_metadata[k] = str(v)
+
+    return combined_metadata
+
+
+def get_topic_doc_context(doc: Document):
+    metadata = doc.metadata
+    if metadata and len(metadata.keys()) > 0:
+        file_info = f"File: {metadata['source']}\n" if "source" in metadata else ""
+        pages_info = f"Pages: {metadata['page']}\n" if "page" in metadata else ""
+        topic_indices_info = (
+            f"Topic indices: {metadata['topic_index']}\n"
+            if "topic_index" in metadata
+            else ""
+        )
+        instructions_info = (
+            f"Instructions:\n{metadata['instruct']}\n" if "instruct" in metadata else ""
+        )
+
+        content = file_info + pages_info + topic_indices_info + instructions_info
+
+        if len(content) > 0:
+            content = "Metadata:\n" + content + "\n"
+    else:
+        content = ""
+
+    content += "Content:\n" + doc.page_content
+
+    return content
+
+
+def parse_tag_items(response: Dict, state: Dict, content_metadata: Dict = None):
+    metadata = {}
+    if isinstance(state.get("content"), Document):
+        metadata = content_metadata.copy()
+
+    tags = None
+
+    if "filename" in state and state["filename"] is not None:
+        metadata["filename"] = state["filename"]
+    if "page" in state and state["page"] is not None:
+        metadata["page"] = state["page"]
+    if "url" in state and state["url"] is not None:
+        metadata["url"] = state["url"]
+
+    if "tags" in response:
+        tags = response["tags"]
+        if "thinking" in tags:
+            metadata["thinking"] = tags["thinking"]
+
+    if "parsed" in response:
+        parsed_content = parse_content_dict(response["parsed"])
+        items = []
+        for i, topic in enumerate(parsed_content):
+            item = {
+                "id": (
+                    str(state["page" if "page" in state else "source"])
+                    + "_"
+                    + str(i + 1)
+                    + "_"
+                    + (
+                        get_id_str(topic["id"])
+                        if "id" in topic
+                        else get_id_str(topic["topic"])
+                    )
+                ),
+                "topic": topic["topic"],
+                "summary": topic["summary"],
+                "document": topic["content"].strip(),
+                "topic_index": i + 1,
+                "index": state["index"] if "index" in state else None,
+                "page": state["page"] if "page" in state else None,
+                "instruct": topic["instruct"] if "instruct" in topic else None,
+            }
+            document = get_topic_document(
+                item,
+                {"page": state["page"], "topic_index": i},
+                instructions=state["instructions"],
+            )
+
+            item["document"] = document
+            items.append(item)
+    else:
+        doc = Document(
+            page_content=get_text_from_completion(response), metadata=metadata
+        )
+        topics = []
+        summaries = []
+        if tags is not None:
+            if "topic" in tags:
+                topics = str(tags["topic"]).split("\n\n")
+            if "summary" in tags:
+                summaries = str(tags["summary"]).split("\n\n")
+
+        items = [{"document": doc, "topic": topics, "summary": summaries}]
+
+    return items
+
+
+def get_topic_document(item: Dict, page: Dict, instructions: str):
+    return Document(
+        (f"{item['topic'].strip()}:\n" if "topic" in item and item["topic"] else "")
+        + get_text_from_completion(item["document"]),
+        metadata={
+            "instruct": item.get("instruct", ""),
+            "page": page["page"],
+            "page_index": item["topic_index"],
+            "topic_index": f'{page["page"]}_{item["topic_index"]}',
+            "topic": item["topic"] if "topic" in item else "",
+            "instructions": instructions,
+        },
+    )
+
+
 def prepare_contents(
-    content: str, prev_page: str = "", next_page: str = "", max_length: int = 1000
+    content: List[Document],
+    prev_page: List[Document] = None,
+    next_page: List[Document] = None,
+    max_length: int = 1000,
+    format_callback: Callable = None,
 ):
     content = [content] if not isinstance(content, list) else content
     next_page = [next_page] if not isinstance(next_page, list) else next_page
     prev_page = [prev_page] if not isinstance(prev_page, list) else prev_page
-    content = "\n".join(
-        [
-            ((item.page_content if isinstance(item, Document) else item))
-            for item in content
-        ]
+
+    content = create_doc_from_list_with_metadata(
+        content, format_callback=format_callback
+    )[0]
+    next_page = (
+        create_doc_from_list_with_metadata(
+            next_page, crop_length=max_length, format_callback=format_callback
+        )[0]
+        if next_page is not None
+        else ""
     )
-    next_page = "\n".join(
-        [
-            (item.page_content if isinstance(item, Document) else repr(item))
-            for item in next_page
-        ]
+    prev_page = (
+        create_doc_from_list_with_metadata(
+            prev_page,
+            crop_length=max_length,
+            crop_from_start=False,
+            format_callback=format_callback,
+        )[0]
+        if prev_page is not None
+        else ""
     )
-    next_page = next_page[:max_length] if len(next_page) > max_length else next_page
-    prev_page = "\n".join(
-        [
-            (item.page_content if isinstance(item, Document) else repr(item))
-            for item in prev_page
-        ]
-    )
-    prev_page = prev_page[-max_length:] if len(prev_page) > max_length else prev_page
 
     return (content, prev_page, next_page)
 
@@ -221,7 +461,7 @@ def get_unique_id(id_str: str, existing_ids: List[str]):
 
 
 def unwrap_hierarchy(
-    structure: List,
+    structure: List, valid_ids: List[str] = None
 ) -> Dict[str, List[str]]:
     result: Dict[str, List[str]] = {}
 
@@ -239,7 +479,8 @@ def unwrap_hierarchy(
             result[parent_id].append(node_id)
 
         for child in children:
-            traverse(child, node_id)
+            if valid_ids is None or node_id in valid_ids:
+                traverse(child, node_id)
 
     for node in structure:
         traverse(node)

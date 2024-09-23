@@ -16,7 +16,7 @@ from langchain_core.runnables import (
 )
 from pydantic import BaseModel, ValidationError
 from lib.chains.base import BaseChain
-from lib.helpers import pretty_print, print_params
+from lib.helpers import get_text_from_completion, pretty_print, print_params
 from lib.prompts.base import PromptFormatter
 from lib.prompts.actions import error_retry
 
@@ -52,35 +52,6 @@ def retry_setup(params):
             or ""
         ).strip(),
     }
-
-
-def get_text_from_completion(completion):
-    completion_content = repr(completion)
-    if isinstance(completion, List) and isinstance(completion[0], Document):
-        completion_content = "\n\n".join([doc.page_content.strip() for doc in completion])
-    elif isinstance(completion, tuple):
-        if isinstance(completion[0], bool):
-            completion_content = completion[1].strip()
-        elif len(completion) == 2:
-            completion_content = (
-                f"<thinking> {completion[1].strip()} </thinking>"
-                if len(completion[1].strip()) > 0
-                else ""
-            ) + f"{completion[0].strip()}"
-        else:
-            completion_content = completion[0].strip()
-    elif isinstance(completion, BaseMessage):
-        completion_content = completion.content.strip()
-    elif isinstance(completion, Document):
-        completion_content = completion.page_content
-    elif isinstance(completion, BaseModel):
-        completion_content = completion.model_dump_json()
-    elif isinstance(completion, dict) and "content" in completion.keys():
-        completion_content = str(completion["content"]).strip()
-    elif isinstance(completion, str):
-        completion_content = completion.strip()
-
-    return completion_content
 
 
 class BaseParserChain(BaseChain):

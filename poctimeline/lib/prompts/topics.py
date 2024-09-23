@@ -1,4 +1,6 @@
 import textwrap
+from langchain_core.output_parsers import PydanticOutputParser
+from lib.models.source import ParsedTopicStructureList
 from lib.prompts.base import (
     KEEP_PRE_THINK_TOGETHER,
     MAINTAIN_CONTENT_AND_USER_LANGUAGE,
@@ -171,28 +173,33 @@ topic_formatter_guided.parser = TagsParser(
     return_tag=True,
 )
 
-topic_combiner = PromptFormatter(
+topic_hierarchy = PromptFormatter(
     system=textwrap.dedent(
         f"""
-        Act as a topic combiner for the list of topics provided by the user.
+        Act as a topic hierachy compiler who is finding the hierachy of topics from a list.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
-        {PRE_THINK_INSTRUCT}
-        {TOPIC_COMBINE_INSTRUCT}
-        {KEEP_PRE_THINK_TOGETHER}
+        You are provided with a list of topics extracted from a document.
+        Find all connected topics and define a hierarchy for the topics.
         """
     ),
     user=textwrap.dedent(
         """
-        {context}
+        existing topics start
+        {hierarchy_items}
+        existing topics end
+        ----------------
+        format instructions start
+        {format_instructions}
+        format instructions end
+        ----------------
+        Using the existing topics find the hierachy of topics and extract it using the specified format.
+        Format the context data using the format instructions.
+        Return only the properly formatted JSON object with the formatted data.
         """
     ),
 )
-topic_combiner.parser = TagsParser(
-    min_len=100,
-    tags=TOPIC_COMBINE_INSTRUCT_TAGS,
-    optional_tags=["thinking", "reflection"],
-    all_tags_required=True,
-    return_tag=True,
+topic_hierarchy.parser = PydanticOutputParser(
+    pydantic_object=ParsedTopicStructureList
 )
 
 

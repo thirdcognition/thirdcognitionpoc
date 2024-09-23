@@ -1,8 +1,10 @@
 import asyncio
 import re
 import operator
+import textwrap
 from typing import Annotated, Dict, List, Literal, TypedDict, Union
 from langchain.chains.combine_documents.reduce import (
+    collapse_docs,
     acollapse_docs,
     split_list_of_docs,
 )
@@ -11,10 +13,18 @@ from langchain_core.documents import Document
 from langgraph.constants import Send
 from langgraph.graph import END, START, StateGraph
 
-from lib.chains.base_parser import get_text_from_completion
 from lib.chains.init import get_chain
 from lib.document_tools import a_semantic_splitter
-from lib.helpers import get_id_str, parse_content_dict, prepare_contents, pretty_print
+from lib.helpers import (
+    get_topic_doc_context,
+    get_id_str,
+    get_text_from_completion,
+    get_topic_document,
+    parse_content_dict,
+    parse_tag_items,
+    prepare_contents,
+    pretty_print,
+)
 from lib.load_env import SETTINGS
 
 
@@ -52,9 +62,8 @@ class ProcessTextState(TypedDict):
     instructions: str
     # generated
     reformatted_contents: Annotated[list, operator.add]
-    content_topics: List[Dict]
+    content_pages: List[Document]
     summary: str
-    topics: List[str]
     collapsed_contents: List[Document]
     results: Dict
     split_complete: bool = False
@@ -133,55 +142,65 @@ async def reformat_content(state: SummaryState):
             }
         )
 
-    metadata = {}
-    if isinstance("content", Document):
-        metadata = state["content"].metadata.copy()
+    items = parse_tag_items(
+        response,
+        state,
+        (
+            state["content"].metadata.copy()
+            if isinstance(state["content"], Document)
+            else {}
+        ),
+    )
 
-    tags = None
+    # metadata = {}
+    # if isinstance("content", Document):
+    #     metadata = state["content"].metadata.copy()
 
-    if "tags" in response:
-        tags = response["tags"]
-        if "thinking" in tags:
-            metadata["thinking"] = tags["thinking"]
+    # tags = None
 
-    if "parsed" in response:
-        parsed_content = parse_content_dict(response["parsed"])
-        items = []
-        for i, topic in enumerate(parsed_content):
-            items.append(
-                {
-                    "document": Document(
-                        page_content=topic["content"],
-                        metadata={**metadata, "topic": i + 1},
-                    ),
-                    "topic_index": i + 1,
-                    "topic": topic["topic"],
-                    "summary": topic["summary"],
-                    "instruct": topic["instruct"] if "instruct" in topic else None,
-                    "id": f"{state['page' if 'page' in state else 'filename']}_{i+1}_{get_id_str(topic['id']) if 'id' in topic else get_id_str(topic['topic'])}",
-                }
-            )
-    else:
-        doc = Document(
-            page_content=get_text_from_completion(response), metadata=metadata
-        )
-        topics = []
-        summaries = []
-        if tags is not None:
-            if "topic" in tags:
-                topics = str(tags["topic"]).split("\n\n")
-            if "summary" in tags:
-                summaries = str(tags["summary"]).split("\n\n")
+    # if "tags" in response:
+    #     tags = response["tags"]
+    #     if "thinking" in tags:
+    #         metadata["thinking"] = tags["thinking"]
 
-        items = [
-            {
-                "document": doc,
-                "topic": topics,
-                "summary": summaries,
-            }
-        ]
+    # if "parsed" in response:
+    #     parsed_content = parse_content_dict(response["parsed"])
+    #     items = []
+    #     for i, topic in enumerate(parsed_content):
+    #         items.append(
+    #             {
+    #                 "document": Document(
+    #                     page_content=topic["content"],
+    #                     metadata={**metadata, "topic": i + 1},
+    #                 ),
+    #                 "topic_index": i + 1,
+    #                 "topic": topic["topic"],
+    #                 "summary": topic["summary"],
+    #                 "instruct": topic["instruct"] if "instruct" in topic else None,
+    #                 "id": f"{state['page' if 'page' in state else 'filename']}_{i+1}_{get_id_str(topic['id']) if 'id' in topic else get_id_str(topic['topic'])}",
+    #             }
+    #         )
+    # else:
+    #     doc = Document(
+    #         page_content=get_text_from_completion(response), metadata=metadata
+    #     )
+    #     topics = []
+    #     summaries = []
+    #     if tags is not None:
+    #         if "topic" in tags:
+    #             topics = str(tags["topic"]).split("\n\n")
+    #         if "summary" in tags:
+    #             summaries = str(tags["summary"]).split("\n\n")
 
-    doc = Document(page_content=get_text_from_completion(response), metadata=metadata)
+    #     items = [
+    #         {
+    #             "document": doc,
+    #             "topic": topics,
+    #             "summary": summaries,
+    #         }
+    #     ]
+
+    # doc = Document(page_content=get_text_from_completion(response), metadata=metadata)
 
     return {
         "reformatted_contents": [
@@ -234,16 +253,17 @@ async def concat_content(state: ProcessTextState, config: RunnableConfig):
     sorted_reformat: List[Dict] = sorted(
         state["reformatted_contents"], key=lambda x: x["index"]
     )
+    content_pages = [
+        get_topic_document(
+            item, result, state["instructions"] if "instructions" in state else ""
+        )
+        for result in sorted_reformat
+        for item in result["items"]
+    ]
+
     return {
         "reformat_complete": True,
-        "content_topics": [
-            {
-                "page_content": get_text_from_completion(item["document"]),
-                "topic": item["topic"] or "",
-            }
-            for result in sorted_reformat
-            for item in result["items"]
-        ],
+        "content_pages": content_pages,
         "summary": "\n".join(
             [
                 "\n".join(
@@ -258,30 +278,31 @@ async def concat_content(state: ProcessTextState, config: RunnableConfig):
                 )
             ]
         ),
-        "topics": set(
-            [
-                item.get("topic", "")
-                for result in sorted_reformat
-                for item in result["items"]
-            ]
-        ),
-        "collapsed_contents": [
-            Document(
-                (
-                    f"{item['topic'].strip()}:\n"
-                    if "topic" in item and item["topic"]
-                    else ""
-                )
-                + get_text_from_completion(item["document"])
-            )
-            for result in sorted_reformat
-            for item in result["items"]
-        ],
+        "collapsed_contents": content_pages,
     }
 
 
 async def collapse(results: List, doc_list, callback):
     results.append(await acollapse_docs(doc_list, callback))
+
+
+async def process_doc(doc: Document):
+    metadata = doc.metadata
+    instructions = metadata["instructions"] if "instructions" in metadata else None
+    context = get_topic_doc_context(doc)
+
+    if "instructions" in metadata and metadata["instructions"]:
+        results = get_text_from_completion(
+            await get_chain("text_formatter_compress_guided").ainvoke(
+                {"context": context, "instructions": instructions}
+            )
+        )
+    else:
+        results = get_text_from_completion(
+            await get_chain("text_formatter_compress").ainvoke({"context": context})
+        )
+
+    return Document(results, metadata=metadata)
 
 
 # Add node to collapse reformatted_contents
@@ -292,29 +313,8 @@ async def collapse_content(state: ProcessTextState):
         SETTINGS.default_llms.instruct_detailed.context_size,
     )
     results = []
-    instructions = state["instructions"] if "instructions" in state else None
 
-    async def process_doc_with_instructions(x):
-        nonlocal instructions
-        return get_text_from_completion(
-            await get_chain("text_formatter_compress_guided").ainvoke(
-                {"context": x, "instructions": instructions}
-            )
-        )
-
-    async def process_doc(x):
-        return get_text_from_completion(
-            await get_chain("text_formatter_compress").ainvoke({"context": x})
-        )
-
-    tasks = None
-    if instructions is not None:
-        tasks = [
-            collapse(results, doc_list, process_doc_with_instructions)
-            for doc_list in doc_lists
-        ]
-    else:
-        tasks = [collapse(results, doc_list, process_doc) for doc_list in doc_lists]
+    tasks = [collapse(results, doc_list, process_doc) for doc_list in doc_lists]
 
     await asyncio.gather(*tasks)
 
@@ -352,15 +352,16 @@ async def finalize_content(state: ProcessTextState, config: RunnableConfig):
         elif isinstance(item, List):
             flat_contents.extend(item)
         else:
-            pretty_print(state['contents'])
+            pretty_print(state["contents"])
             raise ValueError(f"Unknown type {type(item)}: {item=}")
 
     return {
         "final_contents_complete": True,
         "results": {
-            "content": get_text_from_completion(state["collapsed_contents"]),
-            "content_topics": state["content_topics"],
             "summary": summary_collapsed,
+            "content": get_text_from_completion(state["collapsed_contents"]),
+            "document": collapse_docs(state["collapsed_contents"], get_text_from_completion),
+            "content_pages": state["content_pages"],
         },
     }
 

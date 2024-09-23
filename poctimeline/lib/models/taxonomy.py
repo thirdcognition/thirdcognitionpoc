@@ -68,7 +68,7 @@ class Taxonomy(BaseModel):
         description="An human readable id for this concept using letters and _",
         title="Id",
     )
-    tag: str = Field(description="The tag for the category", title="Tag")
+    tag: Optional[str] = Field(description="The tag for the category", title="Tag")
     type: str = Field(description=f"The type of the category.", title="Type")
     title: str = Field(description="A title for this concept", title="Title")
     description: str = Field(

@@ -133,7 +133,7 @@ concept_hierarchy = PromptFormatter(
     user=textwrap.dedent(
         """
         existing concepts start
-        {existing_concepts}
+        {hierarchy_items}
         existing concepts end
         ----------------
         format instructions start

@@ -10,8 +10,6 @@ from langchain_core.documents import Document
 from langgraph.graph import END, START, StateGraph
 from langchain_community.document_loaders.url_playwright import PlaywrightURLLoader
 
-from lib.chains.base_parser import get_text_from_completion
-
 from lib.db.concept import update_db_concept_rag
 from lib.db.source import (
     db_source_exists,
@@ -24,7 +22,7 @@ from lib.document_tools import (
     a_semantic_splitter,
     markdown_to_text,
 )
-from lib.helpers import pretty_print
+from lib.helpers import get_text_from_completion, pretty_print
 from lib.load_env import SETTINGS
 from lib.models.concepts import ConceptData
 from lib.models.taxonomy import Taxonomy
@@ -85,7 +83,7 @@ class ProcessSourceState(TypedDict):
     find_taxonomy_result: List[Taxonomy]
     find_concepts_complete: bool
     find_concepts_result: List[ConceptData]
-    rag_complete:bool
+    rag_complete: bool
 
 
 class ProcessSourceConfig(TypedDict):
@@ -139,7 +137,7 @@ async def get_source_content(state: Dict, config: RunnableConfig):
         ],
         "get_source_complete": True,
         "summary": source_data.source_contents.summary,
-        "topics": source_data.source_contents.topics,
+        "all_topics": source_data.source_contents.all_topics,
     }
 
 
@@ -227,6 +225,7 @@ async def should_update_concepts(state: ProcessSourceState, config: RunnableConf
     else:
         return END
 
+
 async def process_text_step(state: ProcessSourceState, config: RunnableConfig):
     if "contents" not in state.keys() or state["contents"] is None:
         raise ValueError("Contents must be provided")
@@ -243,8 +242,9 @@ async def process_text_step(state: ProcessSourceState, config: RunnableConfig):
 
     return {
         "process_text_complete": True,
-        "process_text_result" : results["results"],
+        "process_text_result": results["results"],
     }
+
 
 async def find_topics_step(state: ProcessSourceState, config: RunnableConfig):
     if "contents" not in state.keys() or state["contents"] is None:
@@ -252,7 +252,11 @@ async def find_topics_step(state: ProcessSourceState, config: RunnableConfig):
 
     topics_results = await find_topics.ainvoke(
         {
-            "contents": state["contents"],
+            "contents": (
+                state["process_text_result"]["content_pages"]
+                if "process_text_result" in state
+                else state["contents"]
+            ),
             "filename": state.get("filename", None),
             "url": state.get("url", None),
             "source": state.get("source", None),
@@ -281,7 +285,10 @@ async def find_taxonomy_step(state: ProcessSourceState, config: RunnableConfig):
         }
     )
 
-    return {"find_taxonomy_complete": True, "find_taxonomy_result": taxonomy_results["results"]}
+    return {
+        "find_taxonomy_complete": True,
+        "find_taxonomy_result": taxonomy_results["results"],
+    }
 
 
 async def find_concepts_step(state: ProcessSourceState, config: RunnableConfig):
@@ -315,8 +322,15 @@ async def should_rag(state: ProcessSourceState, config: RunnableConfig):
 async def rag_content(state: ProcessSourceState, config: RunnableConfig):
     # texts = state["contents"]
     pretty_print(state, force=True)
+    final_topic = (
+        state["process_text_result"]["document"].metadata["topic"]
+        if isinstance(
+            state["process_text_result"]["document"].metadata["topic"], Document
+        )
+        else ", ".join(state["find_topics_result"]["all_topics"])
+    )
     final_contents = state["process_text_result"]["content"]
-    final_topics = state["find_topics_result"]["all_topics"]
+    all_topics = state["find_topics_result"]["all_topics"]
     summary = state["process_text_result"]["summary"]
     content_topics = state["find_topics_result"]["content_topics"]
 
@@ -327,6 +341,7 @@ async def rag_content(state: ProcessSourceState, config: RunnableConfig):
             topic_index=item["topic_index"],
             metadata=item["page_content"].metadata,
             topic=item["topic"] or "",
+            instruct=item["page_content"].metadata["instruct"] if "instruct" in item["page_content"].metadata else "",
             summary=item["summary"] or "",
             id=item["id"] or "",
             chroma_ids=[],
@@ -338,7 +353,8 @@ async def rag_content(state: ProcessSourceState, config: RunnableConfig):
     contents = SourceContents(
         formatted_topics=source_topics,
         formatted_content=final_contents,
-        topics=final_topics,
+        topic=final_topic,
+        all_topics=all_topics,
         summary=summary,
     )
 
@@ -368,7 +384,9 @@ async def rag_content(state: ProcessSourceState, config: RunnableConfig):
                 state["filename"] or state["url"],
                 state["categories"],
                 concepts=(
-                    state["find_concepts_result"] if "find_concepts_result" in state else None
+                    state["find_concepts_result"]
+                    if "find_concepts_result" in state
+                    else None
                 ),
             )
 

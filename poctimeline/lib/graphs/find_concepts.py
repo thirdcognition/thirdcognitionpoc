@@ -8,12 +8,13 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.constants import Send
 
-from lib.chains.base_parser import get_text_from_completion
+from lib.chains.hierarchy_compiler import get_hierarchy
 from lib.chains.init import get_chain
 from lib.db.concept import delete_db_concept, get_db_concepts, get_existing_concept_ids
 from lib.db.sqlite import db_commit
 from lib.db.taxonomy import get_taxonomy_item_list
 from lib.helpers import (
+    get_text_from_completion,
     get_unique_id,
     pretty_print,
     unwrap_hierarchy,
@@ -174,8 +175,12 @@ async def search_concepts(state: ProcessConceptsState, config: RunnableConfig):
         print(e)
 
     global _new_ids
-    global_new_ids = _new_ids.get(state["filename"] if "filename" in state else state["url"], [])
-    _new_ids[state["filename"] if "filename" in state else state["url"]] = global_new_ids
+    global_new_ids = _new_ids.get(
+        state["filename"] if "filename" in state else state["url"], []
+    )
+    _new_ids[state["filename"] if "filename" in state else state["url"]] = (
+        global_new_ids
+    )
     new_ids = []
     cat_for_id = "-".join(state["categories"]).replace(" ", "-").lower()
     for concept in new_concepts:
@@ -255,7 +260,7 @@ async def combine_concepts(state: FindConceptsState, config: RunnableConfig):
 
 concept_hierarchy_task = lambda concepts: get_chain("concept_hierarchy").ainvoke(
     {
-        "existing_concepts": get_concept_str(concepts, summary=True, taxonomy=True),
+        "hierarchy_items": get_concept_str(concepts, summary=True, taxonomy=True),
     }
 )
 
@@ -423,18 +428,24 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
 
         pretty_print(uniq_concepts, "New unique concepts")
 
-        concept_hierarchy: ParsedConceptStructureList = await concept_hierarchy_task(
-            uniq_concepts
+        unwrapped_hierarchy, inverted_hierarchy, flat_hierarchy = await get_hierarchy(
+            uniq_concepts,
+            lambda x: get_concept_str(x, summary=True, taxonomy=True, as_array=True),
+            "concept_hierarchy",
         )
-        if isinstance(concept_hierarchy, AIMessage):
-            print("\n\nRetrying concept hierarchy...")
-            concept_hierarchy = await concept_hierarchy_task(uniq_concepts)
 
-        unwrapped_hierarchy = unwrap_hierarchy(concept_hierarchy)
-        inverted_hierarchy: Dict[str, str] = {}
-        for key, value in unwrapped_hierarchy.items():
-            for item in value:
-                inverted_hierarchy[item] = key
+        # concept_hierarchy: ParsedConceptStructureList = await concept_hierarchy_task(
+        #     uniq_concepts
+        # )
+        # if isinstance(concept_hierarchy, AIMessage):
+        #     print("\n\nRetrying concept hierarchy...")
+        #     concept_hierarchy = await concept_hierarchy_task(uniq_concepts)
+
+        # unwrapped_hierarchy = unwrap_hierarchy(concept_hierarchy)
+        # inverted_hierarchy: Dict[str, str] = {}
+        # for key, value in unwrapped_hierarchy.items():
+        #     for item in value:
+        #         inverted_hierarchy[item] = key
 
         for child_id, parent_id in inverted_hierarchy.items():
             for concept in uniq_concepts:
@@ -449,7 +460,7 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
                     )
                     concept.taxonomy.extend(parent_concept.taxonomy)
 
-        pretty_print(concept_hierarchy, "Concept hierarchy")
+        # pretty_print(concept_hierarchy, "Concept hierarchy")
         pretty_print(uniq_concepts, "Uniq concepts", force=True)
 
         # pretty_print(unwrapped_hierarchy, "Unwrapped hierarchy")
@@ -465,7 +476,9 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
                 + list(previous_concepts.keys())
             )
         )
-        existing_taxonomy: List[Taxonomy] = get_taxonomy_item_list(categories=state["categories"], reset=True)
+        existing_taxonomy: List[Taxonomy] = get_taxonomy_item_list(
+            categories=state["categories"], reset=True
+        )
         existing_taxonomy_by_id = {item.id: item for item in existing_taxonomy}
         all_taxonomy_ids = list(existing_taxonomy_by_id.keys())
 

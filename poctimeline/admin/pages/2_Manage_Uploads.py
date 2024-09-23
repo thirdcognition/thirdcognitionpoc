@@ -129,7 +129,8 @@ async def manage_file(filename):
             filetype = filename.split(".")[-1]
             summary = file_entry.source_contents.summary
             text = file_entry.source_contents.formatted_content
-            combined_topics = file_entry.source_contents.topics
+            combined_topic = file_entry.source_contents.topic
+            all_topics = file_entry.source_concepts.all_topics
             topics = file_entry.source_contents.formatted_topics
             raw = file_entry.texts
 
@@ -234,9 +235,10 @@ async def manage_file(filename):
                 with text_tab1:
                     if text != None and len(text) > 0:
 
-                        st.write("##### Topics:\n - " + "\n - ".join(combined_topics))
+                        st.write("##### " + combined_topic)
                         st.write("##### Content:\n\n" + text, unsafe_allow_html=True)
                 with text_tab2:
+                    st.write("###### All topics:\n - " + "\n - ".join(all_topics))
                     for topic in topics:
                         st.write("#### Page: " + str(topic.page_number) + " - " + str(topic.topic_index))
                         st.write("##### " + topic.topic)

@@ -64,10 +64,13 @@ text_formatter_compress = PromptFormatter(
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         {PRE_THINK_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
-        Summarise, compress and reduce the text specified by the user between the context start and context end in retaining details using natural language.
+        Summarise, compress and reduce the text specified by the user between the
+        context start and context end in retaining details using natural language.
         Don't return the context text as it is, process it to shorter form.
-        The context is a part of a longer document. Don't use html tags or markdown. Remove all mentions of confidentiality.
+        The context is a part of a longer document. Don't use html tags or markdown.
+        Remove all mentions of confidentiality.
         Use only information from the available in the text.
+        If available follow the instructions but don't repeat them in the result.
         """
     ),
     user=textwrap.dedent(
@@ -121,11 +124,13 @@ text_formatter_compress_guided = PromptFormatter(
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         {PRE_THINK_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
-        Summarise, compress and reduce the text specified by the user between the context start and context end in retaining details using natural language.
+        Summarise, compress and reduce the text specified by the user between the
+        context start and context end in retaining details using natural language.
         Don't return the context text as it is, process it to shorter form.
-        The context is a part of a longer document. Don't use html tags or markdown. Remove all mentions of confidentiality.
+        The context is a part of a longer document. Don't use html tags or markdown.
+        Remove all mentions of confidentiality.
         Use only information from the available in the text.
-        Follow instructions exactly.
+        If available follow the instructions but don't repeat them in the result.
         """
     ),
     user=textwrap.dedent(

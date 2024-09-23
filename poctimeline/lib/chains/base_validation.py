@@ -18,10 +18,9 @@ from lib.chains.base import BaseChain
 from lib.chains.base_parser import (
     add_format_instructions,
     error_retry,
-    get_text_from_completion,
     retry_setup,
 )
-from lib.helpers import print_params
+from lib.helpers import get_text_from_completion, print_params
 from lib.prompts.base import PromptFormatter
 from lib.prompts.hallucination import hallucination
 

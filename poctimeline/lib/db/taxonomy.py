@@ -7,18 +7,13 @@ import streamlit as st
 from lib.db.sqlite import db_session
 
 from lib.helpers import convert_tags_to_dict, get_id_str, get_unique_id, pretty_print
-from lib.models.taxonomy import (
-    TaxonomyDataTable,
-    Taxonomy
-)
+from lib.models.taxonomy import TaxonomyDataTable, Taxonomy
 from lib.prompts.taxonomy import TAXONOMY_ALL_TAGS
 
 
 def db_taxonomy_exists(tag_id: str) -> bool:
     return (
-        db_session()
-        .query(sqla.exists().where(TaxonomyDataTable.id == tag_id))
-        .scalar()
+        db_session().query(sqla.exists().where(TaxonomyDataTable.id == tag_id)).scalar()
     )
 
 
@@ -89,9 +84,7 @@ def delete_db_taxonomy(taxonomy_id: str, commit: bool = True):
         db_session().commit()
 
 
-def update_db_taxonomy(
-    taxonomy: Taxonomy, categories=List[str], commit: bool = True
-):
+def update_db_taxonomy(taxonomy: Taxonomy, categories=List[str], commit: bool = True):
     if db_taxonomy_exists(taxonomy.id):
         # print(f"\n\nUpdate existing taxonomy:\n\n{taxonomy.model_dump_json(indent=4)}")
         concept_category = (
@@ -119,6 +112,7 @@ def update_db_taxonomy(
     if commit:
         db_session().commit()
 
+
 def get_taxonomy_item_list(categories: List[str], reset=False) -> List[Taxonomy]:
     concepts = get_db_taxonomy(categories=categories, reset=reset)
     all_concepts: List[Taxonomy] = []
@@ -128,22 +122,22 @@ def get_taxonomy_item_list(categories: List[str], reset=False) -> List[Taxonomy]
             all_concepts.append(concept)
     return all_concepts
 
+
 def handle_new_taxonomy_item(
     item, taxonomy_ids: List, cat_for_id: str, existing_id=None, existing_parent_id=None
-):
+) -> Taxonomy:
     try:
-        new_taxonomy = convert_tags_to_dict(item, TAXONOMY_ALL_TAGS, "category_tag")
-        new_item = new_taxonomy["category_tag"]
+        new_taxonomy_dict = convert_tags_to_dict(
+            item, TAXONOMY_ALL_TAGS, "category_tag"
+        )
+        new_item = new_taxonomy_dict["category_tag"]
         new_id = (
             (
                 new_item["id"]
-                if (
-                    "id" in new_item
-                    and new_item["id"] not in taxonomy_ids
-                )
+                if ("id" in new_item and new_item["id"] not in taxonomy_ids)
                 else (
                     get_unique_id(
-                        cat_for_id + "-" +  get_id_str(new_item["taxonomy"]),
+                        cat_for_id + "-" + get_id_str(new_item["taxonomy"]),
                         taxonomy_ids,
                     )
                 )
@@ -169,6 +163,20 @@ def handle_new_taxonomy_item(
         )
         if parent_id in taxonomy_ids:
             new_item["parent_id"] = parent_id
+
+        new_taxonomy = Taxonomy(
+            parent_id=parent_id if parent_id in taxonomy_ids else None,
+            id=new_id,
+            tag=new_item["tag"] if "tag" in new_item else "",
+            type=new_item["type"] if "type" in new_item else "",
+            title=new_item["title"] if "title" in new_item else "",
+            description=new_item["description"] if "description" in new_item else "",
+            taxonomy=new_item["taxonomy"],
+            parent_taxonomy=(
+                new_item["parent_taxonomy"] if "parent_taxonomy" in new_item else ""
+            ),
+        )
+
         return new_taxonomy
 
     except Exception as e:

@@ -4,7 +4,7 @@ import random
 from typing import Any, Dict, List
 from lib.helpers import read_and_load_yaml
 from langchain_core.output_parsers import PydanticOutputParser
-from lib.models.taxonomy import ParsedTaxonomyList
+from lib.models.taxonomy import Taxonomy, TaxonomyList, TaxonomyStructure
 from lib.prompts.base import (
     KEEP_PRE_THINK_TOGETHER,
     MAINTAIN_CONTENT_AND_USER_LANGUAGE,
@@ -78,81 +78,57 @@ taxonomy.parser = TagsParser(
     return_tag=True,
 )
 
-taxonomy_refine = PromptFormatter(
+taxonomy_hierarchy = PromptFormatter(
     system=textwrap.dedent(
         f"""
-        Act as a taxonomy combiner.
+        Act as a taxonomy hierachy compiler who is finding the hierachy of taxonomy items from a list.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
-        {PRE_THINK_INSTRUCT}
-        {KEEP_PRE_THINK_TOGETHER}
-        Combine and refine the taxonomy defined within
-        the new taxonomy items where possible.
-        The existing taxonomy should be used as a reference to
-        define new taxonomy and cannot be modified.
-
-        Use the following templates and examples as guide:
-
-        {TAXONOMY}
+        You are provided with a list of taxonomy items extracted from a document.
+        Find all connected taxonomy items and define a hierarchy for the taxonomy items.
+        If there are taxonomy items which are relatively similar, combine them using joined list.
         """
     ),
     user=textwrap.dedent(
         """
-        existing taxonomy start
-        {existing_taxonomy}
-        existing taxonomy end
-        ----------------
-        new taxonomy items start
-        {new_taxonomy_items}
-        new taxonomy items end
-
-        Do not include, export, rewrite, or modify the existing taxonomy.
-        Only use the existing taxonomy as a reference to when combining and
-        refining the new taxonomy items.
-        The new taxonomy items should still always follow the example format.
-        """
-    ),
-)
-taxonomy_refine.parser = TagsParser(
-    min_len=0,
-    tags=TAXONOMY_TAGS,
-    optional_tags=["thinking", "reflection"] + TAXONOMY_OPTIONAL_TAGS,
-    all_tags_required=True,
-    return_tag=True,
-)
-
-taxonomy_structured = PromptFormatter(
-    system=textwrap.dedent(
-        f"""
-        Act as a taxonomy compiler who is building a structured format
-        out of new and existing taxonomy categories.
-        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
-        Define a hierarchy for the taxonomy using
-        taxonomy ids. Prefer using existing taxonomy over new taxonomy.
-        Where parent taxonomy is needed for hierarchy create new taxonomy
-        items to connect existing taxonomy together.
-        Use the specified format and return your output in JSON only.
-        """
-    ),
-    user=textwrap.dedent(
-        """
-        existing taxonomy start
-        {existing_taxonomy}
-        existing taxonomy end
-        ----------------
-        new taxonomy start
-        {new_taxonomy}
-        new taxonomy end
+        taxonomy items start
+        {hierarchy_items}
+        taxonomy items end
         ----------------
         format instructions start
         {format_instructions}
         format instructions end
         ----------------
-        Using the existing and new taxonomy combine them into a structured format.
-        Prefer using existing taxonomy over new taxonomy but if not available
-        create new taxonomy items to connect existing taxonomy together.
+        Using the taxonomy items find the hierachy of taxonomy items and extract it using the specified format.
         Format the context data using the format instructions.
         Return only the properly formatted JSON object with the formatted data.
         """
     ),
 )
-taxonomy_structured.parser = PydanticOutputParser(pydantic_object=ParsedTaxonomyList)
+taxonomy_hierarchy.parser = PydanticOutputParser(pydantic_object=TaxonomyStructure)
+
+taxonomy_combiner = PromptFormatter(
+    system=textwrap.dedent(
+        f"""
+        Act as a taxonomy combiner which is combining the taxonomy list into a single taxonomy.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
+        You are provided with a list of taxonomy items extracted from a document.
+        Combine all taxonomy items into one taxonomy using the defined format.
+        """
+    ),
+    user=textwrap.dedent(
+        """
+        taxonomy items start
+        {joined_items}
+        taxonomy items end
+        ----------------
+        format instructions start
+        {format_instructions}
+        format instructions end
+        ----------------
+        Using the taxonomy items create a new taxonomy which covers all the details from the taxonomy items.
+        Format the context data using the format instructions.
+        Return only the properly formatted JSON object with the formatted data.
+        """
+    ),
+)
+taxonomy_combiner.parser = PydanticOutputParser(pydantic_object=Taxonomy)

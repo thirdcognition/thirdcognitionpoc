@@ -63,8 +63,8 @@ from lib.prompts.topics import (
 )
 from lib.prompts.taxonomy import (
     taxonomy,
-    taxonomy_refine,
-    taxonomy_structured,
+    taxonomy_hierarchy,
+    taxonomy_combiner,
 )
 from lib.prompts.concepts import (
     concept_structured,
@@ -329,14 +329,14 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
         taxonomy,
         False,
     ),
-    "taxonomy_refine": (
-        "instruct_detailed" if not DEVMODE else "instruct",
-        taxonomy_refine,
+    "taxonomy_hierarchy": (
+        "structured_detailed" if not DEVMODE else "structured",
+        taxonomy_hierarchy,
         True,
     ),
-    "taxonomy_structured": (
+    "taxonomy_combiner": (
         "structured_detailed" if not DEVMODE else "structured",
-        taxonomy_structured,
+        taxonomy_combiner,
         False,
     ),
     "concept_structured": ("structured", concept_structured, False),

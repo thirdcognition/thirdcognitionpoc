@@ -58,7 +58,8 @@ from lib.prompts.topics import (
     page_formatter_guided,
     topic_formatter,
     topic_formatter_guided,
-    topic_hierarchy
+    topic_hierarchy,
+    topic_combiner
 )
 from lib.prompts.taxonomy import (
     taxonomy,
@@ -316,6 +317,11 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
     "topic_hierarchy": (
         "structured_detailed" if not DEVMODE else "structured",
         topic_hierarchy,
+        False,
+    ),
+    "topic_combiner": (
+        "structured_detailed" if not DEVMODE else "structured",
+        topic_combiner,
         False,
     ),
     "taxonomy": (

@@ -316,6 +316,7 @@ def get_source_rag_chunks(
             }
             for i in range(len(page_contents))
         ]
+        rag_metadatas = [{k: v for k, v in metadata.items() if v is not None} for metadata in rag_metadatas]
 
     return rag_split, rag_ids, rag_metadatas
 
@@ -364,6 +365,7 @@ def get_concept_rag_chunks(
             }
             for j in range(len(concept_split))
         ]
+        concept_metadatas = [{k: v for k, v in metadata.items() if v is not None} for metadata in concept_metadatas]
         response.append((concept, concept_split, concept_ids, concept_metadatas))
     return response
 
@@ -379,7 +381,7 @@ def get_topic_rag_chunks(
         # topic_ids = []
         # topic_metadatas = []
         topic_split = split_text(
-            "\n".join(topic.page_content),
+            topic.page_content,
             SETTINGS.default_embeddings.default.char_limit,
             SETTINGS.default_embeddings.default.overlap,
         )
@@ -411,6 +413,9 @@ def get_topic_rag_chunks(
             }
             for j in range(len(topic_split))
         ]
+        # Remove None type keys from topic_metadata
+        topic_metadatas = [{k: v for k, v in metadata.items() if v is not None} for metadata in topic_metadatas]
+
         topic.chroma_collections = list(set(["rag_" + cat + "_topic" for cat in categories]))
         topic.chroma_ids = list(set(topic_ids))
         response.append((topic, topic_split, topic_ids, topic_metadatas))

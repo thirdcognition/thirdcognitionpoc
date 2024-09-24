@@ -17,7 +17,6 @@ from lib.helpers import (
     get_text_from_completion,
     get_unique_id,
     pretty_print,
-    unwrap_hierarchy,
 )
 from lib.load_env import SETTINGS
 from lib.models.prompts import TitledSummary
@@ -107,6 +106,59 @@ async def map_search_concepts(state: FindConceptsState):
         for topics in split_topics(state["content_topics"])
     ]
 
+async def combine_concepts(new_concepts: List[ParsedConcept]):
+    params = {
+        "existing_concepts": "",
+        "new_concepts": "\n".join(
+            f"Id({concept.id}): {concept.title.replace('\n', ' ').strip()}\n"
+            f"Summary: {concept.summary.replace('\n', ' ').strip()}\n"
+            f"Taxonomy IDs: {', '.join(concept.taxonomy).replace('\n', ' ').strip()}\n"
+            f"Content:\n{concept.content.strip()}\n"
+            for concept in new_concepts
+        ),
+    }
+    # print(f"{ident}: Finding unique concepts in")
+    unique_concept_ids: ParsedUniqueConceptList = await get_chain(
+        "concept_unique"
+    ).ainvoke(params)
+    if isinstance(unique_concept_ids, AIMessage):
+        print("Retry concept_unique once")
+        await asyncio.sleep(30)
+        unique_concept_ids: ParsedUniqueConceptList = await get_chain(
+            "concept_unique"
+        ).ainvoke(params)
+    global _divider
+
+    concepts: Dict[str, ParsedConcept] = {}
+    try:
+        for combined_concept in unique_concept_ids.concepts:
+            if combined_concept.id in concepts.keys():
+                continue
+            for concept in new_concepts:
+                if concept.id == combined_concept.id:
+                    concept.summary = combined_concept.summary.replace(
+                        "\n", " "
+                    ).strip()
+                    concept.title = combined_concept.title.replace("\n", " ").strip()
+                    concepts[combined_concept.id] = concept
+
+        for combined_concept in unique_concept_ids.concepts:
+            for concept in new_concepts:
+                if (
+                    combined_concept.id in concepts.keys()
+                    and combined_concept.combined_ids is not None
+                    and concept.id in combined_concept.combined_ids
+                ):
+                    concepts[combined_concept.id].content += (
+                        "\n" + _divider + "\n" + concept.content.strip()
+                    )
+                    concepts[combined_concept.id].taxonomy = list(
+                        set(concepts[combined_concept.id].taxonomy + concept.taxonomy)
+                    )
+    except Exception as e:
+        print(e)
+
+    return concepts
 
 async def search_concepts(state: ProcessConceptsState, config: RunnableConfig):
     topics: List[Dict] = state["topics"]
@@ -192,58 +244,9 @@ async def search_concepts(state: ProcessConceptsState, config: RunnableConfig):
         concept.page_number = concept.page_number or -1
 
     global_new_ids += new_ids
-    params = {
-        "existing_concepts": "",
-        "new_concepts": "\n".join(
-            f"Id({concept.id}): {concept.title.replace('\n', ' ').strip()}\n"
-            f"Summary: {concept.summary.replace('\n', ' ').strip()}\n"
-            f"Taxonomy IDs: {', '.join(concept.taxonomy).replace('\n', ' ').strip()}\n"
-            f"Content:\n{concept.content.strip()}\n"
-            for concept in new_concepts
-        ),
-    }
-    # print(f"{ident}: Finding unique concepts in")
-    unique_concept_ids: ParsedUniqueConceptList = await get_chain(
-        "concept_unique"
-    ).ainvoke(params)
-    if isinstance(unique_concept_ids, AIMessage):
-        print("Retry concept_unique once")
-        await asyncio.sleep(30)
-        unique_concept_ids: ParsedUniqueConceptList = await get_chain(
-            "concept_unique"
-        ).ainvoke(params)
-    global _divider
 
-    concepts: Dict[str, ParsedConcept] = {}
-    try:
-        for combined_concept in unique_concept_ids.concepts:
-            if combined_concept.id in concepts.keys():
-                continue
-            for concept in new_concepts:
-                if concept.id == combined_concept.id:
-                    concept.summary = combined_concept.summary.replace(
-                        "\n", " "
-                    ).strip()
-                    concept.title = combined_concept.title.replace("\n", " ").strip()
-                    concepts[combined_concept.id] = concept
 
-        for combined_concept in unique_concept_ids.concepts:
-            for concept in new_concepts:
-                if (
-                    combined_concept.id in concepts.keys()
-                    and combined_concept.combined_ids is not None
-                    and concept.id in combined_concept.combined_ids
-                ):
-                    concepts[combined_concept.id].content += (
-                        "\n" + _divider + "\n" + concept.content.strip()
-                    )
-                    concepts[combined_concept.id].taxonomy = list(
-                        set(concepts[combined_concept.id].taxonomy + concept.taxonomy)
-                    )
-    except Exception as e:
-        print(e)
-
-    return {"found_concepts": list(concepts.values())}
+    return {"found_concepts": new_concepts}
 
 
 async def combine_concepts(state: FindConceptsState, config: RunnableConfig):
@@ -256,13 +259,6 @@ async def combine_concepts(state: FindConceptsState, config: RunnableConfig):
             new_concepts.extend(item)
 
     return {"search_concepts_complete": True, "new_concepts": new_concepts}
-
-
-concept_hierarchy_task = lambda concepts: get_chain("concept_hierarchy").ainvoke(
-    {
-        "hierarchy_items": get_concept_str(concepts, summary=True, taxonomy=True),
-    }
-)
 
 
 async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
@@ -428,7 +424,7 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
 
         pretty_print(uniq_concepts, "New unique concepts")
 
-        unwrapped_hierarchy, inverted_hierarchy, flat_hierarchy = await get_hierarchy(
+        unwrapped_hierarchy, inverted_hierarchy, joined_ids, removed_ids = await get_hierarchy(
             uniq_concepts,
             lambda x: get_concept_str(x, summary=True, taxonomy=True, as_array=True),
             "concept_hierarchy",

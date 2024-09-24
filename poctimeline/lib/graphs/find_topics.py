@@ -1,5 +1,3 @@
-import asyncio
-import io
 from math import inf
 import re
 import operator
@@ -19,23 +17,16 @@ from lib.document_tools import (
     a_semantic_splitter,
 )
 from lib.helpers import (
-    combine_metadata,
-    convert_tags_to_dict,
-    create_doc_from_list_with_metadata,
     get_topic_doc_context,
-    get_id_str,
-    get_specific_tag,
     get_text_from_completion,
-    get_topic_document,
     get_unique_id,
-    parse_content_dict,
     parse_tag_items,
     prepare_contents,
-    pretty_print,
 )
 from lib.load_env import SETTINGS
-from lib.models.source import get_topic_str
-from lib.prompts.topics import TOPIC_COMBINE_INSTRUCT_TAGS
+from lib.models.source import ParsedTopic, get_topic_str
+
+# from lib.prompts.topics import TOPIC_COMBINE_INSTRUCT_TAGS
 
 
 def clean_dividers(text: str) -> str:
@@ -129,14 +120,17 @@ class SummaryState(TypedDict):
 async def search_topics_content(state: SummaryState):
     response = {}
     content, prev_page, next_page = prepare_contents(
-        state["content"], state["prev_page_content"], state["next_page_content"]
+        state["content"],
+        state["prev_page_content"],
+        state["next_page_content"],
+        format_callback=get_topic_doc_context,
     )
     if state["instructions"] is not None:
         response = await get_chain("topic_formatter_guided").ainvoke(
             {
-                "context": get_topic_doc_context(content),
-                "next_page": get_topic_doc_context(next_page),
-                "prev_page": get_topic_doc_context(prev_page),
+                "context": content,
+                "next_page": next_page,
+                "prev_page": prev_page,
                 "instructions": state["instructions"],
             }
         )
@@ -158,67 +152,6 @@ async def search_topics_content(state: SummaryState):
             else {}
         ),
     )
-    # metadata = {}
-    # if isinstance(state["content"], Document):
-    #     metadata = state["content"].metadata.copy()
-
-    # if "filename" in state and state["filename"] is not None:
-    #     metadata["filename"] = state["filename"]
-    # if "page" in state and state["page"] is not None:
-    #     metadata["page"] = state["page"]
-    # if "url" in state and state["url"] is not None:
-    #     metadata["url"] = state["url"]
-
-    # tags = None
-
-    # if "tags" in response:
-    #     tags = response["tags"]
-    #     if "thinking" in tags:
-    #         metadata["thinking"] = tags["thinking"]
-
-    # if "parsed" in response:
-    #     parsed_content = parse_content_dict(response["parsed"])
-    #     items = []
-    #     for i, topic in enumerate(parsed_content):
-    #         pretty_print(topic, "topic", force=True)
-    #         items.append(
-    #             {
-    #                 "id": f"{state['page' if 'page' in state else 'filename']}_{i+1}_{get_id_str(topic['id'])}",
-    #                 "topic": topic["topic"].strip() if "topic" in topic else None,
-    #                 "summary": topic["summary"].strip() if "summary" in topic else None,
-    #                 "document": (
-    #                     Document(
-    #                         page_content=topic["content"].strip(),
-    #                         metadata={**metadata, "topic": i + 1},
-    #                     )
-    #                     if "content" in topic
-    #                     else None
-    #                 ),
-    #                 "topic_index": i + 1,
-    #                 "index": state["index"] if "index" in state else None,
-    #                 "page": state["page"] if "page" in state else None,
-    #                 "instruct": topic["instruct"] if "instruct" in state else None,
-    #             }
-    #         )
-    # else:
-    #     doc = Document(
-    #         page_content=get_text_from_completion(response), metadata=metadata
-    #     )
-    #     topics = []
-    #     summaries = []
-    #     if tags is not None:
-    #         if "topic" in tags:
-    #             topics = str(tags["topic"]).split("\n\n")
-    #         if "summary" in tags:
-    #             summaries = str(tags["summary"]).split("\n\n")
-
-    #     items = [
-    #         {
-    #             "document": doc,
-    #             "topic": topics,
-    #             "summary": summaries,
-    #         }
-    #     ]
 
     return {
         "found_topics": [
@@ -266,245 +199,40 @@ async def concat_search_topics(state: FindTopicsState, config: RunnableConfig):
     sorted_search_topics: List[Dict] = sorted(
         state["found_topics"], key=lambda x: x["index"]
     )
-    valid_ids = [item["id"] for result in sorted_search_topics for item in result["items"]]
-
-    unwrapped_hierarchy, inverted_hierarchy, flat_hierarchy = await get_hierarchy(
-        [item for result in sorted_search_topics for item in result["items"]],
-        lambda x: get_topic_str(x, as_array=True),
-        "concept_hierarchy",
-        valid_ids
-    )
-
-    # combined_topics_response = await get_chain("topic_combiner").ainvoke(
-    #     {
-    #         "context": "\n".join(
-    #             [
-    #                 "<item>"
-    #                 + f"<id>{item['id'].replace('\n', ' ').strip()}</id>"
-    #                 + f"<topic>{item['topic'].replace('\n', ' ').strip()}</topic>"
-    #                 + f"<summary>{item['summary'].replace('\n', ' ').strip()}</summary></item>"
-    #                 for result in sorted_search_topics
-    #                 for item in result["items"]
-    #             ]
-    #         )
-    #     }
-    # )
-    # found_new_items = get_specific_tag(
-    #     combined_topics_response["parsed"]["children"] or [], "item"
-    # )
-    # combined_topics = [
-    #     convert_tags_to_dict(child, TOPIC_COMBINE_INSTRUCT_TAGS)["item"]
-    #     for child in found_new_items
-    # ]
-
-    # # store all topic ids to a variable
-    all_topics_by_id = {
-        item["id"]: item #get_topic_document(item, result, instructions)
-        for result in sorted_search_topics
-        for item in result["items"]
-    }
-    all_topics_by_docs_id = {
-        item["id"]: get_topic_document(item, result, instructions)
-        for result in sorted_search_topics
-        for item in result["items"]
-    }
-    all_topic_ids = [
+    valid_ids = [
         item["id"] for result in sorted_search_topics for item in result["items"]
     ]
 
-    # combined_ids = {}
-    new_combined_topics = {}
-    # joined_ids = []
-    # for topic in combined_topics:
-    #     id_list = []
-    #     if topic["id"] in all_topic_ids:
-    #         id_list.append(topic["id"])
-    #     if isinstance(topic["child_topic"], list):
-    #         for child_topic in topic["child_topic"]:
-    #             if child_topic in all_topic_ids:
-    #                 id_list.append(child_topic)
-    #     elif len(topic["child_topic"]) > 0 and topic["child_topic"] in all_topic_ids:
-    #         id_list.append(topic["child_topic"])
-    #     id = topic["id"]
-    #     joined_ids.extend(id_list)
-    #     id_list = list(set(id_list))
-
-    #     if len(id_list) > 1:
-    #         if id in combined_ids:
-    #             id = get_unique_id(id, list(combined_ids.keys()))
-    #         combined_ids[id] = id_list
-    #     elif len(id_list) == 1:
-    #         if id in combined_ids:
-    #             id = get_unique_id(id, list(new_combined_topics.keys()))
-    #         new_combined_topics[id] = all_topics_by_id[id_list[0]]
-
-    joined_ids = list(set(inverted_hierarchy.keys()))
-    missing_ids = set(all_topic_ids) - set(joined_ids)
-    for id in missing_ids:
-        new_combined_topics[id] = all_topics_by_id[id]
-    reserved_ids = list(flat_hierarchy.keys())
-
-    tasks = {}
-    combined_metadata = {}
-
-    pretty_print(unwrapped_hierarchy, "unwrapped_hierarchy", force=True)
-    pretty_print(inverted_hierarchy, "inverted_hierarchy", force=True)
-    pretty_print(flat_hierarchy, "flat_hierarchy", force=True)
-
-    for combined_id, items in flat_hierarchy.items():
-        topics = sorted(
-            [all_topics_by_docs_id[item] for item in items if item in all_topics_by_docs_id],
-            key=lambda x: (x.metadata["page"], x.metadata["page_index"]),
+    joined_topic_items: List[ParsedTopic]
+    unwrapped_hierarchy, inverted_hierarchy, joined_topic_items, removed_ids = (
+        await get_hierarchy(
+            [item for result in sorted_search_topics for item in result["items"]],
+            valid_ids=valid_ids,
+            hierarchy_chain_name="topic_hierarchy",
+            hierarchy_item_formatter=lambda x: get_topic_str(x, as_array=True),
+            join_chain_name="topic_combiner",
+            join_item_formatter=lambda x: get_topic_str(
+                x, as_array=True, all_details=True
+            ),
         )
-
-        item_docs = create_doc_from_list_with_metadata(
-            topics,
-            max_length=SETTINGS.default_llms.instruct.char_limit,
-        )
-
-        # content = "\n\n".join(
-        #     [
-        #         item["topic"].replace("\n", " ").strip()
-        #         + f":\nSummary: {item['summary'].replace('\n', ' ').strip()}"
-        #         + f"\n\nContent: {item['document'].page_content.strip()}"
-        #         for item in topics
-        #     ]
-        # )
-        # metadata = {
-        #     "page": ", ".join([str(topic["page"]) for topic in topics]),
-        #     "thinking": "\n".join(
-        #         [
-        #             (
-        #                 topic["document"].metadata["thinking"]
-        #                 if "thinking" in topic["document"].metadata
-        #                 else ""
-        #             )
-        #             for topic in topics
-        #         ]
-        #     ),
-        #     "topic_index": min(topic["topic_index"] for topic in topics),
-        #     "index": min(topic["index"] for topic in topics),
-        # }
-        # if "filename" in state and state["filename"] is not None:
-        #     metadata["filename"] = state["filename"]
-        # if "url" in state and state["url"] is not None:
-        #     metadata["url"] = state["url"]
-        # combined_metadata[combined_id] = metadata
-
-        for i, content in enumerate(item_docs):
-            content, prev_page, next_page = prepare_contents(
-                content,
-                prev_page=item_docs[i - 1] if i > 0 else None,
-                next_page=item_docs[i + 1] if i < len(item_docs) - 1 else None,
-                format_callback=get_topic_doc_context
-            )
-            if instructions is not None:
-                tasks[combined_id] = get_chain("page_formatter_guided").ainvoke(
-                    {
-                        "context": content,
-                        "next_page": prev_page,
-                        "prev_page": next_page,
-                        "instructions": instructions,
-                    }
-                )
-            else:
-                tasks[combined_id] = get_chain("page_formatter").ainvoke(
-                    {
-                        "context": content,
-                        "next_page": prev_page,
-                        "prev_page": next_page,
-                    }
-                )
-
-    for key in flat_hierarchy.keys():
-        response = await tasks[key]
-        docs = sorted(
-            [all_topics_by_docs_id[item] for item in flat_hierarchy[key]],
-            key=lambda x: (x.metadata["page"], x.metadata["page_index"]),
-        )
-        metadata = combine_metadata(docs)
-        for key in metadata.keys():
-            if isinstance(metadata[key], str):
-                metadata[key] = ", ".join(set(metadata[key].split(', ')))
-        result = parse_tag_items(response, state={
-            "index": metadata.get("index"),
-            "page": metadata.get("page"),
-            "file": metadata.get("file"),
-            "url": metadata.get("url"),
-            "source": metadata.get("source"),
-            "instructions": metadata.get("instructions")
-        })
-        if len(result) > 1:
-            for item in result:
-                new_combined_topics[item["document"].metadata["id"]] = item
-        else:
-            result[0]["id"] = id
-            result[0]["document"].metadata["id"] = id
-            new_combined_topics[id] = result[0]
-
-        # result = await tasks[key]
-        # parsed_content = None
-        # response = ""
-        # if "parsed" in result:
-        #     response = result["content"]
-        #     parsed_content = parse_content_dict(result["parsed"])
-        # else:
-        #     response = get_text_from_completion(result)
-
-        # docs = sorted(
-        #     [all_topics_by_docs_id[item] for item in items],
-        #     key=lambda x: (x.metadata["page"], x.metadata["page_index"]),
-        # )
-        # combined_metadata = combine_metadata(docs)
-
-        # response = Document(page_content=response, metadata=combined_metadata)
-        # if parsed_content is not None:
-        #     pretty_print(parsed_content, "parsed_content", force=True)
-        #     topic_index = combined_metadata["topic_index"]
-        #     index = combined_metadata["index"]
-        #     id = get_unique_id(key, reserved_ids)
-        #     item = {
-        #         "id": id,
-        #         "topic": ", ".join(
-        #             [
-        #                 (item["topic"] if "topic" in item else None)
-        #                 for item in parsed_content
-        #             ]
-        #         ),
-        #         "summary": ", ".join(
-        #             [
-        #                 (item["summary"] if "summary" in item else None)
-        #                 for item in parsed_content
-        #             ]
-        #         ),
-        #         "document": response,
-        #         "instruct": ", ".join(
-        #             [
-        #                 (item["instruct"] if "instruct" in item else None)
-        #                 for item in parsed_content
-        #             ]
-        #         ),
-        #         "topic_index": topic_index,
-        #         "page": index + 1,
-        #         "index": index,
-        #     }
-        # else:
-        #     item = {
-        #         "id": id,
-        #         "document": response,
-        #         "topic_index": topic_index,
-        #         "page": index + 1,
-        #         "index": index,
-        #     }
-        # new_combined_topics[id] = item
-
-    new_topics = sorted(
-        [topic for topic in new_combined_topics.values() if topic is not None],
-        key=lambda x: (x["index"] or inf, x["topic_index"] or inf),
     )
 
-    pretty_print(sorted_search_topics, "sorted_search_topics", force=True)
-    pretty_print(new_topics, "new_topics", force=True)
+    # # store all topic ids to a variable
+    filtered_topics_by_id = {
+        item["id"]: item  # get_topic_document(item, result, instructions)
+        for result in sorted_search_topics
+        for item in result["items"]
+        if item["id"] not in removed_ids
+    }
+
+    for new_topic in joined_topic_items:
+        result = parse_tag_items(new_topic, state)
+        filtered_topics_by_id[new_topic.id] = result[0]
+
+    new_topics = sorted(
+        filtered_topics_by_id.values(), key=lambda x: (x["page"], x["topic_index"])
+    )
+    reserved_ids = list(filtered_topics_by_id.keys())
 
     return {
         "search_topics_complete": True,

@@ -6,6 +6,7 @@ from chromadb.utils.embedding_functions import create_langchain_embedding
 from chromadb.config import Settings as ChromaSettings
 from lib.chains.init import get_embeddings
 
+from lib.helpers import pretty_print
 from lib.load_env import SETTINGS
 
 
@@ -46,6 +47,9 @@ def update_rag(
             if retries > 0:
                 vectorstore.delete(rag_ids)
             retries += 1
+            # pretty_print(rag_ids, "Adding ids to rag", force=True)
+            # pretty_print(rag_split, "Adding split to rag", force=True)
+            # pretty_print(rag_metadatas, "Adding metadata to rag", force=True)
             vectorstore.add(ids=rag_ids, documents=rag_split, metadatas=rag_metadatas)
             rag_items = vectorstore.get(
                 rag_ids,

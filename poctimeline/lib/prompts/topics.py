@@ -1,6 +1,6 @@
 import textwrap
 from langchain_core.output_parsers import PydanticOutputParser
-from lib.models.source import ParsedTopicStructureList
+from lib.models.source import ParsedTopic, ParsedTopicStructureList
 from lib.prompts.base import (
     KEEP_PRE_THINK_TOGETHER,
     MAINTAIN_CONTENT_AND_USER_LANGUAGE,
@@ -14,10 +14,8 @@ PAGE_INSTRUCT = """
         <reflect>-tag and make sure to cover all of the content.
 
         Rewrite the page in a way that contains all the information about the topic that is available within the context.
-        Use the <output>-tag to wrap the content, add <topic>-tag to specify the topic and <summary>-tag to specify the summary of the content.
-        Also add an <id>-tag to identify the content and an <instruct>-tag to specify instructions and guidance on how to intrepret the content.
 
-        Use following format for each topic:
+        Use following format per topic:
         <output>
         <id>
         Human readable topic ID with letters, numbers and _-characters
@@ -28,15 +26,19 @@ PAGE_INSTRUCT = """
         <instruct>
         Instructions on how to interpret the content
         </instruct>
-        Formatted content in full detail.
         <summary>
         Summary of the content
         </summary>
+        Formatted content in full detail.
         </output>
 
-        Always use <[tag]> and </[tag]>-tags, e.g. <topic> and </topic> when tags are specified.
-        There should only be one of <ouptut>, <topic> and <summary>-tags. If the page
-        contains multiple topics, combine them into one topic.
+        All tags: <output>, <id>, <topic>, <instruct> and <summary> are required.
+
+        Always use <[tag]> and </[tag]>-tags, e.g. <output> and </output>, or <topic> and </topic> when tags are specified.
+        There should only be one of <output> structure.
+        If the page contains multiple topics, combine them into one topic.
+        If there's Previous or Next page defined, do not consider this to cover all content but just
+        one slice of it and use the previous and next page to help formatting and writing of this page.
         Be verbose and include as much detail as possible.
         """
 PAGE_INSTRUCT_TAGS = ["topic", "id", "instruct", "summary"]
@@ -44,9 +46,9 @@ TOPIC_INSTRUCT = """
         Use <thinking>-tag to identify different topics that are contained within the page. Explain your reasoning using
         <reflect>-tag and make sure to cover all topics separately.
 
-        For each topic write content that contains all the information about the topic that is available within the context.
-        Use the <output>-tag to wrap the content, add <topic>-tag to specify the topic and <summary>-tag to specify the summary for the content.
-        Use following format for each topic:
+        For each topic write content that covers all the information about the topic that is available within the context.
+
+        Use following format per topic:
         <output>
         <id>
         Human readable topic ID with letters, numbers and _-characters
@@ -54,53 +56,55 @@ TOPIC_INSTRUCT = """
         <topic>
         Topic that covers the content
         </topic>
-        Formatted content in full detail.
         <instruct>
         Instructions on how to interpret the content
         </instruct>
         <summary>
         Summary of the content
         </summary>
+        Formatted content in full detail.
         </output>
 
-        If the content specifies multiple topics be sure to add a <topic>, <output> and <summary> for each topic.
-        If there's Previous or Next page defined, do not consider this to cover all content but just one slice of
-        it and use the previous and next page to help identify the topics from current context.
-        Always use <[tag]> and </[tag]>-tags, e.g. <topic> and </topic> when tags are specified.
+        All tags: <output>, <id>, <topic>, <instruct> and <summary> are required.
+        If the content specifies multiple topics be sure to add an <output>-structure for each topic.
+        If there's Previous or Next page defined, do not consider this to cover all content but just
+        one slice of it and use the previous and next page to help identify the topics from current context.
+        Always use <[tag]> and </[tag]>-tags, e.g. <output> and </output>, or <topic> and </topic> when tags are specified.
+        Be verbose and include as much detail as possible.
         """
 TOPIC_INSTRUCT_TAGS = ["id", "topic", "instruct", "summary"]
 
-        # Finally after writing <output>-tag for each topic, write a final <output>-tag with specified format
-        # that covers the whole content within the context in full detail.
+# Finally after writing <output>-tag per topic, write a final <output>-tag with specified format
+# that covers the whole content within the context in full detail.
 
-TOPIC_COMBINE_INSTRUCT = """
-        Use <thinking>-tag to identify topics that cover the exact same subject contained within the content
-        to combine them. Also cover all topics which are not overlapping.
-        Explain your reasoning using <reflect>-tag and make sure to cover all topics.
+# TOPIC_COMBINE_INSTRUCT = """
+#         Use <thinking>-tag to identify topics that cover the exact same subject contained within the content
+#         to combine them. Also cover all topics which are not overlapping.
+#         Explain your reasoning using <reflect>-tag and make sure to cover all topics.
 
-        For each topic write an item which contains the list of combined topics only.
-        Use following format for each topic:
-        <item>
-        <id>
-        Human readable topic ID with letters, numbers and _-characters
-        </id>
-        <child_topic>
-        Topic id 1
-        </child_topic>
-        <child_topic>
-        Topic id 2
-        </child_topic>
-        ...
-        <child_topic>
-        Topic id N
-        </child_topic>
-        </item>
+#         For each topic write an item which contains the list of combined topics only.
+#         Use following format per topic:
+#         <item>
+#         <id>
+#         Human readable topic ID with letters, numbers and _-characters
+#         </id>
+#         <child_topic>
+#         Topic id 1
+#         </child_topic>
+#         <child_topic>
+#         Topic id 2
+#         </child_topic>
+#         ...
+#         <child_topic>
+#         Topic id N
+#         </child_topic>
+#         </item>
 
-        The item can contain 1 or more <child_topic>-tags. Only combine topics which are cover the exact same subject.
-        If there's no topics that cover the exact same subject, write an item for each topic with one <child_topic>-tag.
-        Always use <[tag]> and </[tag]>-tags, e.g. <topic> and </topic> when tags are specified.
-        """
-TOPIC_COMBINE_INSTRUCT_TAGS = ["item", "id", "child_topic"]
+#         The item can contain 1 or more <child_topic>-tags. Only combine topics which are cover the exact same subject.
+#         If there's no topics that cover the exact same subject, write an item per topic with one <child_topic>-tag.
+#         Always use <[tag]> and </[tag]>-tags, e.g. <output> and </output>, or <topic> and </topic> when tags are specified.
+#         """
+# TOPIC_COMBINE_INSTRUCT_TAGS = ["item", "id", "child_topic"]
 
 
 topic_formatter = PromptFormatter(
@@ -118,14 +122,15 @@ topic_formatter = PromptFormatter(
         Previous page ending start
         {prev_page}
         Previous page ending end
-        Next page beginning start
-        {next_page}
-        Next page beginning end
         Context start
         {context}
         Context end
+        Next page beginning start
+        {next_page}
+        Next page beginning end
 
-        Find the topics from the context.
+        Find the topics from the context and format them with
+        <output>, <id>, <topic>, <instruct> and <summary>-tags per topic.
         """
     ),
 )
@@ -154,14 +159,15 @@ topic_formatter_guided = PromptFormatter(
         Previous page ending start
         {prev_page}
         Previous page ending end
-        Next page beginning start
-        {next_page}
-        Next page beginning end
         Context start
         {context}
         Context end
+        Next page beginning start
+        {next_page}
+        Next page beginning end
 
-        Find the topics from the context.
+        Find the topics from the context and format them with
+        <output>, <id>, <topic>, <instruct> and <summary>-tags per topic.
         """
     ),
 )
@@ -180,6 +186,7 @@ topic_hierarchy = PromptFormatter(
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         You are provided with a list of topics extracted from a document.
         Find all connected topics and define a hierarchy for the topics.
+        If there are topics which are relatively similar, combine them using joined list.
         """
     ),
     user=textwrap.dedent(
@@ -198,9 +205,34 @@ topic_hierarchy = PromptFormatter(
         """
     ),
 )
-topic_hierarchy.parser = PydanticOutputParser(
-    pydantic_object=ParsedTopicStructureList
+topic_hierarchy.parser = PydanticOutputParser(pydantic_object=ParsedTopicStructureList)
+
+topic_combiner = PromptFormatter(
+    system=textwrap.dedent(
+        f"""
+        Act as a topic combiner which is combining the topic list into a single topic.
+        {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
+        You are provided with a list of topics extracted from a document.
+        Combine all topics into one topic using the defined format.
+        """
+    ),
+    user=textwrap.dedent(
+        """
+        topics start
+        {joined_items}
+        topics end
+        ----------------
+        format instructions start
+        {format_instructions}
+        format instructions end
+        ----------------
+        Using the topics create a new topic which covers all the details from the topics.
+        Format the context data using the format instructions.
+        Return only the properly formatted JSON object with the formatted data.
+        """
+    ),
 )
+topic_combiner.parser = PydanticOutputParser(pydantic_object=ParsedTopic)
 
 
 page_formatter = PromptFormatter(
@@ -212,7 +244,7 @@ page_formatter = PromptFormatter(
         {PAGE_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
         Rewrite the text specified by the user between the context start and context end in full detail using natural language.
-        Don't use html tags or markdown. Remove all mentions of confidentiality. Use only information from the available in the text.
+        Remove all mentions of confidentiality. Use only information from the available in the text.
         """
     ),
     user=textwrap.dedent(
@@ -220,14 +252,14 @@ page_formatter = PromptFormatter(
         Previous page ending start
         {prev_page}
         Previous page ending end
-        Next page beginning start
-        {next_page}
-        Next page beginning end
         Context start
         {context}
         Context end
+        Next page beginning start
+        {next_page}
+        Next page beginning end
 
-        Format the text in the context.
+        Format the text in the context using <output>, <id>, <topic>, <instruct> and <summary>-tags.
         """
     ),
 )
@@ -248,7 +280,6 @@ page_formatter_guided = PromptFormatter(
         {PAGE_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
         Rewrite the text between the context start and context end using only information and follow the instructions exactly.
-        Don't use html tags or markdown.
         """
     ),
     user=textwrap.dedent(
@@ -257,14 +288,14 @@ page_formatter_guided = PromptFormatter(
         Previous page ending start
         {prev_page}
         Previous page ending end
-        Next page beginning start
-        {next_page}
-        Next page beginning end
         Context start
         {context}
         Context end
+        Next page beginning start
+        {next_page}
+        Next page beginning end
 
-        Format the text in the context.
+        Format the text in the context using <output>, <id>, <topic>, <instruct> and <summary>-tags.
         """
     ),
 )

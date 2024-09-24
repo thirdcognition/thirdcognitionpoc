@@ -101,8 +101,12 @@ class ParsedConceptStructure(BaseModel):
         title="Id",
     )
     children: List["ParsedConceptStructure"] = Field(
-        description="A list of children using the defined cyclical structure of ParsedConceptStructure(id, children: List[ParsedConceptStructure]).",
-        title="Structure",
+        description="A list of children using the defined cyclical structure of ParsedConceptStructure(id, children: List[ParsedConceptStructure], joined: List[str]).",
+        title="Children",
+    )
+    joined: List[str] = Field(
+        description="A list of Concept IDs that have been used to build the concept.",
+        title="Combined concept IDs",
     )
 
 

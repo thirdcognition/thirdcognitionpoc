@@ -128,6 +128,7 @@ concept_hierarchy = PromptFormatter(
         You are provided with a list of concepts extracted from a document.
         Find all connected concepts and define a hierarchy for the concepts.
         The concepts are the main ideas, topics, or subjects.
+        If there are concepts which are directly overlapping, you can join them.
         """
     ),
     user=textwrap.dedent(

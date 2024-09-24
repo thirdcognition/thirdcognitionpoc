@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import Enum
+import textwrap
 from typing import Dict, List, Optional, Set, Union
 from pydantic import BaseModel, Field
 import sqlalchemy as sqla
@@ -10,14 +11,53 @@ from lib.db.sqlite import Base
 from lib.load_env import SETTINGS
 
 
+class ParsedTopic(BaseModel):
+    id: str = Field(
+        description="Human readable topic ID with letters, numbers and _-characters. If available, use previously defined id.",
+        title="Id",
+    )
+    topic: str = Field(
+        description="Topic title that covers the content",
+        title="Topic",
+    )
+    summary: str = Field(
+        description="Summary of the content for the topic",
+        title="Summary",
+    )
+    document: str = Field(
+        description="Formatted content for the topic in full detail.",
+        title="Document",
+    )
+    topic_index: list[Union[list[int], int]] = Field(
+        description="Topic index within the page it was found from. When joining include all pages",
+        title="Topic Index",
+    )
+    page: Optional[Union[list[int], int]] = Field(
+        description="Page from which the topic was uncovered. When joining include all pages.",
+        title="Page",
+    )
+    instruct: Optional[str] = Field(
+        description="Instructions on how to interpret the content for the topic",
+        title="Instruct",
+    )
+    source: Optional[Union[list[str], str]]  = Field(
+        description="Source of the content for the topic",
+        title="Source",
+    )
+
+
 class ParsedTopicStructure(BaseModel):
     id: str = Field(
         description="Topic ID",
         title="Id",
     )
     children: List["ParsedTopicStructure"] = Field(
-        description="A list of children using the defined cyclical structure of ParsedTopicStructure(id, children: List[ParsedTopicStructure]).",
-        title="Structure",
+        description="A list of children using the defined cyclical structure of ParsedTopicStructure(id, children: List[ParsedTopicStructure], joined: List[str]).",
+        title="Children",
+    )
+    joined: List[str] = Field(
+        description="A list of Topic IDs that have been used to build the topic.",
+        title="Combined topic IDs",
     )
 
 
@@ -130,18 +170,46 @@ def split_topics(
     return topic_lists
 
 
-
 def get_topic_str(
     items: List,
+    all_details: bool = False,
     as_array: bool = False,
 ) -> str:
     ret_str = []
     for item in items:
-        ret_str.append(
-            f"TopicID({item['id'].replace('\n', ' ').strip()}) "
-            + f"{item['topic'].replace('\n', ' ').strip()}: "
-            + f"{item['summary'].replace('\n', ' ').strip()}"
+        if all_details:
+            item_str = "{\n"
+            if "id" in item:
+                item_str += f'"id": "{item["id"].replace("\n", " ").strip()}",\n'
+            if "page" in item:
+                item_str += f'"page": {item["page"]},\n'
+            if "topic_index" in item:
+                item_str += f'"topic_index": {item["topic_index"]},\n'
+            if "source" in item:
+                item_str += (
+                    f'"source": "{item["source"].replace("\n", " ").strip()}",\n'
+                )
+            if "topic" in item:
+                item_str += f'"topic": "{item["topic"].replace("\n", " ").strip()}",\n'
+            if "instruct" in item:
+                item_str += (
+                    f'"instruct": "{item["instruct"].replace("\n", " ").strip()}",\n'
+                )
+            if "summary" in item:
+                item_str += (
+                    f'"summary": "{item["summary"].replace("\n", " ").strip()}",\n'
+                )
+            if "page_content" in item:
+                item_str += f'"document": "{item["page_content"].replace("\n", " ").strip()}",\n'
+            item_str = item_str.rstrip(",\n") + "\n}"
+        else:
+            item_str = (
+                f"TopicID({item['id'].replace('\n', ' ').strip()}) "
+                + f"{item['topic'].replace('\n', ' ').strip()}: "
+                + f"{item['summary'].replace('\n', ' ').strip()}"
             )
+
+        ret_str.append(item_str)
 
     if as_array:
         return ret_str

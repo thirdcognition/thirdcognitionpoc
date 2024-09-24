@@ -325,7 +325,7 @@ async def rag_content(state: ProcessSourceState, config: RunnableConfig):
     final_topic = (
         state["process_text_result"]["document"].metadata["topic"]
         if isinstance(
-            state["process_text_result"]["document"].metadata["topic"], Document
+            state["process_text_result"]["document"], Document
         )
         else ", ".join(state["find_topics_result"]["all_topics"])
     )
@@ -341,7 +341,11 @@ async def rag_content(state: ProcessSourceState, config: RunnableConfig):
             topic_index=item["topic_index"],
             metadata=item["page_content"].metadata,
             topic=item["topic"] or "",
-            instruct=item["page_content"].metadata["instruct"] if "instruct" in item["page_content"].metadata else "",
+            instruct=(
+                item["page_content"].metadata["instruct"]
+                if "instruct" in item["page_content"].metadata
+                else ""
+            ),
             summary=item["summary"] or "",
             id=item["id"] or "",
             chroma_ids=[],

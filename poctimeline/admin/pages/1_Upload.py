@@ -218,7 +218,7 @@ async def process_source(
 ):
     with st.status(f"Document generation: {filename}"):
         # file_entry = get_db_sources()[filename]
-        contents: SourceContents = None
+        contents: str = None
         # texts = file_entry.texts
         # filetype = os.path.basename(filename).split(".")[-1]
 
@@ -245,8 +245,8 @@ async def process_source(
         # )
         # with st.spinner("Processing"):
 
-        if "source_contents" in result:
-            contents = result["source_contents"]
+        if "process_text_result" in result:
+            contents = result["process_text_result"]["summary"]
         else:
             contents = result["content_summaries"]
 
@@ -257,8 +257,8 @@ async def process_source(
 
         with st.container(height=400, border=False):
             st.write(f"### Summary")
-            st.write(contents.summary)
-            st.write(f"### Found concepts")
+            st.write(contents)
+            # st.write(f"### Found concepts")
             # for concept in concepts:
             #     st.write(concept)
 

@@ -152,56 +152,6 @@ async def reformat_content(state: SummaryState):
         ),
     )
 
-    # metadata = {}
-    # if isinstance("content", Document):
-    #     metadata = state["content"].metadata.copy()
-
-    # tags = None
-
-    # if "tags" in response:
-    #     tags = response["tags"]
-    #     if "thinking" in tags:
-    #         metadata["thinking"] = tags["thinking"]
-
-    # if "parsed" in response:
-    #     parsed_content = parse_content_dict(response["parsed"])
-    #     items = []
-    #     for i, topic in enumerate(parsed_content):
-    #         items.append(
-    #             {
-    #                 "document": Document(
-    #                     page_content=topic["content"],
-    #                     metadata={**metadata, "topic": i + 1},
-    #                 ),
-    #                 "topic_index": i + 1,
-    #                 "topic": topic["topic"],
-    #                 "summary": topic["summary"],
-    #                 "instruct": topic["instruct"] if "instruct" in topic else None,
-    #                 "id": f"{state['page' if 'page' in state else 'filename']}_{i+1}_{get_id_str(topic['id']) if 'id' in topic else get_id_str(topic['topic'])}",
-    #             }
-    #         )
-    # else:
-    #     doc = Document(
-    #         page_content=get_text_from_completion(response), metadata=metadata
-    #     )
-    #     topics = []
-    #     summaries = []
-    #     if tags is not None:
-    #         if "topic" in tags:
-    #             topics = str(tags["topic"]).split("\n\n")
-    #         if "summary" in tags:
-    #             summaries = str(tags["summary"]).split("\n\n")
-
-    #     items = [
-    #         {
-    #             "document": doc,
-    #             "topic": topics,
-    #             "summary": summaries,
-    #         }
-    #     ]
-
-    # doc = Document(page_content=get_text_from_completion(response), metadata=metadata)
-
     return {
         "reformatted_contents": [
             {"index": state["index"], "page": state["page"], "items": items}

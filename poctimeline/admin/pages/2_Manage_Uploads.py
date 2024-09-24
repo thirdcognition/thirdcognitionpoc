@@ -130,7 +130,7 @@ async def manage_file(filename):
             summary = file_entry.source_contents.summary
             text = file_entry.source_contents.formatted_content
             combined_topic = file_entry.source_contents.topic
-            all_topics = file_entry.source_concepts.all_topics
+            all_topics = file_entry.source_contents.all_topics
             topics = file_entry.source_contents.formatted_topics
             raw = file_entry.texts
 

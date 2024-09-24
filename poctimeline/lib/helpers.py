@@ -1,6 +1,6 @@
 import pprint as pp
 import re
-from typing import Callable, Dict, List
+from typing import Callable, Dict, List, Optional, Union
 from pydantic import BaseModel
 import streamlit as st
 import yaml
@@ -13,6 +13,7 @@ from langchain_core.runnables import (
 from langchain_community.chat_message_histories.in_memory import ChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 from lib.load_env import DEBUGMODE
+from lib.models.source import ParsedTopic
 
 
 def print_params(msg="", params=""):
@@ -169,7 +170,7 @@ def create_doc_from_list_with_metadata(
         metadata = combine_metadata(content)
         for key in metadata.keys():
             if isinstance(metadata[key], str):
-                metadata[key] = ", ".join(set(metadata[key].split(', ')))
+                metadata[key] = ", ".join(set(metadata[key].split(", ")))
     elif isinstance(content, Document):
         content = [content]
         metadata = content[0].metadata
@@ -278,7 +279,95 @@ def get_topic_doc_context(doc: Document):
     return content
 
 
-def parse_tag_items(response: Dict, state: Dict, content_metadata: Dict = None):
+def get_topic_document(item: Dict, page: Dict, instructions: str):
+    return Document(
+        (f"{item['topic'].strip()}:\n" if "topic" in item and item["topic"] else "")
+        + get_text_from_completion(item["document"]),
+        metadata={
+            "instruct": item.get("instruct", ""),
+            "page": page["page"],
+            "page_index": item["topic_index"],
+            "topic_index": f'{page["page"]}_{item["topic_index"]}',
+            "topic": item["topic"] if "topic" in item else "",
+            "instructions": instructions,
+        },
+    )
+
+
+def get_topic_item(topic: dict, state: dict, metadata: dict, i=0):
+    item = {
+        "id": (
+            str(state["page" if "page" in state else "source"])
+            + "_"
+            + str(i + 1)
+            + "_"
+            + (get_id_str(topic["id"]) if "id" in topic else get_id_str(topic["topic"]))
+        ),
+        "index": state["index"] if "index" in state else None,
+        "page": (
+            ", ".join(
+                [str(state["page"])]
+                if not isinstance(state["page"], list)
+                else state["page"]
+            )
+            if "page" in state
+            else None
+        ),
+        "topic_index": i + 1,
+        "source": metadata.get("source", ""),
+        "topic": topic["topic"],
+        "instruct": topic["instruct"] if "instruct" in topic else None,
+        "summary": topic["summary"],
+        "document": topic["content"].strip(),
+    }
+    document = get_topic_document(
+        item,
+        {"page": state["page"], "topic_index": i},
+        instructions=state["instructions"],
+    )
+    item["document"] = document
+
+    return item
+
+
+def parse_tag_items(
+    response: Union[Dict, ParsedTopic], state: Dict, content_metadata: Dict = None
+):
+    if isinstance(response, ParsedTopic):
+        topic = {
+            "id": response.id,
+            "topic": response.topic,
+            "instruct": response.instruct,
+            "summary": response.summary,
+            "content": response.document,
+        }
+        item_state = {
+            "index": (
+                (response.page[0] if isinstance(response.page, list) else response.page)
+                - 1
+                if response.page
+                else None
+            ),
+            "page": response.page,
+            "instructions": (
+                state["instructions"]
+                if state is not None and "instructions" in state
+                else None
+            ),
+        }
+        metadata = {
+            "source": response.source,
+            "page": response.page,
+        }
+
+        item = get_topic_item(
+            topic,
+            item_state,
+            metadata,
+            response.topic_index[0] if response.topic_index else 0,
+        )
+        return [item]
+
     metadata = {}
     if isinstance(state.get("content"), Document):
         metadata = content_metadata.copy()
@@ -286,11 +375,11 @@ def parse_tag_items(response: Dict, state: Dict, content_metadata: Dict = None):
     tags = None
 
     if "filename" in state and state["filename"] is not None:
-        metadata["filename"] = state["filename"]
+        metadata["source"] = state["filename"]
     if "page" in state and state["page"] is not None:
         metadata["page"] = state["page"]
     if "url" in state and state["url"] is not None:
-        metadata["url"] = state["url"]
+        metadata["source"] = state["url"]
 
     if "tags" in response:
         tags = response["tags"]
@@ -301,33 +390,7 @@ def parse_tag_items(response: Dict, state: Dict, content_metadata: Dict = None):
         parsed_content = parse_content_dict(response["parsed"])
         items = []
         for i, topic in enumerate(parsed_content):
-            item = {
-                "id": (
-                    str(state["page" if "page" in state else "source"])
-                    + "_"
-                    + str(i + 1)
-                    + "_"
-                    + (
-                        get_id_str(topic["id"])
-                        if "id" in topic
-                        else get_id_str(topic["topic"])
-                    )
-                ),
-                "topic": topic["topic"],
-                "summary": topic["summary"],
-                "document": topic["content"].strip(),
-                "topic_index": i + 1,
-                "index": state["index"] if "index" in state else None,
-                "page": state["page"] if "page" in state else None,
-                "instruct": topic["instruct"] if "instruct" in topic else None,
-            }
-            document = get_topic_document(
-                item,
-                {"page": state["page"], "topic_index": i},
-                instructions=state["instructions"],
-            )
-
-            item["document"] = document
+            item = get_topic_item(topic, state, metadata, i)
             items.append(item)
     else:
         doc = Document(
@@ -344,21 +407,6 @@ def parse_tag_items(response: Dict, state: Dict, content_metadata: Dict = None):
         items = [{"document": doc, "topic": topics, "summary": summaries}]
 
     return items
-
-
-def get_topic_document(item: Dict, page: Dict, instructions: str):
-    return Document(
-        (f"{item['topic'].strip()}:\n" if "topic" in item and item["topic"] else "")
-        + get_text_from_completion(item["document"]),
-        metadata={
-            "instruct": item.get("instruct", ""),
-            "page": page["page"],
-            "page_index": item["topic_index"],
-            "topic_index": f'{page["page"]}_{item["topic_index"]}',
-            "topic": item["topic"] if "topic" in item else "",
-            "instructions": instructions,
-        },
-    )
 
 
 def prepare_contents(
@@ -458,31 +506,3 @@ def get_unique_id(id_str: str, existing_ids: List[str]):
         if new_id not in existing_ids:
             return new_id
     return f"{id}_{id_index}"
-
-
-def unwrap_hierarchy(
-    structure: List, valid_ids: List[str] = None
-) -> Dict[str, List[str]]:
-    result: Dict[str, List[str]] = {}
-
-    def traverse(node, parent_id=None):
-        if isinstance(node, dict):
-            node_id = node.get("id")
-            children = node.get("children", [])
-        else:
-            node_id = getattr(node, "id", None)
-            children = getattr(node, "children", [])
-
-        if parent_id:
-            if parent_id not in result:
-                result[parent_id] = []
-            result[parent_id].append(node_id)
-
-        for child in children:
-            if valid_ids is None or node_id in valid_ids:
-                traverse(child, node_id)
-
-    for node in structure:
-        traverse(node)
-
-    return result

@@ -75,6 +75,8 @@ class ProcessSourceState(TypedDict):
     instructions: str
     # generated
     contents: List[Union[Document, str]]  # Annotated[list[Document], operator.add]
+    split_content_complete: bool
+    get_source_content_complete: bool
     process_text_complete: bool
     process_text_result: Dict
     find_topics_complete: bool
@@ -83,7 +85,7 @@ class ProcessSourceState(TypedDict):
     find_taxonomy_result: List[Taxonomy]
     find_concepts_complete: bool
     find_concepts_result: List[ConceptData]
-    rag_complete: bool
+    rag_update_complete: bool
 
 
 class ProcessSourceConfig(TypedDict):
@@ -130,12 +132,11 @@ async def get_source_content(state: Dict, config: RunnableConfig):
             if "instructions" in config["configurable"]
             else None
         ),
-        "reformat_complete": True,
+        "get_source_content_complete": True,
         "content_topics": [
             topic_to_dict(topic)
             for topic in source_data.source_contents.formatted_topics
         ],
-        "get_source_complete": True,
         "summary": source_data.source_contents.summary,
         "all_topics": source_data.source_contents.all_topics,
     }
@@ -206,7 +207,7 @@ async def split_content(state: ProcessSourceState, config: RunnableConfig):
     )
 
     return {
-        "split_complete": True,
+        "split_content_complete": True,
         # "semantic_contents": split,
         "contents": response,
         "instructions": (
@@ -221,7 +222,7 @@ async def should_update_concepts(state: ProcessSourceState, config: RunnableConf
     if config["configurable"].get("update_concepts", False):
         return "find_topics"
     elif config["configurable"].get("update_rag", False):
-        return "rag_content"
+        return "rag_update"
     else:
         return END
 
@@ -314,14 +315,13 @@ async def find_concepts_step(state: ProcessSourceState, config: RunnableConfig):
 
 async def should_rag(state: ProcessSourceState, config: RunnableConfig):
     if config["configurable"]["update_rag"] and state["contents"] is not None:
-        return "rag_content"
+        return "rag_update"
     else:
         return END
 
 
-async def rag_content(state: ProcessSourceState, config: RunnableConfig):
+async def rag_update(state: ProcessSourceState, config: RunnableConfig):
     # texts = state["contents"]
-    pretty_print(state, force=True)
     final_topic = (
         state["process_text_result"]["document"].metadata["topic"]
         if isinstance(
@@ -337,7 +337,7 @@ async def rag_content(state: ProcessSourceState, config: RunnableConfig):
     source_topics = [
         SourceContentPage(
             page_content=get_text_from_completion(item["page_content"]),
-            page_number=item["page_number"],
+            page_number=item["page"],
             topic_index=item["topic_index"],
             metadata=item["page_content"].metadata,
             topic=item["topic"] or "",
@@ -394,7 +394,7 @@ async def rag_content(state: ProcessSourceState, config: RunnableConfig):
                 ),
             )
 
-    return {"rag_complete": True}
+    return {"rag_update_complete": True}
 
 
 handle_source_graph = StateGraph(ProcessSourceState, ProcessSourceConfig)
@@ -404,8 +404,7 @@ handle_source_graph.add_node("process_text", process_text_step)
 handle_source_graph.add_node("find_topics", find_topics_step)
 handle_source_graph.add_node("find_taxonomy", find_taxonomy_step)
 handle_source_graph.add_node("find_concepts", find_concepts_step)
-handle_source_graph.add_node("rag_content", rag_content)
-handle_source_graph.add_node("rag_concepts", rag_content)
+handle_source_graph.add_node("rag_update", rag_update)
 
 # Edges:
 handle_source_graph.add_conditional_edges(START, should_rewrite_content)
@@ -415,6 +414,6 @@ handle_source_graph.add_conditional_edges("get_source_content", should_update_co
 handle_source_graph.add_edge("find_topics", "find_taxonomy")
 handle_source_graph.add_edge("find_taxonomy", "find_concepts")
 handle_source_graph.add_conditional_edges("find_concepts", should_rag)
-handle_source_graph.add_edge("rag_content", END)
+handle_source_graph.add_edge("rag_update", END)
 
 handle_source = handle_source_graph.compile()

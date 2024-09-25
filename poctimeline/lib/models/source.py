@@ -1,71 +1,12 @@
 from datetime import datetime
 from enum import Enum
-import json
-import textwrap
 from typing import Dict, List, Optional, Set, Union
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 import sqlalchemy as sqla
 from sqlalchemy.ext.mutable import MutableList
-
 from langchain_core.documents import Document
 from lib.db.sqlite import Base
 from lib.load_env import SETTINGS
-
-
-class ParsedTopic(BaseModel):
-    id: str = Field(
-        description="Human readable topic ID with letters, numbers and _-characters. If available, use previously defined id.",
-        title="Id",
-    )
-    topic: str = Field(
-        description="Topic title that covers the content",
-        title="Topic",
-    )
-    summary: str = Field(
-        description="Summary of the content for the topic",
-        title="Summary",
-    )
-    document: str = Field(
-        description="Formatted content for the topic in full detail.",
-        title="Document",
-    )
-    topic_index: list[Union[list[int], int]] = Field(
-        description="Topic index within the page it was found from. When joining include all pages",
-        title="Topic Index",
-    )
-    page: Optional[Union[list[int], int]] = Field(
-        description="Page from which the topic was uncovered. When joining include all pages.",
-        title="Page",
-    )
-    instruct: Optional[str] = Field(
-        description="Instructions on how to interpret the content for the topic",
-        title="Instruct",
-    )
-    source: Optional[Union[list[str], str]] = Field(
-        description="Source of the content for the topic",
-        title="Source",
-    )
-
-
-class ParsedTopicStructure(BaseModel):
-    id: str = Field(
-        description="Topic ID",
-        title="Id",
-    )
-    children: List["ParsedTopicStructure"] = Field(
-        description="A list of children using the defined cyclical structure of ParsedTopicStructure(id, children: List[ParsedTopicStructure], joined: List[str]).",
-        title="Children",
-    )
-    joined: List[str] = Field(
-        description="A list of Topic IDs that have been used to build the topic.",
-        title="Combined topic IDs",
-    )
-
-
-class ParsedTopicStructureList(BaseModel):
-    structure: List[ParsedTopicStructure] = Field(
-        description="A list of topics identified in the context", title="Concepts"
-    )
 
 
 class SourceDataTable(Base):
@@ -133,7 +74,6 @@ class SourceData(BaseModel):
     source_contents: Optional[SourceContents] = None
     source_concepts: Optional[List[str]] = None
 
-
 def topic_to_dict(topic: SourceContentPage) -> Dict:
     return {
         "topic": topic.topic,
@@ -169,59 +109,3 @@ def split_topics(
     if len(topic_list) > 0:
         topic_lists.append(topic_list)
     return topic_lists
-
-
-def get_topic_str(
-    items: List,
-    all_details: bool = False,
-    as_json: bool = True,
-    as_tags: bool = False,
-    as_array: bool = False,
-) -> str:
-    ret_str = []
-    for item in items:
-        item_dict = {}
-        for key in item:
-            if key in [
-                "id",
-                "page",
-                "topic_index",
-                "source",
-                "topic",
-                "instruct",
-                "summary",
-            ]:
-                item_dict[key] = (
-                    item[key].strip() if isinstance(item[key], str) else item[key]
-                )
-            elif key in ["page_content", "document"] and all_details:
-                item_dict["document"] = (
-                    item[key].page_content.strip()
-                    if isinstance(item[key], Document)
-                    else item[key]
-                )
-
-        if as_json:
-            item_str = json.dumps(item_dict)
-        elif as_tags:
-            item_str = ""
-            for key in item_dict.keys():
-                item_str += f"<{key}>{item_dict[key]}</{key}>\n"
-        else:
-            item_str = ""
-            for key in item_dict.keys():
-                if key == "document":
-                    item_str += "Content:\n" + item_dict[key] + "\n"
-                else:
-                    item_str += f"{key}: {item_dict[key]}\n"
-            item_str = item_str.strip()
-
-        ret_str.append(item_str)
-
-    if as_array:
-        return ret_str
-    if as_json:
-        return "[{}]".format(", ".join(ret_str))
-    if as_tags:
-        return "<item>\n{}\n</item>\n".format("\n".join(ret_str))
-    return "\n\n".join(ret_str)

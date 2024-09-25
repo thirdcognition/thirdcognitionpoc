@@ -16,7 +16,6 @@ def db_taxonomy_exists(tag_id: str) -> bool:
         db_session().query(sqla.exists().where(TaxonomyDataTable.id == tag_id)).scalar()
     )
 
-
 @cache
 def get_taxonomy_by_id(
     concept_category_id: str,
@@ -32,8 +31,8 @@ def get_taxonomy_by_id(
 def get_db_taxonomy(
     categories: List[str] = None, reset: bool = False
 ) -> Dict[str, List[Taxonomy]]:
-    db_concept_taxonomy: Dict[str, List[Taxonomy]] = None
-    if "db_concept_taxonomy" not in st.session_state or reset:
+    db_taxonomy: Dict[str, List[Taxonomy]] = None
+    if "db_taxonomy" not in st.session_state or reset:
         found_categories = db_session().query(TaxonomyDataTable).distinct().all()
 
         if categories is not None:
@@ -43,33 +42,24 @@ def get_db_taxonomy(
                 if any(cat in category.category_tags for cat in categories)
             ]
 
-        if "db_concept_taxonomy" not in st.session_state or reset:
-            db_concept_taxonomy = {}
+        if "db_taxonomy" not in st.session_state or reset:
+            db_taxonomy = {}
         else:
-            db_concept_taxonomy = st.session_state.db_taxonomy
+            db_taxonomy = st.session_state.db_taxonomy
         for category in found_categories:
             file_categories = category.category_tags
             for ict in file_categories:
-                if ict not in db_concept_taxonomy:
-                    db_concept_taxonomy[ict] = []
+                if ict not in db_taxonomy:
+                    db_taxonomy[ict] = []
                 concept_taxonomy = Taxonomy(**category.concept_taxonomy.__dict__)
                 concept_taxonomy.id = category.id
-                db_concept_taxonomy[ict].append(concept_taxonomy)
+                db_taxonomy[ict].append(concept_taxonomy)
 
-        st.session_state.db_taxonomy = db_concept_taxonomy
+        st.session_state.db_taxonomy = db_taxonomy
     else:
-        db_concept_taxonomy = st.session_state.db_taxonomy
+        db_taxonomy = st.session_state.db_taxonomy
 
-    # if isinstance(categories, str):
-    #     categories = [categories]
-    # if categories:
-    #     new_db_concept_taxonomy = {}
-    #     for cat in categories:
-    #         new_db_concept_taxonomy.update(
-    #             {k: v for k, v in db_concept_taxonomy.items() if cat in v.category_tags}
-    #         )
-    #     db_concept_taxonomy = new_db_concept_taxonomy
-    return db_concept_taxonomy
+    return db_taxonomy
 
 
 def delete_db_taxonomy(taxonomy_id: str, commit: bool = True):
@@ -114,13 +104,13 @@ def update_db_taxonomy(taxonomy: Taxonomy, categories=List[str], commit: bool = 
 
 
 def get_taxonomy_item_list(categories: List[str], reset=False) -> List[Taxonomy]:
-    concepts = get_db_taxonomy(categories=categories, reset=reset)
-    all_concepts: List[Taxonomy] = []
+    taxonomy = get_db_taxonomy(categories=categories, reset=reset)
+    all_taxonomy: List[Taxonomy] = []
 
-    for category, concept_list in concepts.items():
-        for concept in concept_list:
-            all_concepts.append(concept)
-    return all_concepts
+    for taxonomy_id, taxonomy_list in taxonomy.items():
+        for taxonomy in taxonomy_list:
+            all_taxonomy.append(taxonomy)
+    return all_taxonomy
 
 
 def handle_new_taxonomy_item(

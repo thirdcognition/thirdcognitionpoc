@@ -331,7 +331,7 @@ def get_concept_rag_chunks(
         # concept_ids = []
         # concept_metadatas = []
         concept_split = split_text(
-            "\n".join(concept.contents),
+            concept.content,
             SETTINGS.default_embeddings.default.char_limit,
             SETTINGS.default_embeddings.default.overlap,
         )

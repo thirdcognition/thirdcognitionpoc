@@ -6,7 +6,7 @@ import sqlalchemy as sqla
 from sqlalchemy.ext.mutable import MutableList
 
 from lib.db.sqlite import Base
-from lib.helpers import pretty_print
+from lib.helpers import get_item_str, pretty_print
 from lib.load_env import SETTINGS
 
 
@@ -95,26 +95,48 @@ class TaxonomyStructure(BaseModel):
         title="Children",
     )
     joined: List[str] = Field(
-        description="A list of Taxonomy IDs that have been used to build the topic.",
-        title="Combined topic IDs",
+        description="A list of Taxonomy IDs that have been used to build the taxonomy.",
+        title="Combined taxonomy IDs",
     )
 
+class TaxonomyStructureList(BaseModel):
+    structure: List[TaxonomyStructure] = Field(
+        description="A list of taxonomy identified in the context", title="Taxonomy"
+    )
 
 def convert_taxonomy_dict_to_tag_structure_string(data: dict) -> str:
-    category_tag_data: Dict = data["category_tag"]
-    tag_structure = f"""
-    <category_tag>
-        {f'<id>{category_tag_data["id"]}</id>' if 'id' in category_tag_data.keys() and category_tag_data['id'] is not None else ''}
-        {f'<parent_id>{category_tag_data["parent_id"]}</parent_id>' if 'parent_id' in category_tag_data.keys() and category_tag_data['parent_id'] is not None else ''}
-        <title>{category_tag_data.get("title", "")}</title>
-        <taxonomy>{category_tag_data.get("taxonomy", "")}</taxonomy>
-        {f'<parent_taxonomy>{category_tag_data["parent_taxonomy"]}</parent_taxonomy>' if "parent_taxonomy" in category_tag_data.keys() and category_tag_data['parent_taxonomy'] is not None else ''}
-        <tag>{category_tag_data.get("tag", "")}</tag>
-        <type>{category_tag_data.get("type", "")}</type>
-        <description>{category_tag_data.get("description", "")}</description>
-    </category_tag>
-    """
-    return textwrap.dedent(tag_structure)
+    if isinstance(data, list):
+        category_tag_data = [item["category_tag"] if isinstance(item, dict) else item for item in data]
+    else:
+        category_tag_data: Dict = data["category_tag"]
+    return get_item_str(
+        category_tag_data,
+        as_tags=True,
+        key_names=[
+            "id",
+            "parent_id",
+            "title",
+            "taxonomy",
+            "parent_taxonomy",
+            "type",
+            "tag",
+            "description",
+        ],
+        item_str="category_tag",
+    )
+    # tag_structure = f"""
+    # <category_tag>
+    #     {f'<id>{category_tag_data["id"]}</id>' if 'id' in category_tag_data.keys() and category_tag_data['id'] is not None else ''}
+    #     {f'<parent_id>{category_tag_data["parent_id"]}</parent_id>' if 'parent_id' in category_tag_data.keys() and category_tag_data['parent_id'] is not None else ''}
+    #     <title>{category_tag_data.get("title", "")}</title>
+    #     <taxonomy>{category_tag_data.get("taxonomy", "")}</taxonomy>
+    #     {f'<parent_taxonomy>{category_tag_data["parent_taxonomy"]}</parent_taxonomy>' if "parent_taxonomy" in category_tag_data.keys() and category_tag_data['parent_taxonomy'] is not None else ''}
+    #     <tag>{category_tag_data.get("tag", "")}</tag>
+    #     <type>{category_tag_data.get("type", "")}</type>
+    #     <description>{category_tag_data.get("description", "")}</description>
+    # </category_tag>
+    # """
+    # return textwrap.dedent(tag_structure)
 
 
 def convert_taxonomy_to_dict(taxonomy: Taxonomy) -> dict:
@@ -135,6 +157,9 @@ def convert_taxonomy_to_dict(taxonomy: Taxonomy) -> dict:
 def convert_taxonomy_to_json_string(
     taxonomy: Taxonomy, show_description: bool = False, children: List[str] = None
 ) -> str:
+    if isinstance(taxonomy, list):
+        return "[{}]".format(", ".join([convert_taxonomy_to_json_string(t) for t in taxonomy]))
+
     tag_structure = {
         "id": taxonomy.id,
         "taxonomy_classification": taxonomy.taxonomy,
@@ -157,32 +182,53 @@ def convert_taxonomy_dict_to_tag_simple_structure_string(
     data: dict, show_description: bool = False, children: List[str] = None
 ) -> str:
     category_tag_data: Dict = data["category_tag"]
-    tag_structure = (
-        (
-            f'parent_id({category_tag_data["parent_id"]}) > '
-            if "parent_id" in category_tag_data
-            and category_tag_data["parent_id"] is not None
-            else ""
-        )
-        + (f'id({category_tag_data["id"]}) ' if "id" in category_tag_data else "")
-        + (
-            f'parent_taxonomy({category_tag_data["parent_taxonomy"]}) > '
-            if "parent_taxonomy" in category_tag_data
-            and category_tag_data["parent_taxonomy"] is not None
-            else ""
-        )
-        + f'taxonomy({category_tag_data.get("taxonomy", "")}) '
-        + f'tag({category_tag_data.get("tag", "")}) '
-        + (f'connected_concepts({", ".join(children)}) ' if children else "")
-        + f'type({category_tag_data.get("type", "")}): '
-        + f'{category_tag_data.get("title", "")}'
-        + (
-            f'\n{str(category_tag_data.get("description", "")).replace("\n", " ")}\n\n'
-            if show_description
-            else ""
-        )
+    if children is not None:
+        category_tag_data["children"] = children
+    key_names = [
+            "parent_id",
+            "id",
+            "parent_taxonomy",
+            "taxonomy",
+            "type",
+            "tag",
+            "children",
+            "title",
+        ]
+    if show_description:
+        key_names.append("description")
+    return get_item_str(
+        category_tag_data,
+        key_names=key_names,
+        key_mapping={"children": "connected_concepts"},
+        item_str="category_tag",
+        one_liner=True
     )
-    return tag_structure
+    # tag_structure = (
+    #     (
+    #         f'parent_id({category_tag_data["parent_id"]}) > '
+    #         if "parent_id" in category_tag_data
+    #         and category_tag_data["parent_id"] is not None
+    #         else ""
+    #     )
+    #     + (f'id({category_tag_data["id"]}) ' if "id" in category_tag_data else "")
+    #     + (
+    #         f'parent_taxonomy({category_tag_data["parent_taxonomy"]}) > '
+    #         if "parent_taxonomy" in category_tag_data
+    #         and category_tag_data["parent_taxonomy"] is not None
+    #         else ""
+    #     )
+    #     + f'taxonomy({category_tag_data.get("taxonomy", "")}) '
+    #     + f'tag({category_tag_data.get("tag", "")}) '
+    #     + (f'connected_concepts({", ".join(children)}) ' if children else "")
+    #     + f'type({category_tag_data.get("type", "")}): '
+    #     + f'{category_tag_data.get("title", "")}'
+    #     + (
+    #         f'\n{str(category_tag_data.get("description", "")).replace("\n", " ")}\n\n'
+    #         if show_description
+    #         else ""
+    #     )
+    # )
+    # return tag_structure
 
 
 # def convert_parsed_taxonomy_to_taxonomy(parsed_taxonomy: ParsedTaxonomy) -> Taxonomy:

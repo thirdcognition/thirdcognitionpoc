@@ -232,7 +232,7 @@ async def process_source(
             # collect_concepts=True,
         )
 
-        pretty_print(result)
+        # pretty_print(result)
 
         # taxonomy = await graph_call(
         #     categories=categories,

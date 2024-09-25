@@ -1,6 +1,6 @@
 import textwrap
 from langchain_core.output_parsers import PydanticOutputParser
-from lib.models.source import ParsedTopic, ParsedTopicStructureList
+from lib.models.topics import ParsedTopic, ParsedTopicStructureList
 from lib.prompts.base import (
     KEEP_PRE_THINK_TOGETHER,
     MAINTAIN_CONTENT_AND_USER_LANGUAGE,
@@ -210,10 +210,11 @@ topic_hierarchy.parser = PydanticOutputParser(pydantic_object=ParsedTopicStructu
 topic_combiner = PromptFormatter(
     system=textwrap.dedent(
         f"""
-        Act as a topic combiner which is combining the topic list into a single topic.
+        Act as a topic combiner which is combining multiple topics into a single topic.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
-        You are provided with a list of topics extracted from a document.
+        You are provided with a set of topics extracted from a document.
         Combine all topics into one topic using the defined format.
+        The new topic needs to contain all the information from the previous topics.
         """
     ),
     user=textwrap.dedent(

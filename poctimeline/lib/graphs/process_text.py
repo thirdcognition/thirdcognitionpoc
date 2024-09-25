@@ -16,16 +16,11 @@ from langgraph.graph import END, START, StateGraph
 from lib.chains.init import get_chain
 from lib.document_tools import a_semantic_splitter
 from lib.helpers import (
-    get_topic_doc_context,
-    get_id_str,
     get_text_from_completion,
-    get_topic_document,
-    parse_content_dict,
-    parse_tag_items,
-    prepare_contents,
     pretty_print,
 )
 from lib.load_env import SETTINGS
+from lib.models.topics import get_topic_doc_context, get_topic_document, parse_topic_items, prepare_topic_contents
 
 
 def clean_dividers(text: str) -> str:
@@ -66,10 +61,11 @@ class ProcessTextState(TypedDict):
     summary: str
     collapsed_contents: List[Document]
     results: Dict
-    split_complete: bool = False
-    reformat_complete: bool = False
-    collapse_complete: bool = False
-    final_contents_complete: bool = False
+    setup_content_complete: bool = False
+    reformat_content_complete: bool = False
+    concat_content_complete: bool = False
+    collapse_content_complete: bool = False
+    finalize_content_complete: bool = False
 
 
 class ProcessTextConfig(TypedDict):
@@ -100,7 +96,7 @@ async def setup_content(state: ProcessTextState, config: RunnableConfig):
         )
 
     return {
-        "split_complete": True,
+        "setup_content_complete": True,
         "contents": response,
         "instructions": (
             config["configurable"]["instructions"]
@@ -120,7 +116,7 @@ class SummaryState(TypedDict):
 # Here we generate a summary, given a document
 async def reformat_content(state: SummaryState):
     response = {}
-    content, prev_page, next_page = prepare_contents(
+    content, prev_page, next_page = prepare_topic_contents(
         state["content"], state["prev_page_content"], state["next_page_content"]
     )
 
@@ -142,7 +138,7 @@ async def reformat_content(state: SummaryState):
             }
         )
 
-    items = parse_tag_items(
+    items = parse_topic_items(
         response,
         state,
         (
@@ -212,7 +208,8 @@ async def concat_content(state: ProcessTextState, config: RunnableConfig):
     ]
 
     return {
-        "reformat_complete": True,
+        "reformat_content_complete": True,
+        "concat_content_complete": True,
         "content_pages": content_pages,
         "summary": "\n".join(
             [
@@ -237,6 +234,10 @@ async def collapse(results: List, doc_list, callback):
 
 
 async def process_doc(doc: Document):
+    if isinstance(doc, List):
+        tasks = [process_doc(d) for d in doc]
+        return await asyncio.gather(*tasks)
+
     metadata = doc.metadata
     instructions = metadata["instructions"] if "instructions" in metadata else None
     context = get_topic_doc_context(doc)
@@ -268,7 +269,7 @@ async def collapse_content(state: ProcessTextState):
 
     await asyncio.gather(*tasks)
 
-    return {"collapse_complete": True, "collapsed_contents": results}
+    return {"collapse_content_complete": True, "collapsed_contents": results}
 
 
 # This represents a conditional edge in the graph that determines
@@ -306,7 +307,7 @@ async def finalize_content(state: ProcessTextState, config: RunnableConfig):
             raise ValueError(f"Unknown type {type(item)}: {item=}")
 
     return {
-        "final_contents_complete": True,
+        "finalize_content_complete": True,
         "results": {
             "summary": summary_collapsed,
             "content": get_text_from_completion(state["collapsed_contents"]),

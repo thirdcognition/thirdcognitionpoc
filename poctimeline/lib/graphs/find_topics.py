@@ -17,14 +17,11 @@ from lib.document_tools import (
     a_semantic_splitter,
 )
 from lib.helpers import (
-    get_topic_doc_context,
     get_text_from_completion,
     get_unique_id,
-    parse_tag_items,
-    prepare_contents,
 )
 from lib.load_env import SETTINGS
-from lib.models.source import ParsedTopic, get_topic_str
+from lib.models.topics import ParsedTopic, get_topic_doc_context, get_topic_str, parse_topic_items, prepare_topic_contents
 
 # from lib.prompts.topics import TOPIC_COMBINE_INSTRUCT_TAGS
 
@@ -69,6 +66,9 @@ class FindTopicsState(TypedDict):
     found_topics: Annotated[list, operator.add]
     summary: str
     all_topics: Set[str]
+    setup_content_complete: bool = False
+    search_topics_content_complete: bool = False
+    concat_search_topics_complete: bool = False
 
 
 class FindTopicsConfig(TypedDict):
@@ -98,7 +98,7 @@ async def setup_content(state: FindTopicsState, config: RunnableConfig):
         )
 
     return {
-        "split_complete": True,
+        "setup_content_complete": True,
         "contents": response,
         "instructions": (
             config["configurable"]["instructions"]
@@ -119,7 +119,7 @@ class SummaryState(TypedDict):
 # Here we generate a summary, given a document
 async def search_topics_content(state: SummaryState):
     response = {}
-    content, prev_page, next_page = prepare_contents(
+    content, prev_page, next_page = prepare_topic_contents(
         state["content"],
         state["prev_page_content"],
         state["next_page_content"],
@@ -143,7 +143,7 @@ async def search_topics_content(state: SummaryState):
             }
         )
 
-    items = parse_tag_items(
+    items = parse_topic_items(
         response,
         state,
         (
@@ -209,10 +209,13 @@ async def concat_search_topics(state: FindTopicsState, config: RunnableConfig):
             [item for result in sorted_search_topics for item in result["items"]],
             valid_ids=valid_ids,
             hierarchy_chain_name="topic_hierarchy",
-            hierarchy_item_formatter=lambda x: get_topic_str(x, as_array=True),
+            hierarchy_item_formatter=lambda x: get_topic_str(
+                x,
+                one_liner=True,
+            ),
             join_chain_name="topic_combiner",
             join_item_formatter=lambda x: get_topic_str(
-                x, as_array=True, all_details=True
+                x,
             ),
         )
     )
@@ -226,7 +229,7 @@ async def concat_search_topics(state: FindTopicsState, config: RunnableConfig):
     }
 
     for new_topic in joined_topic_items:
-        result = parse_tag_items(new_topic, state)
+        result = parse_topic_items(new_topic, state)
         filtered_topics_by_id[new_topic.id] = result[0]
 
     new_topics = sorted(
@@ -235,17 +238,20 @@ async def concat_search_topics(state: FindTopicsState, config: RunnableConfig):
     reserved_ids = list(filtered_topics_by_id.keys())
 
     return {
-        "search_topics_complete": True,
+        "search_topics_content_complete": True,
+        "concat_search_topics_complete": True,
         "content_topics": [
             {
                 "page_content": result["document"],
-                "page_number": (
+                "source": result["source"] or "",
+                "page": (
                     result["page"] if result["page"] != -1 else result["index"] + 1
                 ),
                 "topic_index": result["topic_index"],
                 "metadata": result["document"].metadata,
                 "topic": result["topic"] or "",
                 "summary": result["summary"] or "",
+                "instruct": result["instruct"] or "",
                 "id": (
                     result["id"]
                     if "id" in result and result["id"]

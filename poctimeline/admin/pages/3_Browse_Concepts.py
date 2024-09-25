@@ -6,14 +6,12 @@ import sys
 import time
 from typing import Dict, List, Union
 import streamlit as st
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
 from lib.db.source import get_db_sources
 from lib.db.sqlite import init_db
 from lib.db.taxonomy import get_db_taxonomy
-
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.dirname(current_dir + "/../../lib"))
-
 from lib.db.concept import get_concept_by_id, get_db_concepts
 from lib.helpers import pretty_print
 from lib.models.concepts import ConceptData, ConceptDataTable
@@ -55,7 +53,7 @@ def display_concept(
         sub_col1.write("Taxonomy:")
         sub_col1.write(concept.taxonomy)
         sub_col2.write(f"##### Summary:\n{concept.summary}")
-        sub_col2.write(f"##### Content:\n{'\n'.join(concept.contents)}")
+        sub_col2.write(f"##### Content:\n{concept.content}")
     if children and concepts:
         for child in children.keys():
             child_item: ConceptDataTable = concepts[child]
@@ -225,9 +223,9 @@ def by_source(source_name: str):
         for concept_id in file_entry.source_concepts:
             db_concept = get_concept_by_id(concept_id)
             concept_inst: ConceptData = db_concept.concept_contents
-            pretty_print(
-                concept_inst.model_dump_json(indent=2), "Concept Data", force=True
-            )
+            # pretty_print(
+            #     concept_inst.model_dump_json(indent=2), "Concept Data", force=True
+            # )
             display_concept(concept_inst)
         #     for tag in concept_inst.taxonomy:
         #         tagged_concepts[tag].append(concept_inst)

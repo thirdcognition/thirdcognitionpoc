@@ -66,13 +66,13 @@ def get_db_concepts(
     concepts = db_session().query(ConceptDataTable).all()
 
     if source is not None:
-        print(f"Filtering concepts by source: {source}")
-        pretty_print(
-            [{"sources": concept.sources, "id": concept.id} for concept in concepts],
-            force=True,
-        )
+        # print(f"Filtering concepts by source: {source}")
+        # pretty_print(
+        #     [{"sources": concept.sources, "id": concept.id} for concept in concepts],
+        #     force=True,
+        # )
         concepts = [concept for concept in concepts if source in concept.sources]
-        pretty_print(concepts, "filtered concepts", force=True)
+        # pretty_print(concepts, "filtered concepts", force=True)
     if taxonomy is not None:
         concepts = [
             concept for concept in concepts if str(taxonomy.id) in concept.taxonomy
@@ -86,6 +86,28 @@ def get_db_concepts(
 
     return concepts
 
+def update_db_concept(concept: ConceptData, categories=List[str], commit: bool = True):
+    if db_concept_id_exists(concept.id):
+        # print(f"\n\nUpdate existing concept:\n\n{concept.model_dump_json(indent=4)}")
+        db_concept = (
+            db_session()
+            .query(ConceptDataTable)
+            .filter(ConceptDataTable.id == concept.id)
+            .first()
+        )
+        db_concept.parent_id = concept.parent_id
+        db_concept.concept_contents = concept
+        db_concept.category_tags = list(
+            set(categories + db_concept.category_tags)
+        )
+        db_concept.taxonomy = concept.taxonomy
+        new_sources = concept.sources if isinstance(concept.sources, list) else [concept.sources]
+        db_concept.sources = list(set(new_sources + db_concept.sources))
+        db_concept.last_updated = datetime.now()
+
+
+    if commit:
+        db_session().commit()
 
 def delete_db_concept(concept_id: str, commit: bool = True):
     instance = (
@@ -186,7 +208,7 @@ def update_db_concept_rag(
                 concept.sources = list(set(list(concept.sources) + [source]))
                 handled_concepts.append(concept.id)
 
-    if concepts is not None:
+    if concepts is not None and len(concepts) > 0:
         for concept in concepts:
             if concept.id not in handled_concepts:
                 parent_id = concept.parent_id
@@ -216,13 +238,14 @@ def update_db_concept_rag(
                     defined_concept_ids.remove(concept.id)
                     defined_concept_ids.append(new_id)
                 concept_ids.append(new_id)
+                new_sources = concept.sources if isinstance(concept.sources, list) else [concept.sources]
                 new_concept = ConceptDataTable(
                     id=new_id,
                     parent_id=parent_id,
                     concept_contents=concept,
                     taxonomy=concept.taxonomy,
                     category_tags=categories,
-                    sources=list(set(list(concept.sources) + [source])),
+                    sources=list(set(new_sources + [source])),
                     chroma_ids=concepts_by_id[str(concept.id)]["rag_ids"],
                     chroma_collections=[
                         "rag_" + cat + "_concept" for cat in categories
@@ -236,15 +259,16 @@ def update_db_concept_rag(
         None if len(existing_chroma_collections) == 0 else existing_chroma_collections
     )
 
-    update_rag(
-        categories,
-        rag_ids,
-        rag_chunks,
-        rag_metadatas,
-        existing_chroma_ids,
-        existing_chroma_collections,
-        type="concept",
-    )
+    if len(rag_chunks) > 0:
+        update_rag(
+            categories,
+            rag_ids,
+            rag_chunks,
+            rag_metadatas,
+            existing_chroma_ids,
+            existing_chroma_collections,
+            type="concept",
+        )
 
     existing_source = (
         db_session()

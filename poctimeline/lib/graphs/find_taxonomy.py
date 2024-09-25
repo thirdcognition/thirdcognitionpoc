@@ -25,10 +25,10 @@ from lib.load_env import SETTINGS
 from lib.models.taxonomy import (
     Taxonomy,
     convert_taxonomy_dict_to_tag_structure_string,
-    convert_taxonomy_to_dict,
     convert_taxonomy_to_json_string,
 )
-from lib.models.source import get_topic_str, split_topics
+from lib.models.source import split_topics
+from lib.models.topics import get_topic_str
 
 
 class FindTaxonomyState(TypedDict):
@@ -43,7 +43,8 @@ class FindTaxonomyState(TypedDict):
     # combined_taxonomy: List[Taxonomy]
     results: List[Taxonomy]
     #state
-    taxonomy_complete: bool = False
+    search_taxonomy_complete: bool = False
+    combine_taxonomy_items_complete: bool = False
 
 
 class FindTaxonomyConfig(TypedDict):
@@ -69,7 +70,7 @@ async def search_taxonomy(state: ProcessTaxonomyState, config: RunnableConfig):
     new_taxonomy_items:List[Taxonomy] = []
     cat_for_id = get_id_str(state["categories"])
 
-    content = get_topic_str(topics, all_details=True, as_json=False, as_tags=True)
+    content = get_topic_str(topics, as_json=False, as_tags=True)
     # "\n\n".join(
     #     [f"{topic["topic"]}: \n\n{topic["page_content"]}" for topic in topics]
     # )
@@ -97,30 +98,22 @@ async def search_taxonomy(state: ProcessTaxonomyState, config: RunnableConfig):
         "new_taxonomy": [new_taxonomy_items],
     }
 
-
-def get_existing_taxonomy(categories: List[str]):
-    existing_taxonomy: List[Taxonomy] = get_taxonomy_item_list(categories=categories)
-    existing_taxonomy_str = "\n\n".join(
-        [
-            convert_taxonomy_dict_to_tag_structure_string(
-                convert_taxonomy_to_dict(v)
-            )
-            for v in existing_taxonomy
-        ]
-        if 0 < len(existing_taxonomy)
-        else []
-    )
-    existing_taxonomy_ids = [taxonomy_item.id for taxonomy_item in existing_taxonomy]
-
-    return existing_taxonomy, existing_taxonomy_str, existing_taxonomy_ids
-
-
 async def map_search_taxonomy(state: FindTaxonomyState):
-
-    _, existing_taxonomy_str, existing_taxonomy_ids = get_existing_taxonomy(
-        state["categories"]
-    )
-    pretty_print(existing_taxonomy_str, "Taxonomy items")
+    db_commit()
+    existing_taxonomy: List[Taxonomy] = get_taxonomy_item_list(categories=state["categories"], reset=True)
+    existing_taxonomy_str = convert_taxonomy_dict_to_tag_structure_string(existing_taxonomy)
+    # "\n\n".join(
+    #     [
+    #         convert_taxonomy_dict_to_tag_structure_string(
+    #             convert_taxonomy_to_dict(v)
+    #         )
+    #         for v in existing_taxonomy
+    #     ]
+    #     if 0 < len(existing_taxonomy)
+    #     else []
+    # )
+    existing_taxonomy_ids = [taxonomy_item.id for taxonomy_item in existing_taxonomy]
+    # pretty_print(existing_taxonomy_str, "Taxonomy items")
 
     return [
         Send(
@@ -194,7 +187,6 @@ async def combine_taxonomy_items(state: FindTaxonomyState):
             found_taxonomy_ids.append(taxonomy.id)
             found_taxonomy.append(taxonomy)
 
-
     for taxonomy in all_taxonomy_by_id.values():
         if taxonomy.id in inverted_hierarchy.keys():
             taxonomy.parent_id = inverted_hierarchy[taxonomy.id]
@@ -206,6 +198,8 @@ async def combine_taxonomy_items(state: FindTaxonomyState):
         update_db_taxonomy(taxonomy, categories=state["categories"], commit=False)
 
     return {
+        "search_taxonomy_complete": True,
+        "combine_taxonomy_items_complete": True,
         "results": found_taxonomy,
         # "taxonomy_ids": found_taxonomy_ids,
     }

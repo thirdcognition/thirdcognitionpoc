@@ -289,7 +289,7 @@ async def manage_file(filename):
                                 sub_col1.write("Taxonomy:")
                                 sub_col1.write(concept_inst.taxonomy)
                                 sub_col2.write(f"##### Summary:\n{concept_inst.summary}")
-                                sub_col2.write(f"##### Content:\n{'\n'.join(concept_inst.contents)}")
+                                sub_col2.write(f"##### Content:\n{concept_inst.content}")
                     else:
                         st.write(f"### Issue with: {concept_tag}:")
                         st.write(tags.keys())

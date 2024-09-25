@@ -69,8 +69,8 @@ from lib.prompts.taxonomy import (
 from lib.prompts.concepts import (
     concept_structured,
     concept_more,
-    concept_unique,
     concept_hierarchy,
+    concept_combiner,
 )
 from lib.prompts.chat import chat, question, helper
 from lib.prompts.hyde import hyde, hyde_document
@@ -341,14 +341,19 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
     ),
     "concept_structured": ("structured", concept_structured, False),
     "concept_more": ("structured", concept_more, False),
-    "concept_unique": (
-        "structured_detailed" if not DEVMODE else "structured",
-        concept_unique,
-        True,
-    ),
+    # "concept_unique": (
+    #     "structured_detailed" if not DEVMODE else "structured",
+    #     concept_unique,
+    #     True,
+    # ),
     "concept_hierarchy": (
         "structured_detailed" if not DEVMODE else "structured",
         concept_hierarchy,
+        False,
+    ),
+    "concept_combiner": (
+        "structured_detailed" if not DEVMODE else "structured",
+        concept_combiner,
         False,
     ),
     "journey_prompt_generator": (

@@ -4,7 +4,7 @@ import random
 from typing import Any, Dict, List
 from lib.helpers import read_and_load_yaml
 from langchain_core.output_parsers import PydanticOutputParser
-from lib.models.taxonomy import Taxonomy, TaxonomyList, TaxonomyStructure
+from lib.models.taxonomy import Taxonomy, TaxonomyStructureList
 from lib.prompts.base import (
     KEEP_PRE_THINK_TOGETHER,
     MAINTAIN_CONTENT_AND_USER_LANGUAGE,
@@ -104,7 +104,7 @@ taxonomy_hierarchy = PromptFormatter(
         """
     ),
 )
-taxonomy_hierarchy.parser = PydanticOutputParser(pydantic_object=TaxonomyStructure)
+taxonomy_hierarchy.parser = PydanticOutputParser(pydantic_object=TaxonomyStructureList)
 
 taxonomy_combiner = PromptFormatter(
     system=textwrap.dedent(

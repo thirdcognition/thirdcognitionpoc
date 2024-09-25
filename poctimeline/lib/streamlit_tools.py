@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from io import BytesIO
 import re
+import time
 from typing import Dict, List
 import streamlit as st
 import streamlit_authenticator as stauth
@@ -13,9 +14,11 @@ from lib.chains.init import get_chain
 from lib.db.sqlite import init_db
 from lib.document_tools import markdown_to_text
 
+from lib.graphs.handle_source import handle_source
 from lib.graphs.process_text import process_text
 from lib.graphs.find_concepts import find_concepts
 from lib.graphs.find_topics import find_topics
+from lib.graphs.find_taxonomy import find_taxonomy
 from lib.models.source import SourceDataTable
 
 with open("admin_auth.yaml") as file:
@@ -95,45 +98,77 @@ async def graph_call(
         }
     }
     states = {}
-    if graph == find_concepts:
+    if graph == handle_source:
+        states.update({"split_content": "Split document into pages", "get_source_content": "Get source content", "process_text": "Process document contents"})
+    if graph == process_text or graph == handle_source:
+        states.update(
+            {
+                "setup_content": "Initial setup for content",
+                "reformat_content": "Reformat content pages",
+                "collapse_content": "Compress content to one page",
+                "finalize_content": "Finalize and write summary",
+            }
+        )
+    if graph == handle_source:
+        states.update({"find_topics": "Look for document topics"})
+    if graph == find_topics or graph == handle_source:
+        states.update(
+            {
+                "setup_content": "Initial setup for content",
+                "search_topics_content": "Search for topics in content",
+                "concat_search_topics": "Organize found topics",
+            }
+        )
+    if graph == handle_source:
+        states.update({"find_taxonomy": "Look for document taxonomy"})
+    if graph == find_taxonomy or graph == handle_source:
+        states.update(
+            {
+                "search_taxonomy": "Search for taxonomy items within topics",
+                "combine_taxonomy_items": "Organize found taxonomy"
+            }
+        )
+    if graph == handle_source:
+        states.update({"find_concepts": "Look for document concepts"})
+    if graph == find_concepts or graph == handle_source:
+        states.update(
+            {
+                "search_concepts": "Search for concepts within topics",
+                "collapse_concepts": "Organize found concepts"
+            }
+        )
+
+    if len(states.keys()) == 0:
         states.update(
             {
                 "get_source_content": "Get source content",
-                "split_reformatted": "Split document into pages",
-                "search_for_taxonomy": "Build document taxonomy",
-                "search_concepts": "Search for concepts based on taxonomy",
+                "split_content": "Split document into pages",
+                "process_text": "Reformat document",
+                "find_topics": "Identify document topics",
+                "find_taxonomy": "Build document taxonomy",
+                "find_concepts": "Identify document concepts based on taxonomy",
                 "combine_concepts": "Combine found concepts",
                 "collapse_concepts": "Format concepts and taxonomy"
             }
         )
-    elif graph == find_topics:
-        states.update(
-            {
-                "split": "Read and analyse document",
-                "reformat": "Rewrite document",
-                "summary": "Write summary",
-                "collapse": "Collapse contents",
-                "finalize": "Combine contents",
-            }
-        )
-    else:
-        states.update(
-            {
-                "split": "Read and analyse document",
-                "reformat": "Rewrite document",
-                "summary": "Write summary",
-                "collapse": "Collapse contents",
-                "finalize": "Combine contents",
-            }
-        )
-
 
     if config["configurable"]["update_rag"]:
-        states.update({"rag": "RAG database update"})
+        states.update({"rag_update": "Save changes to RAG"})
+
+    state_keys = list(states.keys())
+    total = len(state_keys)
+    cur_step = 0
+
+    progress = None
+    if show_progress:
+        progress = st.progress(0, text=f"Initializing...")
+
+
+    show_progress_items = False
 
     state_status = {}
-    if show_progress:
-        for state in states.keys():
+    if show_progress_items:
+        for state in state_keys:
             state_status[state] = st.empty()
             # state_status[state].warning(f"{states[state]}: Not started")
     events = []
@@ -162,17 +197,17 @@ async def graph_call(
         config=config,
         version="v2",
     ):
-        if event["event"] != "on_chat_model_stream":
+        if event["event"] != "on_chat_model_stream" and event["name"] in state_keys:
             now = datetime.now()
             if "_end" in  event["event"]:
                 white_space = white_space[:-2]
                 prev_time = prev_times.pop()
-            if now - prev_time > timedelta(seconds=1):
-                print(f"+{now-prev_time}s:" + white_space + f"{event['name']} - {event['event']=}")
+            # if now - prev_time > timedelta(seconds=1):
+            print(f"+{now-prev_time}s:" + white_space + f"{event['name']} - {event['event']=}")
             if "_start" in event["event"]:
                 white_space += "  "
                 prev_times.append(now)
-        if show_progress and (
+        if (show_progress_items or show_progress) and (
             event["event"] == "on_chain_start" or event["event"] == "on_chain_end"
         ):
             input = (
@@ -187,7 +222,7 @@ async def graph_call(
                 else None
             )
 
-            for state in states.keys():
+            for state in state_keys:
                 update_state_status = (
                     input[f"{state}_complete"]
                     if input is not None and f"{state}_complete" in input
@@ -197,21 +232,40 @@ async def graph_call(
                     if output is not None and f"{state}_complete" in output
                     else False
                 )
-                if update_state_status:
-                    # if isinstance(state_status[state], StatusContainer):
-                    #     state_status[state].update(label=f"{states[state]} complete", state="complete")
-                    # else:
-                    state_status[state].empty()
-                    state_status[state].success(f"{states[state]} complete")
-                elif (
-                    state == event["name"] or f"{state}_content" == event["name"]
-                    and event["event"] == "on_chain_start"
-                ):
-                    # if not isinstance(state_status[state], StatusContainer):
-                    state_status[state].empty()
-                    state_status[state].info(
-                        f"{states[state]} in progress"
-                    )  # , state="running")
+                if show_progress:
+                    # print("Show progress", state, states[state])
+                    if update_state_status:
+                        cur_step = max(state_keys.index(state) + 1, cur_step)
+                        progress.progress(
+                            min(cur_step, total) / total,
+                            text=f"{states[state]} complete",
+                        )
+                    elif (
+                        state == event["name"]
+                        and event["event"] == "on_chain_start"
+                    ):
+                        cur_step = max(state_keys.index(state), cur_step)
+                        progress.progress(
+                            min(cur_step, total) / total,
+                            text=f"{states[state]} in progress",
+                        )
+
+                if show_progress_items:
+                    if update_state_status:
+                        # if isinstance(state_status[state], StatusContainer):
+                        #     state_status[state].update(label=f"{states[state]} complete", state="complete")
+                        # else:
+                        state_status[state].empty()
+                        state_status[state].success(f"{states[state]} complete")
+                    elif (
+                        state == event["name"]
+                        and event["event"] == "on_chain_start"
+                    ):
+                        # if not isinstance(state_status[state], StatusContainer):
+                        state_status[state].empty()
+                        state_status[state].info(
+                            f"{states[state]} in progress"
+                        )  # , state="running")
 
 
             # print(f"\n\n\n{event["name"]=}: {event["event"]}\n\n\n")
@@ -220,6 +274,10 @@ async def graph_call(
     result = events[-1]["data"]["output"]
 
     if show_progress:
+        progress.progress(1.0, text="Done")
+        time.sleep(1)
+        progress.empty()
+    if show_progress_items:
         for state in states.keys():
             state_status[state].empty()
 

@@ -83,7 +83,8 @@ async def graph_call(
     overwrite: bool = False,
     guidance: str = None,
     summarize: bool = True,
-    graph: CompiledStateGraph = process_text
+    graph: CompiledStateGraph = process_text,
+    title = ""
 ) -> Dict:
     config = {
         "configurable": {
@@ -161,7 +162,7 @@ async def graph_call(
 
     progress = None
     if show_progress:
-        progress = st.progress(0, text=f"Initializing...")
+        progress = st.progress(0, text=f"{title} - Initializing...")
 
 
     show_progress_items = False
@@ -203,7 +204,7 @@ async def graph_call(
                 white_space = white_space[:-2]
                 prev_time = prev_times.pop()
             # if now - prev_time > timedelta(seconds=1):
-            print(f"+{now-prev_time}s:" + white_space + f"{event['name']} - {event['event']=}")
+            print(f"{title} - +{round((now-prev_time).total_seconds(), 2)}s:" + white_space + f"{event['name']} - {event['event']=}")
             if "_start" in event["event"]:
                 white_space += "  "
                 prev_times.append(now)
@@ -238,7 +239,7 @@ async def graph_call(
                         cur_step = max(state_keys.index(state) + 1, cur_step)
                         progress.progress(
                             min(cur_step, total) / total,
-                            text=f"{states[state]} complete",
+                            text=f"{title} - {states[state]} complete",
                         )
                     elif (
                         state == event["name"]
@@ -247,7 +248,7 @@ async def graph_call(
                         cur_step = max(state_keys.index(state), cur_step)
                         progress.progress(
                             min(cur_step, total) / total,
-                            text=f"{states[state]} in progress",
+                            text=f"{title} - {states[state]} in progress",
                         )
 
                 if show_progress_items:
@@ -256,7 +257,7 @@ async def graph_call(
                         #     state_status[state].update(label=f"{states[state]} complete", state="complete")
                         # else:
                         state_status[state].empty()
-                        state_status[state].success(f"{states[state]} complete")
+                        state_status[state].success(f"{title} - {states[state]} complete")
                     elif (
                         state == event["name"]
                         and event["event"] == "on_chain_start"
@@ -264,7 +265,7 @@ async def graph_call(
                         # if not isinstance(state_status[state], StatusContainer):
                         state_status[state].empty()
                         state_status[state].info(
-                            f"{states[state]} in progress"
+                            f"{title} - {states[state]} in progress"
                         )  # , state="running")
 
 

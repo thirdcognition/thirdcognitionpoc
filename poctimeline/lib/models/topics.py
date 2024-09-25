@@ -333,7 +333,7 @@ def get_topic_item(topic: dict, state: dict, metadata: dict, i=0):
             ", ".join(
                 [str(state["page"])]
                 if not isinstance(state["page"], list)
-                else state["page"]
+                else [str(p) for p in state["page"]]
             )
             if "page" in state
             else None
@@ -421,14 +421,14 @@ def parse_topic_items(
         doc = Document(
             page_content=get_text_from_completion(response), metadata=metadata
         )
-        topics = []
-        summaries = []
+        topic = ""
+        summary = ""
         if tags is not None:
             if "topic" in tags:
-                topics = str(tags["topic"]).split("\n\n")
+                topic = str(tags["topic"]).replace("\n", " ").strip() if tags["topic"] else ""
             if "summary" in tags:
-                summaries = str(tags["summary"]).split("\n\n")
+                summary = str(tags["summary"]).replace("\n", " ").strip() if tags["summary"] else ""
 
-        items = [{"document": doc, "topic": topics, "summary": summaries}]
+        items = [{"document": doc, "topic": topic, "summary": summary}]
 
     return items

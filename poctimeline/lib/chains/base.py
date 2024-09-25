@@ -30,6 +30,7 @@ class BaseChain:
         llm: RunnableSequence | None = None,
         custom_prompt: tuple[str, str] | None = None,
         async_mode: bool = False,
+        structured_mode: bool = False,
     ):
         if not hasattr(self, "parent_chain") or self.parent_chain is None:
             self.parent_chain = parent_chain
@@ -45,6 +46,7 @@ class BaseChain:
             self.prompt_template = None
 
         self.async_mode = async_mode
+        self.structured_mode = structured_mode
 
         self.id = f"{self.__class__.__name__}-{id(self)}"
         self.name = self.id

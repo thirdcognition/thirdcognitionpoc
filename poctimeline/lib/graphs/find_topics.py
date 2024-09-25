@@ -21,7 +21,13 @@ from lib.helpers import (
     get_unique_id,
 )
 from lib.load_env import SETTINGS
-from lib.models.topics import ParsedTopic, get_topic_doc_context, get_topic_str, parse_topic_items, prepare_topic_contents
+from lib.models.topics import (
+    ParsedTopic,
+    get_topic_doc_context,
+    get_topic_str,
+    parse_topic_items,
+    prepare_topic_contents,
+)
 
 # from lib.prompts.topics import TOPIC_COMBINE_INSTRUCT_TAGS
 
@@ -200,7 +206,10 @@ async def concat_search_topics(state: FindTopicsState, config: RunnableConfig):
         state["found_topics"], key=lambda x: x["index"]
     )
     valid_ids = [
-        item["id"] for result in sorted_search_topics for item in result["items"]
+        item["id"]
+        for result in sorted_search_topics
+        for item in result["items"]
+        if item["id"] is not None
     ]
 
     joined_topic_items: List[ParsedTopic]

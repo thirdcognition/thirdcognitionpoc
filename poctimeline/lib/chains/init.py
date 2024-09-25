@@ -50,6 +50,7 @@ from lib.prompts.formatters import (
     text_formatter_simple,
     text_formatter_compress,
     text_formatter_guided,
+    text_formatter_compress_guided,
     md_formatter,
     md_formatter_guided,
 )
@@ -101,6 +102,7 @@ def get_limiter(model_config: ProviderModelSettings) -> Union[BaseRateLimiter, N
 
     return limiter
 
+use_structured_mode = False
 
 def init_llm(
     provider: ProviderSettings = SETTINGS.default_provider,
@@ -126,8 +128,12 @@ def init_llm(
             model_id=model.model,
             region_name=provider.region,
             model_kwargs={"temperature": temperature},
+            timeout=30000,
+            max_tokens = 2048,
+            max_retries = 2,
             **common_kwargs,
         )
+        use_structured_mode = True
 
     if model.provider == "AZURE":
         llm = model.class_model(
@@ -138,6 +144,10 @@ def init_llm(
                 if "structured" in model.type
                 else {}
             ),
+            timeout=60000,
+            request_timeout=120,
+            max_tokens = 2048 * 8,
+            max_retries = 2,
             **common_kwargs,
         )
 
@@ -148,6 +158,9 @@ def init_llm(
             endpoint_api_key=model.api_key,
             content_formatter=CustomOpenAIChatContentFormatter(),
             model_kwargs={"temperature": temperature},
+            timeout=1000,
+            max_tokens = 128,
+            max_retries = 2,
             **common_kwargs,
         )
 
@@ -163,7 +176,9 @@ def init_llm(
             num_ctx=model.context_size,
             num_predict=model.context_size,
             repeat_penalty=2,
-            timeout=10000,
+            timeout=30000,
+            max_retries = 2,
+            max_tokens = 2048,
             **common_kwargs,
         )
 
@@ -177,8 +192,9 @@ def init_llm(
                 if "structured" in model.type
                 else {}
             ),
-            timeout=10000,
-            max_retries=5,
+            timeout=30000,
+            max_retries=2,
+            max_tokens = 2048,
             **common_kwargs,
         )
 
@@ -294,6 +310,11 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
     "text_formatter_guided": (
         "instruct_detailed_0" if not DEVMODE else "instruct_0",
         text_formatter_guided,
+        True,
+    ),
+    "text_formatter_compress_guided": (
+        "instruct_detailed_0" if not DEVMODE else "instruct_0",
+        text_formatter_compress_guided,
         True,
     ),
     "md_formatter": ("instruct", md_formatter, False),

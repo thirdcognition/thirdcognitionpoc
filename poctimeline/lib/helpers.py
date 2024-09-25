@@ -112,15 +112,54 @@ def get_text_from_completion(completion):
 
     return completion_content
 
+def get_number(page_number):
+    if isinstance(page_number, (int, float)):
+        return int(page_number)
+    elif isinstance(page_number, str) and page_number.isdigit():
+        return int(page_number)
+    elif ", " in page_number:
+        page_number = page_number.split(", ")[0]
+        if page_number.isdigit():
+            return int(page_number)
+    return 0
 
-def combine_metadata(docs: List[Document]) -> Dict[str, str]:
-    combined_metadata = {k: str(v) for k, v in docs[0].metadata.items()}
+def flatten_dict(d, parent_key='', sep='_'):
+    items = []
+    for k, v in d.items():
+        new_key = parent_key + sep + k if parent_key else k
+        if isinstance(v, dict):
+            items.extend(flatten_dict(v, new_key, sep=sep).items())
+        elif isinstance(v, list):
+            for i, item in enumerate(v):
+                items.extend(flatten_dict({str(i): item}, new_key).items())
+        else:
+            try:
+                if not isinstance(v, (int, float, str, bool)):
+                    v = json.dumps(v)
+                items.append((new_key, v))
+            except Exception as e:
+                print(f"Error flattening key '{new_key}': {e}")
+                continue
+    return dict(items)
+
+def combine_metadata(docs: List[Document]) -> Dict[str, Any]:
+    combined_metadata = {k: v for k, v in docs[0].metadata.items()}
     for doc in docs[1:]:
         for k, v in doc.metadata.items():
-            if k in combined_metadata:
-                combined_metadata[k] += f", {v}"
+            if k in combined_metadata and combined_metadata[k] is not None:
+                if isinstance(combined_metadata[k], dict):
+                    combined_metadata[k].update(v)
+                elif isinstance(combined_metadata[k], list):
+                    if isinstance(v, list):
+                        combined_metadata[k].extend(v)
+                    else:
+                        combined_metadata[k].append(v)
+                elif isinstance(combined_metadata[k], str):
+                    combined_metadata[k] += f", {repr(v)}"
+                else:
+                    combined_metadata[k] = f"{repr(combined_metadata[k])}, {repr(v)}"
             else:
-                combined_metadata[k] = str(v)
+                combined_metadata[k] = v
 
     return combined_metadata
 

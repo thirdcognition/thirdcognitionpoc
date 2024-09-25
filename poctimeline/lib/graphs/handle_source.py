@@ -22,7 +22,7 @@ from lib.document_tools import (
     a_semantic_splitter,
     markdown_to_text,
 )
-from lib.helpers import get_text_from_completion, pretty_print
+from lib.helpers import get_number, get_text_from_completion, pretty_print
 from lib.load_env import SETTINGS
 from lib.models.concepts import ConceptData
 from lib.models.taxonomy import Taxonomy
@@ -334,11 +334,13 @@ async def rag_update(state: ProcessSourceState, config: RunnableConfig):
     summary = state["process_text_result"]["summary"]
     content_topics = state["find_topics_result"]["content_topics"]
 
+
+
     source_topics = [
         SourceContentPage(
             page_content=get_text_from_completion(item["page_content"]),
-            page_number=item["page"],
-            topic_index=item["topic_index"],
+            page_number=get_number(item["page"]) if "page" in item else 0,
+            topic_index=get_number(item["topic_index"]) if "topic_index" in item else 0,
             metadata=item["page_content"].metadata,
             topic=item["topic"] or "",
             instruct=(

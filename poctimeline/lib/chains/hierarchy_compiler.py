@@ -127,19 +127,23 @@ def join_items(items: List, item_formatter: Callable, splitter="\n\n") -> List[s
     if len(splitter.join(item_strings)) > SETTINGS.default_llms.instruct.char_limit:
         new_item_strings = []
         current_str = ""
-        items_left = len(items)
+        items_left = len(item_strings)
         item_index = 0
         while items_left > 0:
             item_index += 1
             items_left -= 1
-            item_str = item_strings[item_index]
-            if (
-                len(current_str) + len(item_str)
-                > SETTINGS.default_llms.instruct.char_limit
-            ):
-                new_item_strings.append(current_str)
-                current_str = ""
-            current_str += item_str + splitter
+            try:
+                item_str = item_strings[item_index]
+                if (
+                    len(current_str) + len(item_str)
+                    > SETTINGS.default_llms.instruct.char_limit
+                ):
+                    new_item_strings.append(current_str)
+                    current_str = ""
+                current_str += item_str + splitter
+            except IndexError:
+                print(f"IndexError: {item_index} , {items_left} > {len(item_strings)}")
+                continue
         new_item_strings.append(current_str)
         item_strings = new_item_strings
     else:

@@ -13,8 +13,8 @@ text_formatter_simple = PromptFormatter(
         f"""
         Act as a document formatter.
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
-        Rewrite the text specified by the user between the context start and context end in full detail using natural language.
-        Don't use html tags or markdown. Remove all mentions of confidentiality. Use only information from the available in the text.
+        Rewrite the text specified by the user defined in context in full detail.
+        Remove all mentions of confidentiality. Use only information from the available in the context.
         """
     ),
     user=textwrap.dedent(
@@ -23,7 +23,7 @@ text_formatter_simple = PromptFormatter(
         {context}
         Context end
 
-        Format the text in the context.
+        Rewrite the text in the context in full detail.
         """
     ),
 )
@@ -35,8 +35,9 @@ text_formatter = PromptFormatter(
         {MAINTAIN_CONTENT_AND_USER_LANGUAGE}
         {PRE_THINK_INSTRUCT}
         {KEEP_PRE_THINK_TOGETHER}
-        Rewrite the text specified by the user between the context start and context end in full detail using natural language.
-        Don't use html tags or markdown. Remove all mentions of confidentiality. Use only information from the available in the text.
+        Rewrite the text specified by the user defined in context in full detail.
+        If available use previous and next page to improve the context.
+        Remove all mentions of confidentiality. Use only information from the available in the context.
         """
     ),
     user=textwrap.dedent(
@@ -44,14 +45,14 @@ text_formatter = PromptFormatter(
         Previous page ending start
         {prev_page}
         Previous page ending end
-        Next page beginning start
-        {next_page}
-        Next page beginning end
         Context start
         {context}
         Context end
+        Next page beginning start
+        {next_page}
+        Next page beginning end
 
-        Format the text in the context.
+        Rewrite the text in the context in full detail.
         """
     ),
 )

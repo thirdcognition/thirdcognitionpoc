@@ -216,21 +216,23 @@ def process_source_contents(
 async def process_source(
     categories, filename=None, url=None, file: io.BytesIO = None, overwrite=False
 ):
-    with st.status(f"Document generation: {filename}"):
+    result = await graph_call(
+        categories=categories,
+        filename=filename,
+        url=url,
+        file=file,
+        overwrite=overwrite,
+        graph=handle_source,
+        title=filename,
+        # collect_concepts=True,
+    )
+    with st.status(f"{filename} - results"):
         # file_entry = get_db_sources()[filename]
         contents: str = None
         # texts = file_entry.texts
         # filetype = os.path.basename(filename).split(".")[-1]
 
-        result = await graph_call(
-            categories=categories,
-            filename=filename,
-            url=url,
-            file=file,
-            overwrite=overwrite,
-            graph=handle_source,
-            # collect_concepts=True,
-        )
+
 
         # pretty_print(result)
 
@@ -411,6 +413,7 @@ async def main():
 
     if st.button("Start processing"):
         keys = list(existing_files_details.keys()) + list(new_files_details.keys())
+        tasks = []
         for filename in keys:
             det = None
             if filename in existing_files_details:
@@ -418,9 +421,11 @@ async def main():
             elif filename in new_files_details:
                 det = new_files_details[filename]
 
-            await process_source(
+            tasks.append(process_source(
                 det["categories"], filename=filename, file=det["file"], overwrite=True
-            )
+            ))
+
+        await asyncio.gather(*tasks)
 
         get_db_sources(reset=True)
 

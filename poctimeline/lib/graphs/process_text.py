@@ -16,6 +16,7 @@ from langgraph.graph import END, START, StateGraph
 from lib.chains.init import get_chain
 from lib.document_tools import a_semantic_splitter
 from lib.helpers import (
+    combine_metadata,
     get_text_from_completion,
     pretty_print,
 )
@@ -205,6 +206,7 @@ async def concat_content(state: ProcessTextState, config: RunnableConfig):
         )
         for result in sorted_reformat
         for item in result["items"]
+        if "topic" in item and item["topic"]
     ]
 
     return {
@@ -230,19 +232,29 @@ async def concat_content(state: ProcessTextState, config: RunnableConfig):
 
 
 async def collapse(results: List, doc_list, callback):
-    results.append(await acollapse_docs(doc_list, callback))
+    metadata = combine_metadata(doc_list)
+    cb_results = await callback(doc_list, metadata)
+    if isinstance(cb_results, List):
+        results.extend(cb_results)
+    else:
+        results.append(cb_results)
+
+    # results.append(await acollapse_docs(doc_list, callback))
 
 
-async def process_doc(doc: Document):
+async def process_doc(doc: Document, metadata=None):
     if isinstance(doc, List):
-        tasks = [process_doc(d) for d in doc]
-        return await asyncio.gather(*tasks)
+        tasks = [process_doc(d, metadata) for d in doc]
+        try:
+            return await asyncio.gather(*tasks)
+        except Exception as e:
+            print(f"Timeout processing document {repr(e)}")
 
-    metadata = doc.metadata
+    metadata = metadata or doc.metadata
     instructions = metadata["instructions"] if "instructions" in metadata else None
     context = get_topic_doc_context(doc)
 
-    if "instructions" in metadata and metadata["instructions"]:
+    if instructions is not None:
         results = get_text_from_completion(
             await get_chain("text_formatter_compress_guided").ainvoke(
                 {"context": context, "instructions": instructions}

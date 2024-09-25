@@ -1,3 +1,4 @@
+from asyncio import CancelledError
 import textwrap
 from typing import Dict, List
 from langchain_core.documents import Document
@@ -77,6 +78,11 @@ class BaseParserChain(BaseChain):
         ):
             return self.chain
 
+        parser = self.output_parser or self.prompt.parser
+        if self.structured_mode and parser is not None and hasattr(parser, "pydantic_object"):
+            self.llm = self.llm.with_structured_output(parser.pydantic_object)
+            self.retry_llm = self.retry_llm.with_structured_output(parser.pydantic_object)
+
         self._setup_prompt(custom_prompt)
 
         self.chain = super().__call__(custom_prompt)
@@ -115,7 +121,8 @@ class BaseParserChain(BaseChain):
                 return retry_parser.parse_with_prompt(
                     completion, x["prompt_value"]
                 )
-            except ValidationError as e:
+            except (ValidationError, CancelledError) as e:
+                print(f"Error: {repr(e)}")
                 completion = parser_retry_chain.invoke(
                     dict(
                         completion=x["completion"],
@@ -135,7 +142,8 @@ class BaseParserChain(BaseChain):
                 return await retry_parser.aparse_with_prompt(
                     completion, x["prompt_value"]
                 )
-            except ValidationError as e:
+            except (ValidationError, CancelledError) as e:
+                print(f"Error: {repr(e)}")
                 completion = parser_retry_chain.ainvoke(
                     dict(
                         completion=x["completion"],

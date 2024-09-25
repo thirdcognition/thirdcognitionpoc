@@ -18,6 +18,7 @@ from langchain_experimental.text_splitter import (
 )
 from langchain.schema.document import Document
 
+from lib.helpers import flatten_dict
 from lib.load_env import SETTINGS
 from lib.chains.init import get_embeddings
 from lib.models.concepts import ConceptData
@@ -300,20 +301,20 @@ def get_source_rag_chunks(
             for i in range(len(page_contents))
         ]
         rag_metadatas = rag_metadatas + [
-            {
+            flatten_dict({
                 "source": "formatted_" + source,
                 "categories": ", ".join(categories),
                 "filetype": filetype,
                 "split": i,
-            }
+            })
             for i in range(len(formatted_split))
         ] + [
-            {
+            flatten_dict({
                 "source": "formatted_page_" + source,
                 "categories": ", ".join(categories),
                 "filetype": filetype,
                 "split": i,
-            }
+            })
             for i in range(len(page_contents))
         ]
         rag_metadatas = [{k: v for k, v in metadata.items() if v is not None} for metadata in rag_metadatas]
@@ -352,7 +353,7 @@ def get_concept_rag_chunks(
         ]
 
         concept_metadatas = [
-            {
+            flatten_dict({
                 "concept_id": concept.id,
                 "concept_taxonomy": ", ".join([tag for tag in concept.taxonomy]),
                 "split": str(i) + "_" + str(j),
@@ -362,7 +363,7 @@ def get_concept_rag_chunks(
                         for reference in concept.references
                     ]
                 ),
-            }
+            })
             for j in range(len(concept_split))
         ]
         concept_metadatas = [{k: v for k, v in metadata.items() if v is not None} for metadata in concept_metadatas]
@@ -403,14 +404,14 @@ def get_topic_rag_chunks(
         ]
 
         topic_metadatas = [
-            {
+            flatten_dict({
                 "source": source,
                 "topic": topic.topic,
                 "topic_id": id,
                 "categories": ", ".join(categories),
                 "split": str(i) + "_" + str(j),
                 **topic.metadata,
-            }
+            })
             for j in range(len(topic_split))
         ]
         # Remove None type keys from topic_metadata

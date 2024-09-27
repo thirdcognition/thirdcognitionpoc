@@ -2,11 +2,13 @@ import streamlit as st
 import os
 import sys
 
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
+from lib.streamlit.user import check_auth
 from lib.chat import chat_elements, init_journey_chat
-from lib.streamlit_tools import check_auth, get_all_categories
+from lib.streamlit_tools import get_all_categories
 
 st.set_page_config(
     page_title="TC POC: Admin",

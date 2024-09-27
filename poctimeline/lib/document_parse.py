@@ -95,7 +95,6 @@ def extract_images_from_page(
         return ""
 
     substep_total = step / 2
-    substep = substep_total / total
     i = 0
 
     for img in img_list:

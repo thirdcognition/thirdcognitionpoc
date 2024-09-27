@@ -48,6 +48,28 @@ def pretty_print(obj, msg=None, force=DEBUGMODE):
         print("\n\n")
 
 
+def validate_category(category: str) -> bool:
+    # Check length
+    if not 3 <= len(category) <= 63:
+        return False
+    # Check start and end with alphanumeric character
+    if not category[0].isalnum() or not category[-1].isalnum():
+        return False
+    # Check for valid characters
+    if not re.match(r"^[A-Za-z0-9_\-]*$", category) or " " in category:
+        return False
+    # Check for consecutive periods
+    if ".." in category:
+        return False
+    # Check for IPv4 address
+    if re.match(r"^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$", category):
+        return False
+    return True
+
+def is_valid_email(email):
+    email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(email_regex, email) is not None
+
 def get_session_history(session_id: str) -> BaseChatMessageHistory:
     if "chat_history" not in st.session_state:
         st.session_state["chat_history"] = {}

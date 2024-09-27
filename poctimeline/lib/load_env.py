@@ -151,6 +151,11 @@ class EmbeddingProviderSettings(BaseModel):
 
 
 class Settings(BaseModel):
+    system_db_filename: str
+    auth_filename: str
+    auth_cookie_expiry: int
+    auth_cookie_secret: str
+    auth_cookie_key: str
     llms: List[ProviderSettings] = []
     default_provider: Optional[ProviderSettings] = None
     default_llms: Optional[ModelDefaults] = None
@@ -165,17 +170,30 @@ class Settings(BaseModel):
     journey_tablename: str
     concepts_tablename: str
     concept_taxonomys_tablename: str
+    users_tablename: str
+    organizations_tablename: str
+    default_organization: tuple[str,str,str]
+    super_admin: List[tuple[str, str]] = []
 
 
 SETTINGS = Settings(
+    system_db_filename=os.getenv("SQLITE_SYSTEM_DB", "db/system.db"),
+    auth_cookie_secret=os.getenv("AUTH_COOKIE_SECRET", "secret"),
+    auth_cookie_expiry=int(os.getenv("AUTH_COOKIE_EXPIRY", "30")),
+    auth_cookie_key=os.getenv("AUTH_COOKIE_KEY", "tc_auth_cookie"),
+    auth_filename=os.getenv("AUTH_FILENAME", "admin_auth.yaml"),
     client_host=os.getenv("CLIENT_HOST", "http://localhost:3500"),
     admin_host=os.getenv("ADMIN_HOST", "http://localhost:4000"),
     chroma_path=os.getenv("CHROMA_PATH", "db/chroma_db"),
     sqlite_db=os.getenv("SQLITE_DB", "db/files.db"),
+    super_admin=[tuple(user.split(":")) for user in os.getenv("AUTH_SUPER_ADMIN", "").split(",")],
+    default_organization=tuple(os.getenv("AUTH_DEFAULT_ORGANIZATION", "thirdcognition:ThirdCognition OY:thirdcognition_db").split(":")),
     file_tablename="files",
     journey_tablename="journey",
     concepts_tablename="concepts",
-    concept_taxonomys_tablename="concept_taxonomys"
+    concept_taxonomys_tablename="concept_taxonomys",
+    users_tablename="users",
+    organizations_tablename="organizations",
 )
 
 SETTINGS.default_llms = ModelDefaults()

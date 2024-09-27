@@ -21,37 +21,6 @@ from lib.graphs.find_topics import find_topics
 from lib.graphs.find_taxonomy import find_taxonomy
 from lib.models.source import SourceDataTable
 
-with open("admin_auth.yaml") as file:
-    auth_config = yaml.load(file, Loader=SafeLoader)
-
-
-def check_auth():
-    # global authenticator
-    # if authenticator is None:
-    authenticator = stauth.Authenticate(
-        auth_config["credentials"],
-        auth_config["cookie"]["name"],
-        auth_config["cookie"]["key"],
-        auth_config["cookie"]["expiry_days"],
-        auth_config["pre-authorized"],
-    )
-
-    authenticator.login()
-    if st.session_state["authentication_status"]:
-        col1, col2 = st.columns([7, 1])
-        col1.write(f'Welcome *{st.session_state["name"]}*')
-        with col2:
-            authenticator.logout()
-        return True
-    else:
-        if st.session_state["authentication_status"] is False:
-            st.error("Username/password is incorrect")
-        if st.session_state["authentication_status"] is None:
-            st.warning("Please enter your username and password")
-
-        return False
-
-
 def get_all_categories():
     database_session = init_db()
 
@@ -312,79 +281,6 @@ async def llm_edit(
         return contents["summary"].strip()
     else:
         return contents["formatted_content"].strip()
-
-
-# text = ""
-
-# i = 0
-# total = len(texts)
-
-# if total > 1 and chain == "summary":
-#     total += 1
-
-# if not force and (
-#     texts == None or texts[0] == None or total == 1 and len(texts[0]) < 1000
-# ):
-#     return None, None
-
-# bar = st.progress(0, text="Processing...")
-
-# text =
-
-# if total > 1:
-#     inputs = []
-#     for sub_text in texts:
-#         bar.progress(i / total, f"Processing {i+1} / {total}...")
-#         i += 1
-#         _text = re.sub(r"[pP]age [0-9]+:", "", sub_text)
-#         _text = re.sub(r"[iI]mage [0-9]+:", "", _text)
-#         input = {"context": _text}
-
-#         guided_llm = ""
-#         if guidance is not None and guidance != "":
-#             input["question"] = guidance
-#             guided_llm = "_guided"
-
-#         inputs.append(input)
-
-#         result = get_chain(chain + guided_llm).invoke(input)
-
-#         if isinstance(result, tuple) and len(result) == 2:
-#             result = result[1]
-
-#         mid_results = mid_results.content if isinstance(mid_results, BaseMessage) else mid_results
-
-#         text += mid_results + "\n\n"
-
-# else:
-#     _text = re.sub(r"[pP]age [0-9]+", "", texts[0])
-#     _text = re.sub(r"[iI]mage [0-9]+", "", _text)
-#     text = _text
-
-# bar.progress((total - 1) / total, text="Summarizing...")
-
-# if chain == "summary":
-#     text = markdown_to_text(text)
-
-#     input = {"context": text}
-
-#     guided_llm = ""
-
-#     if guidance is not None and guidance != "":
-#         guided_llm = "_guided"
-#         input["question"] = guidance
-
-#     text = get_chain(chain + guided_llm).invoke(input)
-
-#     if isinstance(text, tuple) and len(text) == 2:
-#         _,  text = text
-
-#     text = text.content if isinstance(text, BaseMessage) else text
-
-# bar.empty()
-
-# return text.strip()
-
 
 def nav_to(url):
     nav_script = """

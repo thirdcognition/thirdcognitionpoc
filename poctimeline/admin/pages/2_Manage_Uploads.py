@@ -5,25 +5,20 @@ import sys
 from typing import Dict, List
 import streamlit as st
 
-from langchain_core.messages import BaseMessage
-
-from lib.db.rag import get_chroma_collections
-from lib.db.taxonomy import get_taxonomy_by_id
-
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
+
+from lib.db.rag import get_chroma_collections
+from lib.db.taxonomy import get_taxonomy_by_id
 from lib.db.concept import get_concept_by_id
 from lib.db.source import delete_db_source, get_db_sources
 from lib.db.sqlite import db_commit, init_db
 from lib.helpers import pretty_print
 from lib.models.source import SourceContents, SourceDataTable
-from lib.models.concepts import  ConceptData, ConceptDataTable
-from lib.models.taxonomy import  Taxonomy
-from lib.chains.init import get_chain
-from lib.document_tools import create_document_lists, split_text
-from lib.load_env import SETTINGS
+from lib.models.concepts import ConceptData, ConceptDataTable
+from lib.models.taxonomy import Taxonomy
 
 from lib.document_tools import markdown_to_text
 from lib.streamlit_tools import check_auth, get_all_categories, llm_edit
@@ -240,7 +235,12 @@ async def manage_file(filename):
                 with text_tab2:
                     st.write("###### All topics:\n - " + "\n - ".join(all_topics))
                     for topic in topics:
-                        st.write("#### Page: " + str(topic.page_number) + " - " + str(topic.topic_index))
+                        st.write(
+                            "#### Page: "
+                            + str(topic.page_number)
+                            + " - "
+                            + str(topic.topic_index)
+                        )
                         st.write("##### " + topic.topic)
                         st.write(topic.page_content, unsafe_allow_html=True)
 
@@ -263,10 +263,10 @@ async def manage_file(filename):
 
             with tab4:
                 tagged_concepts: Dict[str, List[ConceptData]] = defaultdict(list)
-                tags:Dict[str, Taxonomy] = {}
+                tags: Dict[str, Taxonomy] = {}
                 for concept_id in file_entry.source_concepts:
                     db_concept = get_concept_by_id(concept_id)
-                    concept_inst:ConceptData = db_concept.concept_contents
+                    concept_inst: ConceptData = db_concept.concept_contents
                     for tag in concept_inst.taxonomy:
                         tagged_concepts[tag].append(concept_inst)
                         if tag not in tags:
@@ -283,13 +283,17 @@ async def manage_file(filename):
                             with st.expander(f"Concept: {concept_inst.title}"):
                                 st.write(f"#### {concept_inst.id}")
                                 st.code(concept_inst.id)
-                                sub_col1, sub_col2  = st.columns([1,2])
+                                sub_col1, sub_col2 = st.columns([1, 2])
                                 sub_col1.write("References:")
                                 sub_col1.write(ref for ref in concept_inst.references)
                                 sub_col1.write("Taxonomy:")
                                 sub_col1.write(concept_inst.taxonomy)
-                                sub_col2.write(f"##### Summary:\n{concept_inst.summary}")
-                                sub_col2.write(f"##### Content:\n{concept_inst.content}")
+                                sub_col2.write(
+                                    f"##### Summary:\n{concept_inst.summary}"
+                                )
+                                sub_col2.write(
+                                    f"##### Content:\n{concept_inst.content}"
+                                )
                     else:
                         st.write(f"### Issue with: {concept_tag}:")
                         st.write(tags.keys())
@@ -330,8 +334,11 @@ async def manage_file(filename):
                             st.write(f"Error: {e}")
 
                     for concept_id in file_entry.source_concepts:
-                        concept:ConceptDataTable = get_concept_by_id(concept_id)
-                        if any(collection in file_entry.chroma_collections for collection in concept.chroma_collections):
+                        concept: ConceptDataTable = get_concept_by_id(concept_id)
+                        if any(
+                            collection in file_entry.chroma_collections
+                            for collection in concept.chroma_collections
+                        ):
                             st.write(concept.id)
                             sub_col1, sub_col2 = st.columns([1, 3])
                             rag_items = chroma_collections.get(

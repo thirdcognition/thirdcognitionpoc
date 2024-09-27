@@ -15,19 +15,17 @@ from streamlit.elements.lib.mutable_status_container import StatusContainer
 from langchain_core.messages import BaseMessage
 
 
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
+from lib.streamlit.user import check_auth
 from lib.graphs.handle_source import handle_source
-from lib.helpers import pretty_print
+from lib.helpers import pretty_print, validate_category
 from lib.db.source import get_db_sources
 from lib.db.sqlite import init_db
-from lib.models.source import SourceContents, SourceDataTable
 
-from lib.document_parse import load_pymupdf
-from lib.document_tools import split_markdown, split_text
-from lib.load_env import SETTINGS
-from lib.streamlit_tools import check_auth, get_all_categories, graph_call
+from lib.streamlit_tools import get_all_categories, graph_call
 
 st.set_page_config(
     page_title="TC POC: Upload files",
@@ -42,25 +40,6 @@ This is an *extremely* cool admin tool!
 )
 
 database_session = init_db()
-
-
-def validate_category(category: str) -> bool:
-    # Check length
-    if not 3 <= len(category) <= 63:
-        return False
-    # Check start and end with alphanumeric character
-    if not category[0].isalnum() or not category[-1].isalnum():
-        return False
-    # Check for valid characters
-    if not re.match(r"^[A-Za-z0-9_\-]*$", category) or " " in category:
-        return False
-    # Check for consecutive periods
-    if ".." in category:
-        return False
-    # Check for IPv4 address
-    if re.match(r"^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$", category):
-        return False
-    return True
 
 
 def write_categories(add_new=True) -> Union[List, None]:
@@ -122,95 +101,6 @@ def write_categories(add_new=True) -> Union[List, None]:
             # print(f"New categories {file_categories}")
             # st.rerun()
 
-
-def process_source_contents(
-    uploaded_file: UploadedFile, filename, categories, overwrite=False
-):
-    filetype = os.path.basename(uploaded_file.name).split(".")[-1]
-
-    file_exists = database_session.query(
-        sqla.exists().where(SourceDataTable.source == filename)
-    ).scalar()
-
-    if file_exists and overwrite is not True:
-        return
-
-    texts = None
-    with st.status(f"Save to DB: {filename}"):
-
-        if (
-            filetype == "pdf"
-            or filetype == "epub"
-            or filetype == "xps"
-            or filetype == "mobi"
-            or filetype == "fb2"
-            or filetype == "cbz"
-            or filetype == "svg"
-        ):
-            parse_bar = st.progress(0, text="Parsing")
-            texts = load_pymupdf(
-                uploaded_file,
-                filetype=filetype,
-                progress_cb=lambda x, y: parse_bar.progress(x, text=y),
-            )
-            if parse_bar:
-                parse_bar.progress(1, text="Done.")
-                parse_bar.empty()
-
-        elif filetype == "md" or filetype == "txt":
-            text = StringIO(uploaded_file.getvalue().decode("utf-8")).read()
-            texts = split_markdown(text)
-            # text = uploaded_file.read()
-        else:
-            st.warning("Unsupported file type")
-            return  # Skip unsupported files
-
-        split_texts = []
-        for text in texts:
-            if len(text) > SETTINGS.default_llms.instruct.char_limit:
-                st.write("Splitting to fit context...")
-                split_texts = split_texts + split_text(text)
-            else:
-                split_texts.append(text)
-
-        texts = split_texts
-        collections = []
-        for cat in categories:
-            collections.append("rag_" + cat)
-        with st.spinner("Saving to database..."):
-            if file_exists:
-                # If the file exists, get the row and update its text field
-                existing_file = (
-                    database_session.query(SourceDataTable)
-                    .filter(SourceDataTable.source == filename)
-                    .first()
-                )
-
-                existing_file.texts = (
-                    texts  # Update the text field with the new content
-                )
-                existing_file.category_tags = categories
-                existing_file.last_updated = datetime.now()
-                existing_file.file_data = uploaded_file.getvalue()
-                existing_file.chroma_collections = collections
-
-                st.success(f"{filename} updated within database successfully.")
-            else:
-
-                # If the file does not exist, create a new row
-                file = SourceDataTable(
-                    source=filename,
-                    texts=texts,
-                    category_tags=categories,
-                    chroma_collections=collections,
-                    last_updated=datetime.now(),
-                    file_data=uploaded_file.getvalue(),
-                )
-                database_session.add(file)
-
-                st.success(f"{filename} saved to database successfully.")
-
-            database_session.commit()
 
 
 async def process_source(

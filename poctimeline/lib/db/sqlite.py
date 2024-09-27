@@ -1,29 +1,31 @@
+from typing import Dict
 import sqlalchemy as sqla
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import sessionmaker, Session, declarative_base
 
 from lib.load_env import SETTINGS
 
 Base = declarative_base()
 
 chroma_client = None
-database_session = None
+database_session:Dict[str, Session] = {}
 
-def init_db():
+def init_system_db() -> Session:
+    db_file = SETTINGS.system_db_filename
+    return init_db(db_file)
+
+def init_db(db_file=SETTINGS.sqlite_db) -> Session:
     global database_session
-    if database_session is None:
+    if db_file not in database_session:
         engine = sqla.create_engine("sqlite:///{}".format(SETTINGS.sqlite_db))
         Base.metadata.create_all(engine)
         DatabaseSession = sessionmaker(bind=engine, autoflush=False)
-        database_session = DatabaseSession()
+        database_session[db_file] = DatabaseSession()
 
-    return database_session
+    return database_session[db_file]
 
-
-def db_session():
-    global database_session
-    return database_session
+def db_session(db_file=SETTINGS.sqlite_db) -> Session:
+    return init_db(db_file)
 
 
-def db_commit():
-    database_session.commit()
+def db_commit(db_file=SETTINGS.sqlite_db):
+    database_session[db_file].commit()

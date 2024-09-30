@@ -18,6 +18,7 @@ from lib.models.user import (
     get_all_users,
     get_org_by_id,
     get_user_org,
+    get_user_org_id,
     is_org_admin,
     is_super_admin,
     set_disable_org,
@@ -30,8 +31,6 @@ from lib.models.user import (
 )
 from lib.models.user import AuthStatus, UserLevel
 from lib.streamlit.user import check_auth
-
-from lib.db.sqlite import init_db
 
 
 st.set_page_config(
@@ -46,8 +45,6 @@ This is an *extremely* cool admin tool!
     },
 )
 
-database_session = init_db()
-
 
 def manage_organizations():
     st.subheader("Manage Organizations")
@@ -58,9 +55,9 @@ def manage_organizations():
     for org in orgs:
         org_data.append(
             {
+                "Disabled": org.disabled,
                 "Organization ID": org.organization_id,
                 "Organization Name": org.organization_name,
-                "Disabled": org.disabled,
             }
         )
 
@@ -91,6 +88,8 @@ def manage_organizations():
                         "Please fill all the fields and enter a valid email address."
                     )
                 st.success("Organization created successfully!")
+                get_all_orgs(reset=True)
+                get_all_users(reset=True)
                 st.rerun()
 
     for index, row in edited_df.iterrows():
@@ -130,7 +129,7 @@ def manage_users():
                 key="new_user_org_id",
             )
         else:
-            new_org_id = get_user_org().organization_id
+            new_org_id = get_user_org_id()
         new_level = st.selectbox(
             "New User Level",
             [UserLevel.user, UserLevel.org_admin],

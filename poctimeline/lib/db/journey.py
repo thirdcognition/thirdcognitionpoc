@@ -1,7 +1,7 @@
 from typing import Dict
 
 import streamlit as st
-from lib.db.sqlite import db_session
+from lib.models.user import user_db_get_session
 
 from lib.models.journey import (
     JourneyModel,
@@ -15,10 +15,10 @@ def get_db_journey(
     db_journey: Dict[str, JourneyModel] = None
     if "db_journey" not in st.session_state or reset:
         if journey_name is None:
-            journey = db_session().query(JourneyDataTable).all()
+            journey = user_db_get_session().query(JourneyDataTable).all()
         else:
             journey = (
-                db_session()
+                user_db_get_session()
                 .query(JourneyDataTable)
                 .filter(JourneyDataTable.journeyname == journey_name)
                 .all()

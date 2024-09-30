@@ -8,7 +8,7 @@ from langgraph.constants import Send
 
 from lib.chains.hierarchy_compiler import get_hierarchy
 from lib.chains.init import get_chain
-from lib.db.sqlite import db_commit
+from lib.models.user import user_db_commit
 from lib.db.taxonomy import (
     delete_db_taxonomy,
     get_taxonomy_item_list,
@@ -99,7 +99,7 @@ async def search_taxonomy(state: ProcessTaxonomyState, config: RunnableConfig):
     }
 
 async def map_search_taxonomy(state: FindTaxonomyState):
-    db_commit()
+    user_db_commit()
     existing_taxonomy: List[Taxonomy] = get_taxonomy_item_list(categories=state["categories"], reset=True)
     existing_taxonomy_str = convert_taxonomy_dict_to_tag_structure_string(existing_taxonomy)
     # "\n\n".join(

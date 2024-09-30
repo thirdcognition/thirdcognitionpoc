@@ -4,7 +4,7 @@ from typing import List, Union
 import sqlalchemy as sqla
 
 from lib.db.rag import get_chroma_collections, update_rag
-from lib.db.sqlite import db_session
+from lib.models.user import user_db_get_session
 from lib.document_tools import get_concept_rag_chunks
 
 from lib.models.taxonomy import (
@@ -24,7 +24,7 @@ existing_concept_ids = []
 
 def db_concept_id_exists(concept_id: str) -> bool:
     return (
-        db_session()
+        user_db_get_session()
         .query(sqla.exists().where(ConceptDataTable.id == concept_id))
         .scalar()
     )
@@ -33,7 +33,7 @@ def db_concept_id_exists(concept_id: str) -> bool:
 @cache
 def get_concept_by_id(concept_id: str) -> ConceptDataTable:
     return (
-        db_session()
+        user_db_get_session()
         .query(ConceptDataTable)
         .filter(ConceptDataTable.id == concept_id)
         .first()
@@ -44,7 +44,7 @@ def get_existing_concept_ids(refresh: bool = False) -> List[str]:
     global existing_concept_ids
     if refresh or len(existing_concept_ids) == 0:
         existing_concept_ids = [
-            concept.id for concept in db_session().query(ConceptDataTable).all()
+            concept.id for concept in user_db_get_session().query(ConceptDataTable).all()
         ]
     return existing_concept_ids
 
@@ -57,13 +57,13 @@ def get_db_concepts(
 ) -> Union[ConceptDataTable, List[ConceptDataTable]]:
     if id is not None:
         return (
-            db_session()
+            user_db_get_session()
             .query(ConceptDataTable)
             .filter(ConceptDataTable.id == id)
             .first()
         )
 
-    concepts = db_session().query(ConceptDataTable).all()
+    concepts = user_db_get_session().query(ConceptDataTable).all()
 
     if source is not None:
         # print(f"Filtering concepts by source: {source}")
@@ -90,7 +90,7 @@ def update_db_concept(concept: ConceptData, categories=List[str], commit: bool =
     if db_concept_id_exists(concept.id):
         # print(f"\n\nUpdate existing concept:\n\n{concept.model_dump_json(indent=4)}")
         db_concept = (
-            db_session()
+            user_db_get_session()
             .query(ConceptDataTable)
             .filter(ConceptDataTable.id == concept.id)
             .first()
@@ -107,11 +107,11 @@ def update_db_concept(concept: ConceptData, categories=List[str], commit: bool =
 
 
     if commit:
-        db_session().commit()
+        user_db_get_session().commit()
 
 def delete_db_concept(concept_id: str, commit: bool = True):
     instance = (
-        db_session()
+        user_db_get_session()
         .query(ConceptDataTable)
         .where(ConceptDataTable.id == concept_id)
         .first()
@@ -125,9 +125,9 @@ def delete_db_concept(concept_id: str, commit: bool = True):
                 vectorstore.delete(chroma_ids)
             except Exception as e:
                 print(e)
-    db_session().delete(instance)
+    user_db_get_session().delete(instance)
     if commit:
-        db_session().commit()
+        user_db_get_session().commit()
 
 
 def update_db_concept_rag(
@@ -139,7 +139,7 @@ def update_db_concept_rag(
     defined_concept_ids = [concept.id for concept in concepts] if concepts else []
 
     existing_concepts = (
-        db_session()
+        user_db_get_session()
         .query(ConceptDataTable)
         .filter(
             ConceptDataTable.id.in_(defined_concept_ids),
@@ -252,7 +252,7 @@ def update_db_concept_rag(
                     ],
                     last_updated=datetime.now(),
                 )
-                db_session().add(new_concept)
+                user_db_get_session().add(new_concept)
 
     existing_chroma_ids = None if len(existing_chroma_ids) == 0 else existing_chroma_ids
     existing_chroma_collections = (
@@ -271,7 +271,7 @@ def update_db_concept_rag(
         )
 
     existing_source = (
-        db_session()
+        user_db_get_session()
         .query(SourceDataTable)
         .filter(SourceDataTable.source == source)
         .first()
@@ -283,4 +283,4 @@ def update_db_concept_rag(
         )
         existing_source.last_updated = datetime.now()
 
-    db_session().commit()
+    user_db_get_session().commit()

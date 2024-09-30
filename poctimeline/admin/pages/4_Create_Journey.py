@@ -8,7 +8,6 @@ import streamlit as st
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
-from lib.db.sqlite import init_db
 from lib.models.journey import JourneyModel, SubjectModel
 from lib.prompts.journey import JourneyPrompts
 from lib.journey_shared import (
@@ -238,7 +237,6 @@ async def get_journey_gen(journey_name):
 # Streamlit app
 async def main():
 
-    init_db()
     st.title("Create Journey")
 
     if check_auth(UserLevel.org_admin) != AuthStatus.LOGGED_IN:

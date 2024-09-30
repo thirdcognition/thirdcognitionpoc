@@ -18,12 +18,11 @@ from langchain_core.messages import BaseMessage
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
-from lib.models.user import AuthStatus, UserLevel
+from lib.models.user import AuthStatus, UserLevel, user_db_get_session
 from lib.streamlit.user import check_auth
 from lib.graphs.handle_source import handle_source
 from lib.helpers import pretty_print, validate_category
 from lib.db.source import get_db_sources
-from lib.db.sqlite import init_db
 
 from lib.streamlit_tools import get_all_categories, graph_call
 
@@ -38,8 +37,6 @@ This is an *extremely* cool admin tool!
         """
     },
 )
-
-database_session = init_db()
 
 
 def write_categories(add_new=True) -> Union[List, None]:
@@ -156,7 +153,6 @@ async def process_source(
 
 
 async def main():
-    init_db()
     st.title("Upload Files")
 
     if check_auth(UserLevel.org_admin) != AuthStatus.LOGGED_IN:

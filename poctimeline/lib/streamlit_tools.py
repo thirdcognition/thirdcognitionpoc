@@ -11,7 +11,7 @@ from langchain_core.messages import BaseMessage
 from langgraph.graph.state import CompiledStateGraph
 
 from lib.chains.init import get_chain
-from lib.db.sqlite import init_db
+from lib.models.user import user_db_get_session
 from lib.document_tools import markdown_to_text
 
 from lib.graphs.handle_source import handle_source
@@ -22,7 +22,7 @@ from lib.graphs.find_taxonomy import find_taxonomy
 from lib.models.source import SourceDataTable
 
 def get_all_categories():
-    database_session = init_db()
+    database_session = user_db_get_session()
 
     if "file_categories" not in st.session_state:
         uniq_categories = []

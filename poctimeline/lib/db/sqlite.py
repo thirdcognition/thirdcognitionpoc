@@ -16,7 +16,7 @@ def init_system_db() -> Session:
 def init_db(db_file=SETTINGS.sqlite_db) -> Session:
     global database_session
     if db_file not in database_session:
-        engine = sqla.create_engine("sqlite:///{}".format(SETTINGS.sqlite_db))
+        engine = sqla.create_engine("sqlite:///{}".format(db_file))
         Base.metadata.create_all(engine)
         DatabaseSession = sessionmaker(bind=engine, autoflush=False)
         database_session[db_file] = DatabaseSession()
@@ -29,3 +29,4 @@ def db_session(db_file=SETTINGS.sqlite_db) -> Session:
 
 def db_commit(db_file=SETTINGS.sqlite_db):
     database_session[db_file].commit()
+

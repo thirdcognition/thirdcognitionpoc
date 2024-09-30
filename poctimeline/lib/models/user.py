@@ -1,5 +1,6 @@
 from enum import Enum
 from functools import cache
+import hashlib
 import os
 from typing import List
 import streamlit as st
@@ -9,7 +10,7 @@ from yaml.loader import SafeLoader
 import sqlalchemy as sqla
 from sqlalchemy.ext.mutable import MutableList
 
-from lib.db.sqlite import Base, init_system_db
+from lib.db.sqlite import Base, db_commit, db_session, init_system_db
 from lib.helpers import pretty_print
 from lib.load_env import SETTINGS
 
@@ -18,6 +19,7 @@ class AuthStatus(Enum):
     LOGGED_IN = 1
     NO_LOGIN = 2
     NO_ACCESS = 3
+
 
 class UserLevel(Enum):
     super_admin = 1000
@@ -108,6 +110,35 @@ def init_org_db():
         session.commit()
 
 
+def user_db_get_session():
+    init_system_db()
+    organization = get_user_org(st.session_state.get("username"))
+    print(f"db_file {organization.db_name=}")
+    return db_session(organization.db_name)
+
+
+def user_db_commit():
+    init_system_db()
+    organization = get_user_org(st.session_state.get("username"))
+    return db_commit(organization.db_name)
+
+
+def write_auth_config(auth_config: dict) -> bool:
+    st.session_state["auth_config"] = auth_config
+    auth_config_str = str(auth_config)
+    auth_config_hash = hashlib.md5(auth_config_str.encode()).hexdigest()
+    if (
+        "auth_config_hash" not in st.session_state
+        or st.session_state["auth_config_hash"] != auth_config_hash
+    ):
+        st.session_state["auth_config_hash"] = auth_config_hash
+        with open(SETTINGS.auth_filename, "w", encoding="utf-8") as file:
+            yaml.dump(auth_config, file, default_flow_style=False)
+        return True
+
+    return False
+
+
 def load_auth_config():
     if st.session_state.get("auth_config") is not None:
         return st.session_state["auth_config"]
@@ -136,14 +167,13 @@ def load_auth_config():
             "pre-authorized": {"emails": []},
         }
         # Save the initialized configuration to the YAML file
-        with open(SETTINGS.auth_filename, "w", encoding="utf-8") as file:
-            yaml.dump(auth_config, file, default_flow_style=False)
+
     else:
         # If the file exists, load the configuration from the YAML file
         with open(SETTINGS.auth_filename) as file:
             auth_config = yaml.load(file, Loader=SafeLoader)
 
-    st.session_state["auth_config"] = auth_config
+    write_auth_config(auth_config)
     return auth_config
 
 
@@ -161,31 +191,47 @@ def set_authenticator(auth: stauth.Authenticate):
 
 
 # super_admin can access all, org_admin can access all in their org
-def get_all_users(org_id: str = None) -> List[UserDataTable]:
+def get_all_users(org_id: str = None, reset=False) -> List[UserDataTable]:
+    if reset or "db_users" not in st.session_state:
+        st.session_state["db_users"] = None
+
+    if st.session_state["db_users"] is not None:
+        return st.session_state["db_users"]
+
     session = init_system_db()
     if is_super_admin():
         # If the user is a super_admin, return all users
         users = session.query(UserDataTable).all()
     elif is_org_admin():
         org_id = get_user_org_id()
+        if org_id is not None:
         # If the user is an org_admin, return all users in their org
-        users = session.query(UserDataTable).filter_by(organization_id=org_id).all()
+            users = session.query(UserDataTable).filter_by(organization_id=org_id).all()
     else:
         # If the user is not a super_admin or an org_admin, return an empty list
         users = []
 
+    st.session_state["db_users"] = users
+
     return users
 
 
-# only super admin can access all orgs
-def get_all_orgs() -> List[OrganizationDataTable]:
+def get_all_orgs(reset=False) -> List[OrganizationDataTable]:
+    if reset or "db_orgs" not in st.session_state:
+        st.session_state["db_orgs"] = None
+
+    if st.session_state["db_orgs"] is not None:
+        return st.session_state["db_orgs"]
+
     session = init_system_db()
     if is_super_admin():
         # If the user is a super_admin, return all organizations
         orgs = session.query(OrganizationDataTable).all()
     else:
         # If the user is not a super_admin, return a list with their organization
-        orgs = [get_user_org()]
+        orgs = [get_user_org(st.session_state["username"])]
+
+    st.session_state["db_orgs"] = orgs
 
     return orgs
 
@@ -204,13 +250,12 @@ def get_org_by_id(org_id: str, reset=False) -> OrganizationDataTable:
     return org_data
 
 
-def check_auth_level() -> UserLevel:
-
-    if st.session_state.get("username") is None:
+def check_auth_level(db_user: str = None) -> UserLevel:
+    if (db_user or st.session_state.get("username")) is None:
         return UserLevel.anonymous
 
     # Query UserDataTable for the user
-    user_data = get_db_user()
+    user_data = get_db_user(db_user or st.session_state["username"])
     # Check if the user exists in the UserDataTable
     if user_data:
         # If the user exists, return their level
@@ -232,48 +277,57 @@ def is_user() -> bool:
     return check_auth_level() == UserLevel.user
 
 
-def get_db_user(db_user: str = None) -> UserDataTable:
-    user = db_user or st.session_state.get("username")
-    if user is None:
-        return None
+@cache
+def get_db_user(db_user: str = None, email: str = None) -> UserDataTable:
+    if db_user is None and email is None:
+        raise ValueError("Either db_user or email must be provided")
+
     session = init_system_db()
+    user_data = None
     # Query UserDataTable for the user
-    user_data = session.query(UserDataTable).filter_by(username=user).first()
+    if db_user is not None:
+        user_data = session.query(UserDataTable).filter_by(username=db_user).first()
+    elif email is not None:
+        user_data = session.query(UserDataTable).filter_by(email=email).first()
 
     return user_data
 
 
-def get_user_org(db_user: str = None) -> OrganizationDataTable:
-    user = db_user or st.session_state.get("username")
-    if user is None:
-        return None
+@cache
+def get_user_org(db_user: str = None, email: str = None) -> OrganizationDataTable:
+    if db_user is None and email is None:
+        raise ValueError("Either db_user or email must be provided")
 
     session = init_system_db()
     # Query UserDataTable for the user
     # Query UserDataTable and OrganizationDataTable in one query
-    org_data = (
-        session.query(OrganizationDataTable)
-        .join(
-            UserDataTable,
-            UserDataTable.organization_id == OrganizationDataTable.organization_id,
-        )
-        .filter(UserDataTable.username == user)
-        .first()
+    join = session.query(OrganizationDataTable).join(
+        UserDataTable,
+        UserDataTable.organization_id == OrganizationDataTable.organization_id,
     )
+    org_data = None
+    if db_user is not None:
+        org_data = join.filter(UserDataTable.username == db_user).first()
+    elif email is not None:
+        org_data = join.filter(UserDataTable.email == email).first()
     return org_data
 
 
 def get_user_org_id(db_user: str = None) -> str:
+    if db_user is None:
+        db_user = st.session_state.get("username")
+    if db_user is None:
+        return None
     return get_user_org(db_user).organization_id
 
 
 def has_access(email=None, org_id=None, user_level: UserLevel = UserLevel.user):
-    cur_user_level = check_auth_level()
+    cur_user_level = check_auth_level(st.session_state.get("username"))
     if user_level > cur_user_level:
         raise Exception("User level too low")
 
-    cur_user = get_db_user()
-    cur_org = get_user_org()
+    cur_user = get_db_user(email=email, db_user=st.session_state.get("username"))
+    cur_org = get_user_org(email=cur_user.email) if cur_user is not None else None
 
     if is_super_admin():
         pass
@@ -298,11 +352,11 @@ def add_user(
     session = init_system_db()
     # Check if the user is already in the UserDataTable
 
-    cur_user = get_db_user()
-    cur_org = get_user_org()
+    cur_user = get_db_user(db_user=st.session_state.get("username"))
+    cur_org = get_user_org(email=cur_user.email) if cur_user is not None else None
     org_id = org_id or (cur_org.organization_id if cur_org else None)
 
-    user = session.query(UserDataTable).filter_by(email=email).first()
+    user = get_db_user(email=email)
 
     if org_id is None and (cur_user is not None and email != cur_user.email):
         has_access(user_level=UserLevel.super_admin)
@@ -317,7 +371,9 @@ def add_user(
             user.username = username
             updated = True
         if level is not None and user.level != level.value:
-            user.level = level.value
+            if not isinstance(level, UserLevel):
+                level = UserLevel(level)
+            user.level = level.value if level else None
             updated = True
         if org_id is not None and user.organization_id != org_id:
             user.organization_id = org_id
@@ -335,12 +391,14 @@ def add_user(
             session.commit()
     else:
         has_access(user_level=UserLevel.org_admin)
+        if level is not None and not isinstance(level, UserLevel):
+            level = UserLevel(level)
         # If the user does not exist, add them to the UserDataTable
         new_user = UserDataTable(
             email=email,
             username=username,
             realname=realname,
-            level=level.value,
+            level=(level or UserLevel.user).value,
             organization_id=org_id,
             journey_ids=journeys,
             disabled=disabled,
@@ -348,7 +406,8 @@ def add_user(
         session.add(new_user)
         session.commit()
         create_preauth_email(email)
-    get_all_users()
+    get_all_users(reset=True)
+    get_db_user.cache_clear()
 
 
 def set_user_org(email: str, org_id: str):
@@ -357,7 +416,7 @@ def set_user_org(email: str, org_id: str):
     has_access(email, org_id)
 
     # Query UserDataTable for the user
-    user = session.query(UserDataTable).filter_by(email=email).first()
+    user = get_db_user(email=email)
 
     if user:
         # If the user exists, update their organization_id
@@ -370,6 +429,8 @@ def set_user_org(email: str, org_id: str):
         if org:
             user.organization_id = org_id
             session.commit()
+            get_all_users(reset=True)
+            get_db_user.cache_clear()
         else:
             print(f"Organization with ID {org_id} does not exist.")
     else:
@@ -382,7 +443,7 @@ def set_user_realname(email: str, realname: str):
     has_access(email)
 
     # Query UserDataTable for the user
-    user = session.query(UserDataTable).filter_by(email=email).first()
+    user = get_db_user(email=email)
 
     if user:
         # If the user exists, update their realname
@@ -396,7 +457,7 @@ def set_user_level(email: str, level: UserLevel):
     session = init_system_db()
 
     # Query UserDataTable for the user
-    user = session.query(UserDataTable).filter_by(email=email).first()
+    user = get_db_user(email=email)
     has_access(email, user.organization_id, UserLevel.org_admin)
 
     if user:
@@ -405,6 +466,8 @@ def set_user_level(email: str, level: UserLevel):
             # If the user exists and the level is valid, update their level
             user.level = level.value
             session.commit()
+            get_all_users(reset=True)
+            get_db_user.cache_clear()
         else:
             print(f"Invalid level: {level}")
     else:
@@ -414,13 +477,15 @@ def set_user_level(email: str, level: UserLevel):
 def set_user_journeys(email: str, journeys: list):
     session = init_system_db()
     # Query UserDataTable for the user
-    user = session.query(UserDataTable).filter_by(email=email).first()
+    user = get_db_user(email=email)
     has_access(email, user.organization_id, UserLevel.org_admin)
 
     if user:
         # If the user exists, update their journey_ids
         user.journey_ids = journeys
         session.commit()
+        get_all_users(reset=True)
+        get_db_user.cache_clear()
     else:
         print(f"User with email {email} does not exist.")
 
@@ -429,15 +494,17 @@ def set_disable_user(email: str, state: bool):
     session = init_system_db()
 
     # If user level is less than org_admin, raise exception
-    has_access(UserLevel.org_admin)
+    has_access(user_level=UserLevel.org_admin)
 
     # Query UserDataTable for the user
-    user = session.query(UserDataTable).filter_by(email=email).first()
+    user = get_db_user(email=email)
 
     if user:
         # If the user exists, update their disabled state
         user.disabled = state
         session.commit()
+        get_all_users(reset=True)
+        get_db_user.cache_clear()
     else:
         print(f"User with email {email} does not exist.")
 
@@ -445,7 +512,7 @@ def set_disable_user(email: str, state: bool):
 def add_org(org_id: str, name: str, db_name: str = None, disabled: bool = False):
     session = init_system_db()
 
-    has_access(UserLevel.super_admin)
+    has_access(user_level=UserLevel.super_admin)
 
     # Check if the organization is already in the OrganizationDataTable
     org = session.query(OrganizationDataTable).filter_by(organization_id=org_id).first()
@@ -465,8 +532,10 @@ def add_org(org_id: str, name: str, db_name: str = None, disabled: bool = False)
             disabled=disabled,
         )
         session.add(new_org)
+
         session.commit()
-    get_all_orgs()
+    get_all_orgs(reset=True)
+    get_org_by_id.cache_clear()
 
 
 def set_org_name(org_id: str, name: str):
@@ -479,13 +548,15 @@ def set_org_name(org_id: str, name: str):
         # If the organization exists, update its name
         org.organization_name = name
         session.commit()
+        get_all_orgs(reset=True)
+        get_org_by_id.cache_clear()
     else:
         print(f"Organization with ID {org_id} does not exist.")
 
 
 def set_disable_org(org_id: str, state: bool):
     session = init_system_db()
-    has_access(UserLevel.super_admin)
+    has_access(user_level=UserLevel.super_admin)
     # Query OrganizationDataTable for the organization
     org = session.query(OrganizationDataTable).filter_by(organization_id=org_id).first()
 
@@ -493,6 +564,8 @@ def set_disable_org(org_id: str, state: bool):
         # If the organization exists, update its disabled state
         org.disabled = state
         session.commit()
+        get_all_orgs(reset=True)
+        get_org_by_id.cache_clear()
     else:
         print(f"Organization with ID {org_id} does not exist.")
 
@@ -508,8 +581,7 @@ def create_preauth_email(preauthorized_email):
         auth_config["pre-authorized"]["emails"].append(preauthorized_email)
 
     # Save the updated configuration back to the YAML file
-    with open(SETTINGS.auth_filename, "w", encoding="utf-8") as file:
-        yaml.dump(auth_config, file, default_flow_style=False)
+    write_auth_config(auth_config)
 
 
 def remove_preauth_email(preauthorized_email):
@@ -533,7 +605,6 @@ def remove_preauth_email(preauthorized_email):
         session.commit()
 
         # Save the updated configuration back to the YAML file
-        with open(SETTINGS.auth_filename, "w", encoding="utf-8") as file:
-            yaml.dump(auth_config, file, default_flow_style=False)
+        write_auth_config(auth_config)
 
         return True

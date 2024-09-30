@@ -12,7 +12,7 @@ from lib.chains.rag_chain import get_rag_chain
 
 from lib.db.journey import get_db_journey
 from lib.db.source import get_db_sources
-from lib.db.sqlite import init_db
+from lib.models.user import user_db_get_session
 from lib.document_tools import markdown_to_text
 from lib.document_tools import create_document_lists
 from lib.load_env import SETTINGS
@@ -35,7 +35,7 @@ def save_journey(journey_name, journey: JourneyModel) -> bool:
     print(f"Save journey {journey_name}")
     # st.write(f"Save journey {journey_name}")
     # st.write(journey)
-    database_session = init_db()
+    database_session = user_db_get_session()
     journey_db = (
         database_session.query(JourneyDataTable)
         .filter(JourneyDataTable.journeyname == journey_name)
@@ -68,7 +68,7 @@ def save_journey(journey_name, journey: JourneyModel) -> bool:
 
 
 def delete_journey(journey_name):
-    database_session = init_db()
+    database_session = user_db_get_session()
     journey_db = (
         database_session.query(JourneyDataTable)
         .filter(JourneyDataTable.journeyname == journey_name)

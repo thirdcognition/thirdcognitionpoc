@@ -5,7 +5,7 @@ import sqlalchemy as sqla
 
 import streamlit as st
 from lib.db.rag import get_chroma_collections, update_rag
-from lib.db.sqlite import db_commit, db_session
+from lib.models.user import user_db_commit, user_db_get_session
 from lib.document_tools import get_source_rag_chunks, get_topic_rag_chunks
 
 from lib.models.source import (
@@ -29,12 +29,12 @@ def get_db_sources(
     ):
         if source is not None:
             sources = (
-                db_session()
+                user_db_get_session()
                 .query(SourceDataTable)
                 .filter(SourceDataTable.source == source)
             )
         else:
-            sources = list(db_session().query(SourceDataTable).all())
+            sources = list(user_db_get_session().query(SourceDataTable).all())
 
         if categories is not None:
             sources = [
@@ -69,11 +69,14 @@ def get_db_sources(
 
 def delete_db_source(filename: str, commit: bool = True):
     instance = (
-        db_session()
+        user_db_get_session()
         .query(SourceDataTable)
         .where(SourceDataTable.source == filename)
         .first()
     )
+    if instance is None:
+        return
+
     chroma_collections = instance.chroma_collections
     chroma_ids = instance.chroma_ids
     if len(chroma_ids) > 0:
@@ -83,14 +86,14 @@ def delete_db_source(filename: str, commit: bool = True):
                 vectorstore.delete(chroma_ids)
             except Exception as e:
                 print(e)
-    db_session().delete(instance)
+    user_db_get_session().delete(instance)
     if commit:
-        db_commit()
+        user_db_commit()
 
 
 def db_source_exists(filename: str) -> bool:
     return (
-        db_session()
+        user_db_get_session()
         .query(sqla.exists().where(SourceDataTable.source == filename))
         .scalar()
     )
@@ -106,7 +109,7 @@ def save_db_source(
     if db_source_exists(filename):
         # If the file exists, get the row and update its text field
         existing_file = (
-            db_session()
+            user_db_get_session()
             .query(SourceDataTable)
             .filter(SourceDataTable.source == filename)
             .first()
@@ -130,9 +133,9 @@ def save_db_source(
             last_updated=datetime.now(),
             file_data=uploaded_file.getvalue() if uploaded_file else None,
         )
-        db_session().add(file)
+        user_db_get_session().add(file)
 
-    db_session().commit()
+    user_db_get_session().commit()
 
 
 def update_db_source_rag(
@@ -143,7 +146,7 @@ def update_db_source_rag(
     filetype="txt",
 ):
     existing_source = (
-        db_session()
+        user_db_get_session()
         .query(SourceDataTable)
         .filter(SourceDataTable.source == source)
         .first()
@@ -191,7 +194,7 @@ def update_db_source_rag(
     existing_source.chroma_ids = rag_ids
     existing_source.chroma_collections = ["rag_" + cat for cat in categories]
     existing_source.last_updated = datetime.now()
-    db_session().commit()
+    user_db_get_session().commit()
 
 
 def update_db_topic_rag(
@@ -200,7 +203,7 @@ def update_db_topic_rag(
     contents: SourceContents,
 ):
     existing_source = (
-        db_session()
+        user_db_get_session()
         .query(SourceDataTable)
         .filter(SourceDataTable.source == source)
         .first()
@@ -259,4 +262,4 @@ def update_db_topic_rag(
 
     existing_source.source_contents = contents
     existing_source.last_updated = datetime.now()
-    db_session().commit()
+    user_db_get_session().commit()

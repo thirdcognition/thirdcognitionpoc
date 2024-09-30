@@ -4,7 +4,7 @@ from typing import Dict, List
 import sqlalchemy as sqla
 
 import streamlit as st
-from lib.db.sqlite import db_session
+from lib.models.user import user_db_get_session
 
 from lib.helpers import convert_tags_to_dict, get_id_str, get_unique_id, pretty_print
 from lib.models.taxonomy import TaxonomyDataTable, Taxonomy
@@ -13,7 +13,7 @@ from lib.prompts.taxonomy import TAXONOMY_ALL_TAGS
 
 def db_taxonomy_exists(tag_id: str) -> bool:
     return (
-        db_session().query(sqla.exists().where(TaxonomyDataTable.id == tag_id)).scalar()
+        user_db_get_session().query(sqla.exists().where(TaxonomyDataTable.id == tag_id)).scalar()
     )
 
 @cache
@@ -21,7 +21,7 @@ def get_taxonomy_by_id(
     concept_category_id: str,
 ) -> TaxonomyDataTable:
     return (
-        db_session()
+        user_db_get_session()
         .query(TaxonomyDataTable)
         .filter(TaxonomyDataTable.id == concept_category_id)
         .first()
@@ -33,7 +33,7 @@ def get_db_taxonomy(
 ) -> Dict[str, List[Taxonomy]]:
     db_taxonomy: Dict[str, List[Taxonomy]] = None
     if "db_taxonomy" not in st.session_state or reset:
-        found_categories = db_session().query(TaxonomyDataTable).distinct().all()
+        found_categories = user_db_get_session().query(TaxonomyDataTable).distinct().all()
 
         if categories is not None:
             found_categories = [
@@ -64,21 +64,21 @@ def get_db_taxonomy(
 
 def delete_db_taxonomy(taxonomy_id: str, commit: bool = True):
     instance = (
-        db_session()
+        user_db_get_session()
         .query(TaxonomyDataTable)
         .where(TaxonomyDataTable.id == taxonomy_id)
         .first()
     )
-    db_session().delete(instance)
+    user_db_get_session().delete(instance)
     if commit:
-        db_session().commit()
+        user_db_get_session().commit()
 
 
 def update_db_taxonomy(taxonomy: Taxonomy, categories=List[str], commit: bool = True):
     if db_taxonomy_exists(taxonomy.id):
         # print(f"\n\nUpdate existing taxonomy:\n\n{taxonomy.model_dump_json(indent=4)}")
         concept_category = (
-            db_session()
+            user_db_get_session()
             .query(TaxonomyDataTable)
             .filter(TaxonomyDataTable.id == taxonomy.id)
             .first()
@@ -97,10 +97,10 @@ def update_db_taxonomy(taxonomy: Taxonomy, categories=List[str], commit: bool = 
             category_tags=categories,
             last_updated=datetime.now(),
         )
-        db_session().add(concept_category)
+        user_db_get_session().add(concept_category)
 
     if commit:
-        db_session().commit()
+        user_db_get_session().commit()
 
 
 def get_taxonomy_item_list(categories: List[str], reset=False) -> List[Taxonomy]:

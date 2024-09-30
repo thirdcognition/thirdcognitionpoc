@@ -1,5 +1,6 @@
 import datetime
 from enum import Enum
+import hashlib
 import jwt
 import streamlit as st
 import streamlit_authenticator as stauth
@@ -25,6 +26,7 @@ from lib.models.user import (
     set_disable_user,
     set_user_org,
     set_user_realname,
+    write_auth_config,
 )
 
 
@@ -147,6 +149,12 @@ def check_auth(user_level: UserLevel = UserLevel.user) -> AuthStatus:
     with st.sidebar:
 
         auth_config = load_auth_config()
+        auth_config_str = str(auth_config)
+        auth_config_hashed = (
+            st.session_state.get("auth_config_hash")
+            or hashlib.md5(auth_config_str.encode()).hexdigest()
+        )
+
         authenticator = stauth.Authenticate(
             auth_config["credentials"],
             auth_config["cookie"]["name"],
@@ -161,13 +169,18 @@ def check_auth(user_level: UserLevel = UserLevel.user) -> AuthStatus:
         tab1, tab2 = login_container.tabs(["Login", "Register"])
         with tab1:
             authenticator.login()
+
         with tab2:
             register_user(authenticator=authenticator)
 
+        if (write_auth_config(auth_config)):
+            st.rerun()
+
         if st.session_state.get("authentication_status"):
             message = st.columns([2, 1], vertical_alignment="center")
+            org = get_user_org(st.session_state["username"])
             message[0].write(
-                f'{get_user_org().organization_name}\n\nWelcome *{st.session_state["name"]}*'
+                f'{org.organization_name if org is not None else ''}\n\nWelcome *{st.session_state["name"]}*'
             )
 
             with message[1]:
@@ -179,7 +192,9 @@ def check_auth(user_level: UserLevel = UserLevel.user) -> AuthStatus:
                 message.error("Username/password is incorrect")
                 auth_status = AuthStatus.NO_LOGIN
             if st.session_state.get("authentication_status") is None:
-                message.info("Please login if you have an account or register if you have a registered email address.")
+                message.info(
+                    "Please login if you have an account or register if you have a registered email address."
+                )
                 auth_status = AuthStatus.NO_LOGIN
             else:
                 auth_status = (
@@ -188,8 +203,6 @@ def check_auth(user_level: UserLevel = UserLevel.user) -> AuthStatus:
                     else AuthStatus.LOGGED_IN
                 )
 
-        with open(SETTINGS.auth_filename, "w", encoding="utf-8") as file:
-            yaml.dump(auth_config, file, default_flow_style=False)
         return auth_status
 
 
@@ -233,8 +246,7 @@ def user_details():
 
         logged_in = False
 
-    with open(SETTINGS.auth_filename, "w", encoding="utf-8") as file:
-        yaml.dump(auth_config, file, default_flow_style=False)
+    write_auth_config(auth_config)
     return logged_in
 
 
@@ -274,7 +286,6 @@ def register_user(authenticator: stauth.Authenticate):
             username_of_registered_user,
             name_of_registered_user,
         )
-        st.rerun()
         # auth_config["credentials"]["usernames"][username_of_registered_user] = {
         #     "email": email_of_registered_user,
         #     "name": username_of_registered_user,
@@ -305,9 +316,8 @@ def update_user_details(user_id):
                 "credentials"
             ]["usernames"].pop(user.username)
             set_user_realname(user.email, new_realname)
-            with open(SETTINGS.auth_filename, "w", encoding="utf-8") as file:
-                yaml.dump(auth_config, file, default_flow_style=False)
-            st.success("User details updated successfully!")
+            if write_auth_config(auth_config):
+                st.success("User details updated successfully!")
 
 
 def reset_password():
@@ -329,6 +339,5 @@ def reset_password():
             auth_config["credentials"]["usernames"][user.username]["password"] = (
                 hashed_password[0]
             )
-            with open(SETTINGS.auth_filename, "w", encoding="utf-8") as file:
-                yaml.dump(auth_config, file, default_flow_style=False)
-            st.success("Password reset successfully!")
+            if write_auth_config(auth_config):
+                st.success("Password reset successfully!")

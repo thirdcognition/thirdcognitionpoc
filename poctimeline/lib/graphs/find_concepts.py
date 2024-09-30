@@ -16,7 +16,7 @@ from lib.db.concept import (
     get_existing_concept_ids,
     update_db_concept,
 )
-from lib.db.sqlite import db_commit
+from lib.models.user import user_db_commit
 from lib.db.taxonomy import get_taxonomy_item_list
 from lib.helpers import (
     get_unique_id,
@@ -74,13 +74,13 @@ _new_ids = {}
 
 
 async def map_search_concepts(state: FindConceptsState):
-    db_commit()
+    user_db_commit()
     taxonomy: List[Taxonomy] = get_taxonomy_item_list(
         categories=state["categories"], reset=True
     )
 
     if 0 == len(taxonomy):
-        db_commit()
+        user_db_commit()
         taxonomy = get_taxonomy_item_list(
             categories=state["categories"], reset=True
         )
@@ -266,7 +266,7 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
 
             update_db_concept(concept, categories=state["categories"], commit=False)
 
-        db_commit()
+        user_db_commit()
 
     return {
         "collapse_concepts_complete": True,

@@ -11,7 +11,6 @@ sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 from lib.models.user import AuthStatus, UserLevel
 from lib.streamlit.user import check_auth
 from lib.db.source import get_db_sources
-from lib.db.sqlite import init_db
 from lib.db.taxonomy import get_db_taxonomy
 from lib.db.concept import get_concept_by_id, get_db_concepts
 from lib.helpers import pretty_print
@@ -255,7 +254,6 @@ def by_source(source_name: str):
 
 async def main():
 
-    init_db()
     st.title("Browse found concepts")
 
     if check_auth(UserLevel.org_admin) != AuthStatus.LOGGED_IN:

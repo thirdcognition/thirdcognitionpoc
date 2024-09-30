@@ -8,7 +8,6 @@ from langchain_core.messages import BaseMessage
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
-from lib.db.sqlite import init_db
 from lib.models.journey import (
     TaskStructure,
     JourneyModel,
@@ -764,7 +763,6 @@ async def subjects_ui(
 
 
 def main():
-    init_db()
     st.title("Manage Journeys")
 
     if check_auth(UserLevel.org_admin) != AuthStatus.LOGGED_IN:

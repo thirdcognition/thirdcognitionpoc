@@ -10,13 +10,12 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
 
-from lib.models.user import AuthStatus, UserLevel
+from lib.models.user import AuthStatus, UserLevel, user_db_commit, user_db_get_session
 from lib.streamlit.user import check_auth
 from lib.db.rag import get_chroma_collections
 from lib.db.taxonomy import get_taxonomy_by_id
 from lib.db.concept import get_concept_by_id
 from lib.db.source import delete_db_source, get_db_sources
-from lib.db.sqlite import db_commit, init_db
 from lib.helpers import pretty_print
 from lib.models.source import SourceContents, SourceDataTable
 from lib.models.concepts import ConceptData, ConceptDataTable
@@ -40,7 +39,7 @@ This is an *extremely* cool admin tool!
 
 @st.fragment
 async def manage_file(filename):
-    database_session = init_db()
+    database_session = user_db_get_session()
     file_categories = get_all_categories()
     file_entry = get_db_sources(source=filename)[filename]
     # Add Streamlit editors to edit 'disabled' and 'category_tags' fields
@@ -60,7 +59,7 @@ async def manage_file(filename):
             use_container_width=True,
         ):
             delete_db_source(filename)
-            st.rerun(scope="fragment")
+            st.rerun()
     header_col1, header_col2 = st.columns([1, 4], vertical_alignment="bottom")
     with header_col1:
         show_details = st.toggle("Extend", key=f"show_{filename}")
@@ -366,7 +365,6 @@ async def manage_file(filename):
 
 
 async def main():
-    init_db()
     st.title("Manage Uploads")
 
     if check_auth(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
@@ -385,7 +383,7 @@ async def main():
             files = get_db_sources(categories=categories)
             for file in files.keys():
                 delete_db_source(file, commit=False)
-            db_commit()
+            user_db_commit()
             st.rerun()
 
     if categories:

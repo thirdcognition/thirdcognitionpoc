@@ -10,13 +10,49 @@ from lib.streamlit.user import check_auth
 
 
 def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous) -> AuthStatus:
+    # from streamlit_javascript import st_javascript
+    # st_theme = st_javascript("""window.getComputedStyle(window.parent.document.getElementsByClassName("stApp")[0]).getPropertyValue("color-scheme")""")
+    # if st_theme == "dark":
+    #     ...
+    # else:
+    #     ...
+    st.logo(f"{current_dir}/static/logo.png")
+
     with st.sidebar:
+        st.markdown(
+            """<style>
+        div[data-testid=stVerticalBlock]:has(div[data-testid=stPageLink]) {
+            display: block;
+            text-align: left;
+            color: inherit;
+            text-decoration: none;
+            background-color: unset;
+            border: none;
+            padding-top: 0;
+            padding-bottom: 0;
+            margin: .5rem 0 .5rem;
+        }
+        div[data-testid=stPageLink]:active {
+            text-decoration: underline;
+            background-color: unset;
+            color: inherit;
+        }
+        div[data-testid=stPageLink]:disabled {
+            border: none;
+            cursor: auto !important;
+        }
+        </style>""",
+            unsafe_allow_html=True,
+        )
         menu_items = st.empty()
+
 
     auth_valid = check_auth(req_user_level)
     user_level: UserLevel = UserLevel.anonymous
     if auth_valid != AuthStatus.NO_LOGIN:
         user_level = check_auth_level()
+
+
 
     # st.markdown(
     #     """
@@ -37,5 +73,6 @@ def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous) -> AuthStatus:
             st.page_link("pages/1_Upload.py", label="Upload files")
             st.page_link("pages/2_Manage_Uploads.py", label="Manage files")
             st.page_link("pages/3_Browse_Concepts.py", label="Browse topics")
+        st.divider()
 
     return auth_valid

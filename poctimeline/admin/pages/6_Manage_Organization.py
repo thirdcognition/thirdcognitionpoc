@@ -64,7 +64,22 @@ def manage_organizations():
             )
 
         df = pd.DataFrame(org_data)
-        edited_df = st.data_editor(df, use_container_width=True, hide_index=True)
+        df['Organization ID'] = df['Organization ID'].astype(str)
+        column_config = {
+            "Organization ID": st.column_config.TextColumn(
+                "Organization ID",
+                disabled=True,
+            ),
+            "Organization Name": st.column_config.TextColumn(
+                "Organization Name",
+                disabled=False,
+            ),
+            "Disabled": st.column_config.CheckboxColumn(
+                "Disabled",
+                disabled=False,
+            ),
+        }
+        edited_df = st.data_editor(df, column_config=column_config, use_container_width=True, hide_index=True)
 
         with st.container(border=True):
             st.write("#### Add New Organization")
@@ -103,7 +118,11 @@ def manage_organizations():
         with st.container(border=True):
             st.subheader("Modify Organization")
             # st.write(f"Organization ID: {user_org.organization_id}")
-            new_org_name = st.text_input("New Organization Name", key="new_org_name", value=user_org.organization_name)
+            new_org_name = st.text_input(
+                "New Organization Name",
+                key="new_org_name",
+                value=user_org.organization_name,
+            )
             if st.button("Save") and new_org_name != user_org.organization_name:
                 set_org_name(user_org.organization_id, new_org_name)
                 st.success("Organization name updated successfully!")
@@ -128,7 +147,39 @@ def manage_users():
         )
 
     df = pd.DataFrame(user_data)
-    edited_df = st.data_editor(df, use_container_width=True, hide_index=True)
+    df['Email'] = df['Email'].astype(str)
+    df['Username'] = df['Username'].astype(str)
+    df['Organization ID'] = df['Organization ID'].astype(str)
+    column_config = {
+        "Disabled": st.column_config.CheckboxColumn(
+            "Disabled",
+            disabled=False,
+        ),
+        "Name": st.column_config.TextColumn(
+            "Name",
+            disabled=False,
+        ),
+        "Email": st.column_config.TextColumn(
+            "Email",
+            disabled=True,
+        ),
+        "Username": st.column_config.TextColumn(
+            "Username",
+            disabled=True,
+        ),
+        "Level": st.column_config.SelectboxColumn(
+            "Level",
+            default=UserLevel.user.name,
+            options=[UserLevel.user.name, UserLevel.org_admin.name, UserLevel.super_admin.name] if is_super_admin() else [UserLevel.user.name, UserLevel.org_admin.name],
+            required=True,
+            disabled=False,
+        ),
+        "Organization ID": st.column_config.TextColumn(
+            "Organization ID",
+            disabled=True,
+        ),
+    }
+    edited_df = st.data_editor(df, column_config=column_config, use_container_width=True, hide_index=True)
 
     with st.container(border=True):
         st.write("#### Add New User")

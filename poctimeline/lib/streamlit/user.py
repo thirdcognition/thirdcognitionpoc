@@ -185,7 +185,7 @@ def check_auth(user_level: UserLevel = UserLevel.user) -> AuthStatus:
                 manual_logout(authenticator)
                 st.rerun()
 
-            message = st.columns([2, 1], vertical_alignment="center")
+            message = st.columns([2, 1], vertical_alignment="bottom")
             message[0].write(
                 f'{org.organization_name if org is not None else ''}\n\nWelcome *{st.session_state["name"]}*'
             )

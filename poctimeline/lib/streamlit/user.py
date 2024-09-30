@@ -1,3 +1,5 @@
+import datetime
+import jwt
 import streamlit as st
 import streamlit_authenticator as stauth
 import yaml
@@ -209,10 +211,19 @@ def register_user(authenticator: stauth.Authenticate):
     # Using st_auth register new user and reflect changes to database
     auth_config = load_auth_config()
     email_of_registered_user, username_of_registered_user, name_of_registered_user = authenticator.register_user(preauthorization=True)
+    # password = authenticator.credentials["usernames"][username_of_registered_user]["password"]
 
     if email_of_registered_user:
+        st.session_state['username'] = username_of_registered_user
+        st.session_state['name'] = name_of_registered_user
+        authenticator.exp_date = (datetime.datetime.utcnow() + datetime.timedelta(days=authenticator.cookie_expiry_days)).timestamp()
+        token = jwt.encode({'username': username_of_registered_user,
+                'exp_date': authenticator.exp_date}, authenticator.key, algorithm='HS256')
+        authenticator.cookie_manager.set(authenticator.cookie_name, token, expires_at=datetime.datetime.now() + datetime.timedelta(days=authenticator.cookie_expiry_days))
+        st.session_state['authentication_status'] = True
         # hashed_password = stauth.Hasher([password]).generate()
         add_user(email_of_registered_user, username_of_registered_user, name_of_registered_user)
+        st.rerun()
         # auth_config["credentials"]["usernames"][username_of_registered_user] = {
         #     "email": email_of_registered_user,
         #     "name": username_of_registered_user,

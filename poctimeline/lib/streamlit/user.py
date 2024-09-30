@@ -186,7 +186,11 @@ def check_auth(user_level: UserLevel = UserLevel.user) -> AuthStatus:
             with message[1]:
                 authenticator.logout("Logout")
             login_container.empty()
-            auth_status = AuthStatus.LOGGED_IN
+            auth_status = (
+                AuthStatus.NO_ACCESS
+                if check_auth_level() < user_level
+                else AuthStatus.LOGGED_IN
+            )
         else:
             if st.session_state.get("authentication_status") is False:
                 message.error("Username/password is incorrect")

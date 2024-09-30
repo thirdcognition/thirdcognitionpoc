@@ -113,7 +113,6 @@ def init_org_db():
 def user_db_get_session():
     init_system_db()
     organization = get_user_org(st.session_state.get("username"))
-    print(f"db_file {organization.db_name=}")
     return db_session(organization.db_name)
 
 

@@ -15,10 +15,10 @@ from streamlit.elements.lib.mutable_status_container import StatusContainer
 from langchain_core.messages import BaseMessage
 
 
-
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
+from lib.models.user import AuthStatus, UserLevel
 from lib.streamlit.user import check_auth
 from lib.graphs.handle_source import handle_source
 from lib.helpers import pretty_print, validate_category
@@ -159,7 +159,7 @@ async def main():
     init_db()
     st.title("Upload Files")
 
-    if not check_auth():
+    if check_auth(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
         return
 
     new_categories = write_categories()

@@ -1,11 +1,31 @@
 import datetime
+from enum import Enum
 import jwt
 import streamlit as st
 import streamlit_authenticator as stauth
 import yaml
 
 from lib.load_env import SETTINGS
-from lib.models.user import UserLevel, add_user, get_all_orgs, get_all_users, get_authenticator, get_db_user, get_user_org, init_org_db, is_org_admin, is_super_admin, load_auth_config, remove_preauth_email, set_authenticator, set_disable_user, set_user_org, set_user_realname
+from lib.models.user import (
+    AuthStatus,
+    UserLevel,
+    add_user,
+    check_auth_level,
+    get_all_orgs,
+    get_all_users,
+    get_authenticator,
+    get_db_user,
+    get_user_org,
+    init_org_db,
+    is_org_admin,
+    is_super_admin,
+    load_auth_config,
+    remove_preauth_email,
+    set_authenticator,
+    set_disable_user,
+    set_user_org,
+    set_user_realname,
+)
 
 
 def add_preregistered_email_ui():
@@ -121,7 +141,8 @@ def list_all_users(org_id=None):
     else:
         st.error("Not enough access: Only super_admin and org_admin can view users.")
 
-def check_auth():
+
+def check_auth(user_level: UserLevel = UserLevel.user) -> AuthStatus:
     init_org_db()
     with st.sidebar:
 
@@ -134,11 +155,10 @@ def check_auth():
             auth_config["pre-authorized"],
         )
         set_authenticator(authenticator)
-        login_container = st.empty()
         message = st.empty()
-        logged_in = st.session_state.get("authentication_status", False)
+        login_container = st.empty()
 
-        tab1, tab2= login_container.tabs(["Login", "Register"])
+        tab1, tab2 = login_container.tabs(["Login", "Register"])
         with tab1:
             authenticator.login()
         with tab2:
@@ -146,26 +166,36 @@ def check_auth():
 
         if st.session_state.get("authentication_status"):
             message = st.columns([2, 1], vertical_alignment="center")
-            message[0].write(f'{get_user_org().organization_name}\n\nWelcome *{st.session_state["name"]}*')
+            message[0].write(
+                f'{get_user_org().organization_name}\n\nWelcome *{st.session_state["name"]}*'
+            )
 
             with message[1]:
-                authenticator.logout('Logout')
+                authenticator.logout("Logout")
             login_container.empty()
-            logged_in = True
+            auth_status = AuthStatus.LOGGED_IN
         else:
             if st.session_state.get("authentication_status") is False:
                 message.error("Username/password is incorrect")
+                auth_status = AuthStatus.NO_LOGIN
             if st.session_state.get("authentication_status") is None:
-                message.warning("Please enter your username and password")
-            logged_in = False
+                message.info("Please login if you have an account or register if you have a registered email address.")
+                auth_status = AuthStatus.NO_LOGIN
+            else:
+                auth_status = (
+                    AuthStatus.NO_ACCESS
+                    if check_auth_level() < user_level
+                    else AuthStatus.LOGGED_IN
+                )
 
         with open(SETTINGS.auth_filename, "w", encoding="utf-8") as file:
             yaml.dump(auth_config, file, default_flow_style=False)
-        return logged_in
+        return auth_status
+
 
 def user_details():
     auth_config = load_auth_config()
-    print(f"{("authentication_status" not in st.session_state)=}")
+    print(f"{('authentication_status' not in st.session_state)=}")
     authenticator = get_authenticator("authentication_status" not in st.session_state)
     logged_in = False
 
@@ -190,7 +220,7 @@ def user_details():
         with tab3:
             reset_password()
         with tab1:
-            authenticator.logout('Logout')
+            authenticator.logout("Logout")
         logged_in = True
     else:
         if st.session_state.get("authentication_status") is False:
@@ -207,22 +237,43 @@ def user_details():
         yaml.dump(auth_config, file, default_flow_style=False)
     return logged_in
 
+
 def register_user(authenticator: stauth.Authenticate):
     # Using st_auth register new user and reflect changes to database
     auth_config = load_auth_config()
-    email_of_registered_user, username_of_registered_user, name_of_registered_user = authenticator.register_user(preauthorization=True)
+    email_of_registered_user, username_of_registered_user, name_of_registered_user = (
+        authenticator.register_user(preauthorization=True)
+    )
     # password = authenticator.credentials["usernames"][username_of_registered_user]["password"]
 
     if email_of_registered_user:
-        st.session_state['username'] = username_of_registered_user
-        st.session_state['name'] = name_of_registered_user
-        authenticator.exp_date = (datetime.datetime.utcnow() + datetime.timedelta(days=authenticator.cookie_expiry_days)).timestamp()
-        token = jwt.encode({'username': username_of_registered_user,
-                'exp_date': authenticator.exp_date}, authenticator.key, algorithm='HS256')
-        authenticator.cookie_manager.set(authenticator.cookie_name, token, expires_at=datetime.datetime.now() + datetime.timedelta(days=authenticator.cookie_expiry_days))
-        st.session_state['authentication_status'] = True
+        st.session_state["username"] = username_of_registered_user
+        st.session_state["name"] = name_of_registered_user
+        authenticator.exp_date = (
+            datetime.datetime.utcnow()
+            + datetime.timedelta(days=authenticator.cookie_expiry_days)
+        ).timestamp()
+        token = jwt.encode(
+            {
+                "username": username_of_registered_user,
+                "exp_date": authenticator.exp_date,
+            },
+            authenticator.key,
+            algorithm="HS256",
+        )
+        authenticator.cookie_manager.set(
+            authenticator.cookie_name,
+            token,
+            expires_at=datetime.datetime.now()
+            + datetime.timedelta(days=authenticator.cookie_expiry_days),
+        )
+        st.session_state["authentication_status"] = True
         # hashed_password = stauth.Hasher([password]).generate()
-        add_user(email_of_registered_user, username_of_registered_user, name_of_registered_user)
+        add_user(
+            email_of_registered_user,
+            username_of_registered_user,
+            name_of_registered_user,
+        )
         st.rerun()
         # auth_config["credentials"]["usernames"][username_of_registered_user] = {
         #     "email": email_of_registered_user,
@@ -263,7 +314,7 @@ def reset_password():
     container = st.container()
 
     with container:
-    # Using st_auth reset user password and reflect changes to database
+        # Using st_auth reset user password and reflect changes to database
         email = st.text_input("Email")
         new_password = st.text_input("New Password", type="password")
 

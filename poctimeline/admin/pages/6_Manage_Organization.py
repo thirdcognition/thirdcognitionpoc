@@ -10,6 +10,7 @@ sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 from lib.helpers import is_valid_email
 from lib.streamlit.user import check_auth
 from lib.models.user import (
+    AuthStatus,
     UserLevel,
     add_org,
     add_user,
@@ -27,10 +28,8 @@ from lib.models.user import (
     set_user_org,
     set_user_realname,
 )
-
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.dirname(current_dir + "/../../lib"))
-
+from lib.models.user import AuthStatus, UserLevel
+from lib.streamlit.user import check_auth
 
 from lib.db.sqlite import init_db
 
@@ -175,7 +174,7 @@ def manage_users():
 def main():
     st.title("Organization and User Management")
 
-    if not check_auth():
+    if check_auth(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
         return
 
     tab1, tab2 = st.tabs(["Organizations", "Users"])

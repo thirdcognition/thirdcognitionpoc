@@ -14,6 +14,11 @@ from lib.helpers import pretty_print
 from lib.load_env import SETTINGS
 
 
+class AuthStatus(Enum):
+    LOGGED_IN = 1
+    NO_LOGIN = 2
+    NO_ACCESS = 3
+
 class UserLevel(Enum):
     super_admin = 1000
     org_admin = 500

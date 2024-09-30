@@ -6,6 +6,7 @@ import sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
+from lib.models.user import AuthStatus, UserLevel
 from lib.streamlit.user import check_auth
 from lib.chat import chat_elements, init_journey_chat
 from lib.streamlit_tools import get_all_categories
@@ -35,7 +36,7 @@ Select 👈 a the subject from sidebar to edit the content!
     """
     )
 
-    if not auth_valid:
+    if auth_valid == AuthStatus.NO_LOGIN:
         st.write("Please log in for more functionality.")
         return
 

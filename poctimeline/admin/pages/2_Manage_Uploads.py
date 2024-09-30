@@ -10,6 +10,8 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
 
+from lib.models.user import AuthStatus, UserLevel
+from lib.streamlit.user import check_auth
 from lib.db.rag import get_chroma_collections
 from lib.db.taxonomy import get_taxonomy_by_id
 from lib.db.concept import get_concept_by_id
@@ -21,7 +23,7 @@ from lib.models.concepts import ConceptData, ConceptDataTable
 from lib.models.taxonomy import Taxonomy
 
 from lib.document_tools import markdown_to_text
-from lib.streamlit_tools import check_auth, get_all_categories, llm_edit
+from lib.streamlit_tools import get_all_categories, llm_edit
 
 st.set_page_config(
     page_title="TC POC: Manage Uploads",
@@ -367,7 +369,7 @@ async def main():
     init_db()
     st.title("Manage Uploads")
 
-    if not check_auth():
+    if check_auth(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
         return
 
     file_categories = get_all_categories()

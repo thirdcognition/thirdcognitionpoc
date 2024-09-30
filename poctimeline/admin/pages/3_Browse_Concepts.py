@@ -8,7 +8,8 @@ from typing import Dict, List, Union
 import streamlit as st
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
-
+from lib.models.user import AuthStatus, UserLevel
+from lib.streamlit.user import check_auth
 from lib.db.source import get_db_sources
 from lib.db.sqlite import init_db
 from lib.db.taxonomy import get_db_taxonomy
@@ -18,7 +19,7 @@ from lib.models.concepts import ConceptData, ConceptDataTable
 from lib.models.taxonomy import Taxonomy
 
 
-from lib.streamlit_tools import check_auth, get_all_categories
+from lib.streamlit_tools import get_all_categories
 
 st.set_page_config(
     page_title="TC POC: Browse found concepts",
@@ -257,7 +258,7 @@ async def main():
     init_db()
     st.title("Browse found concepts")
 
-    if not check_auth():
+    if check_auth(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
         return
 
     file_categories = get_all_categories()

@@ -19,8 +19,9 @@ from lib.journey_shared import (
     llm_gen_title_summary,
 )
 
-
-from lib.streamlit_tools import check_auth, get_all_categories
+from lib.models.user import AuthStatus, UserLevel
+from lib.streamlit.user import check_auth
+from lib.streamlit_tools import get_all_categories
 
 st.set_page_config(
     page_title="TC POC: Create Journey",
@@ -240,7 +241,7 @@ async def main():
     init_db()
     st.title("Create Journey")
 
-    if not check_auth():
+    if check_auth(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
         return
 
     st.write("NA, upgrade in progress")

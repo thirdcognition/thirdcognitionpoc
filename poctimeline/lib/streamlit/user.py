@@ -179,8 +179,13 @@ def check_auth(user_level: UserLevel = UserLevel.user) -> AuthStatus:
 
         if st.session_state.get("authentication_status"):
             login_container.empty()
-            message = st.columns([2, 1], vertical_alignment="center")
+            user = get_db_user(st.session_state["username"])
             org = get_user_org(st.session_state["username"])
+            if user.disabled or org.disabled:
+                manual_logout(authenticator)
+                st.rerun()
+
+            message = st.columns([2, 1], vertical_alignment="center")
             message[0].write(
                 f'{org.organization_name if org is not None else ''}\n\nWelcome *{st.session_state["name"]}*'
             )
@@ -255,6 +260,37 @@ def user_details():
     return logged_in
 
 
+def manual_login(authenticator: stauth.Authenticate, username_of_registered_user: str, name_of_registered_user: str):
+    st.session_state["username"] = username_of_registered_user
+    st.session_state["name"] = name_of_registered_user
+    authenticator.exp_date = (
+        datetime.datetime.utcnow()
+        + datetime.timedelta(days=authenticator.cookie_expiry_days)
+    ).timestamp()
+    token = jwt.encode(
+        {
+            "username": username_of_registered_user,
+            "exp_date": authenticator.exp_date,
+        },
+        authenticator.key,
+        algorithm="HS256",
+    )
+    authenticator.cookie_manager.set(
+        authenticator.cookie_name,
+        token,
+        expires_at=datetime.datetime.now()
+        + datetime.timedelta(days=authenticator.cookie_expiry_days),
+        )
+    st.session_state["authentication_status"] = True
+
+def manual_logout(authenticator: stauth.Authenticate):
+    authenticator.cookie_manager.delete(authenticator.cookie_name)
+    authenticator.credentials['usernames'][st.session_state['username']]['logged_in'] = False
+    st.session_state['logout'] = True
+    st.session_state['name'] = None
+    st.session_state['username'] = None
+    st.session_state['authentication_status'] = None
+
 def register_user(authenticator: stauth.Authenticate):
     # Using st_auth register new user and reflect changes to database
     auth_config = load_auth_config()
@@ -264,27 +300,7 @@ def register_user(authenticator: stauth.Authenticate):
     # password = authenticator.credentials["usernames"][username_of_registered_user]["password"]
 
     if email_of_registered_user:
-        st.session_state["username"] = username_of_registered_user
-        st.session_state["name"] = name_of_registered_user
-        authenticator.exp_date = (
-            datetime.datetime.utcnow()
-            + datetime.timedelta(days=authenticator.cookie_expiry_days)
-        ).timestamp()
-        token = jwt.encode(
-            {
-                "username": username_of_registered_user,
-                "exp_date": authenticator.exp_date,
-            },
-            authenticator.key,
-            algorithm="HS256",
-        )
-        authenticator.cookie_manager.set(
-            authenticator.cookie_name,
-            token,
-            expires_at=datetime.datetime.now()
-            + datetime.timedelta(days=authenticator.cookie_expiry_days),
-        )
-        st.session_state["authentication_status"] = True
+        manual_login(authenticator, username_of_registered_user, name_of_registered_user)
         # hashed_password = stauth.Hasher([password]).generate()
         add_user(
             email_of_registered_user,

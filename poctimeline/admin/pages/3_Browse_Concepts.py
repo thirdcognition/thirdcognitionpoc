@@ -8,6 +8,7 @@ from typing import Dict, List, Union
 import streamlit as st
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
+from admin.sidebar import init_sidebar
 from lib.models.user import AuthStatus, UserLevel
 from lib.streamlit.user import check_auth
 from lib.db.source import get_db_sources
@@ -256,7 +257,7 @@ async def main():
 
     st.title("Browse found concepts")
 
-    if check_auth(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
+    if init_sidebar(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
         return
 
     file_categories = get_all_categories()

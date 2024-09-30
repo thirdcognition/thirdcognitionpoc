@@ -6,6 +6,7 @@ import sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
+from admin.sidebar import init_sidebar
 from lib.models.user import AuthStatus, UserLevel
 from lib.streamlit.user import check_auth
 from lib.chat import chat_elements, init_journey_chat
@@ -26,7 +27,7 @@ This is an *extremely* cool admin tool!
 
 def main():
 
-    auth_valid = check_auth()
+    auth_valid = init_sidebar()
 
     st.write("# Welcome! 👋")
 

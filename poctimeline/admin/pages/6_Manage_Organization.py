@@ -7,6 +7,7 @@ import streamlit as st
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
+from admin.sidebar import init_sidebar
 from lib.helpers import is_valid_email
 from lib.streamlit.user import check_auth
 from lib.models.user import (
@@ -47,26 +48,26 @@ This is an *extremely* cool admin tool!
 
 
 def manage_organizations():
-    st.subheader("Manage Organizations")
-
-    orgs = get_all_orgs()
-
-    org_data = []
-    for org in orgs:
-        org_data.append(
-            {
-                "Disabled": org.disabled,
-                "Organization ID": org.organization_id,
-                "Organization Name": org.organization_name,
-            }
-        )
-
-    df = pd.DataFrame(org_data)
-    edited_df = st.data_editor(df, use_container_width=True, hide_index=True)
-
     if is_super_admin():
+        st.subheader("Manage Organizations")
+
+        orgs = get_all_orgs()
+
+        org_data = []
+        for org in orgs:
+            org_data.append(
+                {
+                    "Disabled": org.disabled,
+                    "Organization ID": org.organization_id,
+                    "Organization Name": org.organization_name,
+                }
+            )
+
+        df = pd.DataFrame(org_data)
+        edited_df = st.data_editor(df, use_container_width=True, hide_index=True)
+
         with st.container(border=True):
-            st.subheader("Add New Organization")
+            st.write("#### Add New Organization")
             new_org_id = st.text_input("New Organization ID", key="new_org_id")
             new_org_name = st.text_input("New Organization Name", key="new_org_name")
             new_admin_email = st.text_input("New Admin Email", key="new_admin_email")
@@ -92,11 +93,22 @@ def manage_organizations():
                 get_all_users(reset=True)
                 st.rerun()
 
-    for index, row in edited_df.iterrows():
-        if row["Disabled"] != df.at[index, "Disabled"]:
-            set_disable_org(row["Organization ID"], row["Disabled"])
-        if row["Organization Name"] != df.at[index, "Organization Name"]:
-            set_org_name(row["Organization ID"], row["Organization Name"])
+        for index, row in edited_df.iterrows():
+            if row["Disabled"] != df.at[index, "Disabled"]:
+                set_disable_org(row["Organization ID"], row["Disabled"])
+            if row["Organization Name"] != df.at[index, "Organization Name"]:
+                set_org_name(row["Organization ID"], row["Organization Name"])
+    else:
+        user_org = get_user_org(st.session_state["username"])
+        with st.container(border=True):
+            st.subheader("Modify Organization")
+            # st.write(f"Organization ID: {user_org.organization_id}")
+            new_org_name = st.text_input("New Organization Name", key="new_org_name", value=user_org.organization_name)
+            if st.button("Save") and new_org_name != user_org.organization_name:
+                set_org_name(user_org.organization_id, new_org_name)
+                st.success("Organization name updated successfully!")
+                get_user_org(reset=True)
+                st.rerun()
 
 
 def manage_users():
@@ -118,8 +130,8 @@ def manage_users():
     df = pd.DataFrame(user_data)
     edited_df = st.data_editor(df, use_container_width=True, hide_index=True)
 
-    with st.container():
-        st.subheader("Add New User")
+    with st.container(border=True):
+        st.write("#### Add New User")
         new_email = st.text_input("New User Email", key="new_user_email")
         # new_username = st.text_input("New Username", key="new_username")
         if is_super_admin():
@@ -173,16 +185,20 @@ def manage_users():
 def main():
     st.title("Organization and User Management")
 
-    if check_auth(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
+    if init_sidebar(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
         return
 
-    tab1, tab2 = st.tabs(["Organizations", "Users"])
+    if is_super_admin():
+        tab1, tab2 = st.tabs(["Organizations", "Users"])
 
-    with tab1:
-        manage_organizations()
+        with tab1:
+            manage_organizations()
 
-    with tab2:
+        with tab2:
+            manage_users()
+    else:
         manage_users()
+        manage_organizations()
 
 
 if __name__ == "__main__":

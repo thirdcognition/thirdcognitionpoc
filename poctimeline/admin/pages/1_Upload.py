@@ -18,6 +18,7 @@ from langchain_core.messages import BaseMessage
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
+from admin.sidebar import init_sidebar
 from lib.models.user import AuthStatus, UserLevel, user_db_get_session
 from lib.streamlit.user import check_auth
 from lib.graphs.handle_source import handle_source
@@ -155,7 +156,7 @@ async def process_source(
 async def main():
     st.title("Upload Files")
 
-    if check_auth(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
+    if init_sidebar(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
         return
 
     new_categories = write_categories()

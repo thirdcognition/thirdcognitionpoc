@@ -29,14 +29,42 @@ class UserLevel(Enum):
     anonymous = 50
 
     def __lt__(self, other):
-        if self.__class__ is other.__class__:
+        if isinstance(other, UserLevel):
             return self.value < other.value
+        elif isinstance(other, int):
+            return self.value < other
         return NotImplemented
 
     def __gt__(self, other):
-        if self.__class__ is other.__class__:
+        if isinstance(other, UserLevel):
             return self.value > other.value
+        elif isinstance(other, int):
+            return self.value > other
         return NotImplemented
+
+    def __eq__(self, other):
+        if isinstance(other, UserLevel):
+            return self.value == other.value
+        elif isinstance(other, int):
+            return self.value == other
+        elif isinstance(other, UserDataTable):
+            return self.value == other.level
+        return NotImplemented
+
+    def __ge__(self, other):
+        if isinstance(other, UserLevel):
+            return self.value >= other.value
+        elif isinstance(other, int):
+            return self.value >= other
+        return NotImplemented
+
+    def __le__(self, other):
+        if isinstance(other, UserLevel):
+            return self.value <= other.value
+        elif isinstance(other, int):
+            return self.value <= other
+        return NotImplemented
+
 
 
 class UserDataTable(Base):
@@ -317,7 +345,8 @@ def get_user_org_id(db_user: str = None) -> str:
         db_user = st.session_state.get("username")
     if db_user is None:
         return None
-    return get_user_org(db_user).organization_id
+    org = get_user_org(db_user)
+    return org.organization_id if org is not None else None
 
 
 def has_access(email=None, org_id=None, user_level: UserLevel = UserLevel.user):

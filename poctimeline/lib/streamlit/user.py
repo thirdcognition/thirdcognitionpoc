@@ -166,17 +166,19 @@ def check_auth(user_level: UserLevel = UserLevel.user) -> AuthStatus:
         message = st.empty()
         login_container = st.empty()
 
-        tab1, tab2 = login_container.tabs(["Login", "Register"])
-        with tab1:
-            authenticator.login()
+        if not st.session_state.get("authentication_status"):
+            tab1, tab2 = login_container.tabs(["Login", "Register"])
+            with tab1:
+                authenticator.login()
 
-        with tab2:
-            register_user(authenticator=authenticator)
+            with tab2:
+                register_user(authenticator=authenticator)
 
-        if (write_auth_config(auth_config)):
-            st.rerun()
+        write_auth_config(auth_config)
+            # st.rerun()
 
         if st.session_state.get("authentication_status"):
+            login_container.empty()
             message = st.columns([2, 1], vertical_alignment="center")
             org = get_user_org(st.session_state["username"])
             message[0].write(
@@ -185,7 +187,6 @@ def check_auth(user_level: UserLevel = UserLevel.user) -> AuthStatus:
 
             with message[1]:
                 authenticator.logout("Logout")
-            login_container.empty()
             auth_status = (
                 AuthStatus.NO_ACCESS
                 if check_auth_level() < user_level

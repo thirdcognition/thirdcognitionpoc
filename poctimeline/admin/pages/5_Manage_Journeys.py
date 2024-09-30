@@ -8,6 +8,7 @@ from langchain_core.messages import BaseMessage
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
+from admin.sidebar import init_sidebar
 from lib.models.journey import (
     TaskStructure,
     JourneyModel,
@@ -765,7 +766,7 @@ async def subjects_ui(
 def main():
     st.title("Manage Journeys")
 
-    if check_auth(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
+    if init_sidebar(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
         return
 
     st.write("NA, upgrade in progress")

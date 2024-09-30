@@ -8,6 +8,7 @@ import streamlit as st
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
+from admin.sidebar import init_sidebar
 from lib.models.journey import JourneyModel, SubjectModel
 from lib.prompts.journey import JourneyPrompts
 from lib.journey_shared import (
@@ -239,7 +240,7 @@ async def main():
 
     st.title("Create Journey")
 
-    if check_auth(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
+    if init_sidebar(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
         return
 
     st.write("NA, upgrade in progress")

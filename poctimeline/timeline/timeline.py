@@ -7,7 +7,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
 from lib.chat import DELIMITER, chat_elements, init_journey_chat
-from lib.journey_shared import JourneyModel
+from lib.models.journey import JourneyDataTable
 
 
 # chat_history = { "default": [] } #[[] for _ in range(11)]
@@ -77,7 +77,7 @@ This is an *extremely* cool app!
 
     if journey_name != None:
         journey_list = st.session_state.journey_list
-        journey: JourneyModel = st.session_state.journey_list[journey_name]
+        journey: JourneyDataTable = st.session_state.journey_list[journey_name]
         if chat_state == "default":
             st.subheader("ThirdCognition Virtual Buddy", divider=True)
         else:

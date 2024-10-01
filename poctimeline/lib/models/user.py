@@ -143,6 +143,10 @@ def user_db_get_session():
     organization = get_user_org(st.session_state.get("username"))
     return db_session(organization.db_name)
 
+def get_user_chroma_path():
+    init_system_db()
+    organization = get_user_org(st.session_state.get("username"))
+    return os.path.join(SETTINGS.db_path, organization.db_name, SETTINGS.chroma_path)
 
 def user_db_commit():
     init_system_db()

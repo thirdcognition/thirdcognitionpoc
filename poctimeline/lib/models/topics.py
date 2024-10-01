@@ -16,6 +16,74 @@ from lib.helpers import (
     get_text_from_completion,
 )
 from lib.load_env import SETTINGS
+from lib.models.reference import Reference, ReferenceType
+
+
+class TopicDataTable(Base):
+    __tablename__ = SETTINGS.topics_tablename
+
+    id = sqla.Column(sqla.String, primary_key=True)
+    references = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
+    page_content = sqla.Column(sqla.String)
+    page_number = sqla.Column(sqla.Integer)
+    topic_index = sqla.Column(sqla.Integer)
+    doc_metadata = sqla.Column(sqla.JSON)
+    topic = sqla.Column(sqla.String)
+    instruct = sqla.Column(sqla.String)
+    summary = sqla.Column(sqla.String)
+    category_tags = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
+    chroma_collections = sqla.Column(
+        MutableList.as_mutable(sqla.PickleType), default=[]
+    )
+    chroma_ids = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
+
+
+class TopicModel(BaseModel):
+    id: str
+    page_content: str
+    page_number: int
+    topic_index: int
+    doc_metadata: Dict
+    topic: str
+    instruct: str
+    summary: str
+
+
+def topic_to_dict(topic: TopicDataTable) -> Dict:
+    return {
+        "topic": topic.topic,
+        "page_content": topic.page_content,
+        "page_number": topic.page_number,
+        "topic_index": topic.topic_index,
+        "metadata": topic.doc_metadata,
+    }
+
+
+def split_topics(
+    topics: Union[List[TopicModel], List[Dict]],
+    char_count: int = SETTINGS.default_llms.instruct.char_limit // 2,
+) -> List[List[Union[TopicModel, Dict]]]:
+    topic_lists = []
+    topic_list = []
+    cur_content = ""
+    for topic in topics:
+        topic_list.append(topic)
+        if isinstance(topic, TopicModel):
+            cur_content += topic.page_content
+        elif isinstance(topic, dict) and "page_content" in topic:
+            cur_content += (
+                topic["page_content"].page_content
+                if isinstance(topic["page_content"], Document)
+                else topic["page_content"]
+            )
+        if len(cur_content) > char_count:
+            topic_lists.append(topic_list)
+            topic_list = []
+            cur_content = ""
+
+    if len(topic_list) > 0:
+        topic_lists.append(topic_list)
+    return topic_lists
 
 
 class ParsedTopic(BaseModel):
@@ -39,18 +107,22 @@ class ParsedTopic(BaseModel):
         description="Topic index within the page it was found from. When joining include all pages",
         title="Topic Index",
     )
-    page: Optional[Union[list[int], int]] = Field(
-        description="Page from which the topic was uncovered. When joining include all pages.",
-        title="Page",
+    references: list[Reference] = Field(
+        description="References to the content for the topic",
+        title="References",
     )
+    # page: Optional[Union[list[int], int]] = Field(
+    #     description="Page from which the topic was uncovered. When joining include all pages.",
+    #     title="Page",
+    # )
     instruct: Optional[str] = Field(
         description="Instructions on how to interpret the content for the topic",
         title="Instruct",
     )
-    source: Optional[Union[list[str], str]] = Field(
-        description="Source of the content for the topic",
-        title="Source",
-    )
+    # source: Optional[Union[list[str], str]] = Field(
+    #     description="Source of the content for the topic",
+    #     title="Source",
+    # )
 
 
 class ParsedTopicStructure(BaseModel):
@@ -87,8 +159,8 @@ def create_topic_doc_from_list_with_metadata(
             if isinstance(metadata[key], str):
                 metadata[key] = ", ".join(set(metadata[key].split(", ")))
     elif isinstance(content, Document):
+        metadata = content.metadata
         content = [content]
-        metadata = content[0].metadata
     else:
         metadata = {}
     results: List[Document] = None
@@ -243,7 +315,7 @@ def get_topic_str(
 ):
     key_names = [
         "id",
-        "page",
+        "references",
         "topic_index",
         "source",
         "topic",
@@ -256,7 +328,7 @@ def get_topic_str(
     if one_liner:
         select_keys = [
             "id",
-            "page",
+            "references",
             "topic_index",
             "source",
             "topic",
@@ -281,7 +353,7 @@ def get_topic_str(
 def get_topic_doc_context(doc: Document):
     metadata = doc.metadata
     if metadata and len(metadata.keys()) > 0:
-        file_info = f"File: {metadata['source']}\n" if "source" in metadata else ""
+        file_info = f"Source: {metadata['source']}\n" if "source" in metadata else ""
         pages_info = f"Pages: {metadata['page']}\n" if "page" in metadata else ""
         topic_indices_info = (
             f"Topic indices: {metadata['topic_index']}\n"
@@ -314,6 +386,7 @@ def get_topic_document(item: Dict, page: Dict, instructions: str):
             "page_index": item["topic_index"],
             "topic_index": f'{page["page"]}_{item["topic_index"]}',
             "topic": item["topic"] if "topic" in item else "",
+            "references": item["references"] if "references" in item else "",
             "instructions": instructions,
         },
     )
@@ -344,6 +417,7 @@ def get_topic_item(topic: dict, state: dict, metadata: dict, i=0):
         "instruct": topic["instruct"] if "instruct" in topic else None,
         "summary": topic["summary"],
         "document": topic["content"].strip(),
+        "references": topic["references"] if "references" in topic else None,
     }
     document = get_topic_document(
         item,
@@ -365,6 +439,7 @@ def parse_topic_items(
             "instruct": response.instruct,
             "summary": response.summary,
             "content": response.document,
+            "references": response.references,
         }
         item_state = {
             "index": (
@@ -380,10 +455,21 @@ def parse_topic_items(
                 else None
             ),
         }
-        metadata = {
-            "source": response.source,
-            "page": response.page,
-        }
+        source_ref = None
+        source = state.get("filename") or state.get("url")
+        for ref in response.references:
+            if ref.type == ReferenceType.source:
+                if source is not None and source != ref.id:
+                    continue
+                source_ref = ref
+                break
+        if source_ref is not None:
+            metadata = {
+                "source": source_ref.id,
+                "page": source_ref.index,
+            }
+        else:
+            metadata = {}
 
         item = get_topic_item(
             topic,
@@ -425,10 +511,49 @@ def parse_topic_items(
         summary = ""
         if tags is not None:
             if "topic" in tags:
-                topic = str(tags["topic"]).replace("\n", " ").strip() if tags["topic"] else ""
+                topic = (
+                    str(tags["topic"]).replace("\n", " ").strip()
+                    if tags["topic"]
+                    else ""
+                )
             if "summary" in tags:
-                summary = str(tags["summary"]).replace("\n", " ").strip() if tags["summary"] else ""
+                summary = (
+                    str(tags["summary"]).replace("\n", " ").strip()
+                    if tags["summary"]
+                    else ""
+                )
 
         items = [{"document": doc, "topic": topic, "summary": summary}]
 
     return items
+
+
+def dict_to_topic_data_table(
+    data_dict, category_tags=[], chroma_collections=[], chroma_ids=[]
+):
+    if isinstance(data_dict, dict):
+        return TopicDataTable(
+            id=data_dict["id"],
+            references=(
+                (
+                    data_dict["references"]
+                    if isinstance(data_dict["references"], list)
+                    else [data_dict["references"]]
+                )
+                if "references" in data_dict
+                else []
+            ),
+            page_content=get_text_from_completion(data_dict["page_content"]),
+            page_number=data_dict["page"],
+            topic_index=data_dict["topic_index"],
+            doc_metadata=data_dict["metadata"],
+            topic=data_dict["topic"],
+            instruct=data_dict["instruct"],
+            summary=data_dict["summary"],
+            category_tags=category_tags,
+            chroma_collections=chroma_collections,
+            chroma_ids=chroma_ids,
+        )
+    else:
+        print("topic dict", type(data_dict), repr(data_dict))
+        raise ValueError("Input must be a dictionary")

@@ -12,16 +12,17 @@ from lib.chains.rag_chain import get_rag_chain
 from lib.helpers import get_text_from_completion
 from lib.models.journey import (
     TaskStructure,
-    JourneyModel,
+    JourneyDataTable,
     StepModel,
     SubjectModel,
     StepStructure,
 )
 from lib.models.concepts import ConceptData
-from lib.models.source import SourceData
+from lib.models.source import SourceData, SourceDataTable
 from lib.prompts.journey import JourneyPrompts, Step
 from lib.chains.init import get_base_chain, get_chain
 from lib.streamlit_tools import llm_edit
+from lib.models.reference import Reference
 
 
 class StepTemplate(BaseModel):
@@ -56,9 +57,8 @@ class JourneyCreationState(TypedDict):
     journey_name: str
     chroma_collections: List[str]
     categories: List[str]
-    journey: JourneyModel
-    concepts: List[ConceptData]
-    sources: List[SourceData]
+    journey: JourneyDataTable
+    references: List[Reference]
     subjects: Annotated[list[SubjectModel], operator.add]
     subjects_sorted: List[SubjectModel]
     subjects_done: bool = False
@@ -72,9 +72,9 @@ class SujectCreationConfig(TypedDict):
 
 
 class SubjectCreationState(TypedDict):
-    journey: JourneyModel
+    journey: JourneyDataTable
     subject: SubjectModel
-    concepts: List[ConceptData]
+    references: List[Reference]
     initial_plan: List[Step]
     initial_plan_done: bool = False
     plan: Annotated[list[StepModel], operator.add]
@@ -91,7 +91,7 @@ class StepCreationConfig(TypedDict):
 
 
 class StepCreationState(TypedDict):
-    journey: JourneyModel
+    journey: JourneyDataTable
     # concepts: List[ConceptData]
     step: StepModel
     concepts_content: str
@@ -112,14 +112,14 @@ class StepCreationState(TypedDict):
 def get_journey_items(
     state: Union[JourneyCreationState, SubjectCreationState, StepCreationState], config
 ) -> tuple[
-    JourneyModel,
+    JourneyDataTable,
     SubjectModel,
     StepModel,
     JourneyTemplate,
     SubjectTemplate,
     StepTemplate,
 ]:
-    journey: JourneyModel = state["journey"] if "journey" in state else None
+    journey: JourneyDataTable = state["journey"] if "journey" in state else None
     subject: SubjectModel = (
         journey.subjects[config["configurable"]["subject_index"]]
         if journey is not None
@@ -172,7 +172,7 @@ async def tasks_build(
     concepts = state["concepts"] if "concepts" in state else step.concepts
     class_content = "\n".join(
         [
-            f"{concept.title}:\n{concept.content}\nReference: {concept.reference}"
+            f"{concept.title}:\n{concept.content}\nReferences: {", ".join([f"{item.source} ({item.page_number})" for item in concept.references])}"
             for concept in concepts
         ]
     )
@@ -445,7 +445,7 @@ async def new_plan_build(
         raise Exception("Concepts required for building plan plan")
     content = "\n".join(
         [
-            f"{concept.title}:\n{concept.content}\nReference: {concept.reference}"
+            f"{concept.title}:\n{concept.content}\nReferences: {", ".join([f"{item.source} ({item.page_number})" for item in concept.references])}"
             for concept in concepts
         ]
     )
@@ -476,7 +476,7 @@ async def new_plan_build(
 
 
 class StepBuildState(TypedDict):
-    journey: JourneyModel
+    journey: JourneyDataTable
     concepts: List[ConceptData]
     step: Step
     subject_index: int
@@ -593,7 +593,7 @@ async def summary_build(
             subject.instructions if subject else subject_template.subject_instruction
         ),
         step_amount=(
-            subject.step_amount
+            subject.steps_amount
             if subject
             else (
                 len(subject_template.step_templates)
@@ -627,8 +627,8 @@ async def journey_build(state: JourneyCreationState, config: RunnableConfig) -> 
     journey, subject, step, journey_template, subject_template = get_journey_items(state, config)
 
     if journey is None:
-        journey = JourneyModel(
-            journeyname=state["journey_name"],
+        journey = JourneyDataTable(
+            journey_name=state["journey_name"],
             chroma_collections=["rag_" + categories for categories in state["categories"]] if state["chroma_collections" is None] else state["chroma_collections"],
             journey_template_id=journey_template.id if journey_template else None,
         )
@@ -639,7 +639,7 @@ async def journey_build(state: JourneyCreationState, config: RunnableConfig) -> 
     if concepts is None and sources is not None:
         concepts = []
         for source in sources:
-            concepts.extend(source.source_contents.concepts)
+            concepts.extend(source.source_concepts)
     else:
         raise ValueError("Concepts must be provided if sources are not provided.")
 

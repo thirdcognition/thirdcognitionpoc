@@ -21,8 +21,9 @@ from langchain.schema.document import Document
 from lib.helpers import flatten_dict
 from lib.load_env import SETTINGS
 from lib.chains.init import get_embeddings
-from lib.models.concepts import ConceptData
-from lib.models.source import SourceContentPage, SourceContents
+from lib.models.concepts import ConceptDataTable
+from lib.models.source import SourceContents
+from lib.models.topics import TopicDataTable
 
 
 @cache
@@ -290,8 +291,8 @@ def get_source_rag_chunks(
             formatted_split = [content.formatted_content]
 
         page_contents = []
-        if content.formatted_topics is not None and len(content.formatted_topics) > 1:
-            page_contents = [page.page_content for page in content.formatted_topics]
+        if content.pages is not None and len(content.pages) > 1:
+            page_contents = [page.content for page in content.pages]
 
         rag_split = rag_split + formatted_split + page_contents
         rag_ids = rag_ids + [
@@ -324,8 +325,8 @@ def get_source_rag_chunks(
 
 def get_concept_rag_chunks(
     category_id: str,
-    concepts: List[ConceptData],
-) -> List[tuple[ConceptData, List[str], List[Dict[str, Dict]], List[Dict]]]:
+    concepts: List[ConceptDataTable],
+) -> List[tuple[ConceptDataTable, List[str], List[Dict[str, Dict]], List[Dict]]]:
     response = []
     for i, concept in enumerate(concepts):
         # concept_split = []
@@ -338,17 +339,7 @@ def get_concept_rag_chunks(
         )
         # concept_split += concept_split
         concept_ids = [
-            (
-                (
-                    (category_id + "-" + concept.id)
-                    if category_id not in concept.id
-                    else concept.id
-                )
-                + "_"
-                + str(i)
-                + "_"
-                + str(j)
-            ).replace(" ", "_")
+            f"{category_id if category_id not in concept.id else ''}{concept.id}_{i}_{j}".replace(" ", "_")
             for j in range(len(concept_split))
         ]
 
@@ -357,9 +348,9 @@ def get_concept_rag_chunks(
                 "concept_id": concept.id,
                 "concept_taxonomy": ", ".join([tag for tag in concept.taxonomy]),
                 "split": str(i) + "_" + str(j),
-                "sources": "\n".join(
+                "references": "\n".join(
                     [
-                        f"{reference.source}{(' page: ' + str(reference.page_number)) if reference.page_number else ''}"
+                        str(reference)
                         for reference in concept.references
                     ]
                 ),
@@ -371,12 +362,12 @@ def get_concept_rag_chunks(
     return response
 
 def get_topic_rag_chunks(
-    topics: List[SourceContentPage],
+    topics: List[TopicDataTable],
     source: str,
     categories: List[str],
-) -> List[tuple[ConceptData, List[str], List[Dict[str, Dict]], List[Dict]]]:
+) -> List[tuple[TopicDataTable, List[str], List[Dict[str, Dict]], List[Dict]]]:
     response = []
-    category_id = ",".join(categories).lower().strip().replace(" ", "_")
+    category_id = "-".join(categories).lower().strip().replace(" ", "_")
     for i, topic in enumerate(topics):
         # topic_split = []
         # topic_ids = []
@@ -410,7 +401,7 @@ def get_topic_rag_chunks(
                 "topic_id": id,
                 "categories": ", ".join(categories),
                 "split": str(i) + "_" + str(j),
-                **topic.metadata,
+                **topic.doc_metadata,
             })
             for j in range(len(topic_split))
         ]

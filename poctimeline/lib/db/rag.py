@@ -1,16 +1,16 @@
+import streamlit as st
 from typing import List
 import chromadb
 
 from langchain_chroma import Chroma
 from chromadb.utils.embedding_functions import create_langchain_embedding
 from chromadb.config import Settings as ChromaSettings
+from chromadb.api import AsyncClientAPI, ClientAPI
 from lib.chains.init import get_embeddings
 
 from lib.helpers import pretty_print
 from lib.load_env import SETTINGS
-
-
-chroma_client = None
+from lib.models.user import get_user_chroma_path
 
 
 def update_rag(
@@ -64,54 +64,56 @@ def update_rag(
                     break
 
 
-collections = {}
+def get_chroma_client() -> ClientAPI:
+    path = get_user_chroma_path()
+    if path is None:
+        return None
+
+    clients = st.session_state.get("chroma_clients", {})
+    if path in clients:
+        return clients[path]
+
+    client = chromadb.PersistentClient(
+        path=path, settings=ChromaSettings(anonymized_telemetry=False)
+    )
+    clients[path] = client
+    st.session_state["chroma_clients"] = clients
+    return client
 
 
 def get_chroma_collections(
-    name, update=False, path=SETTINGS.chroma_path, embedding_id=None
+    name, update=False, embedding_id=None
 ) -> chromadb.Collection:
-    global collections
+
+    collections = st.session_state.get("collections", {})
 
     if name in collections and not update:
         return collections[name]
 
-    global chroma_client
-    chroma_client = chroma_client or chromadb.PersistentClient(
-        path=path, settings=ChromaSettings(anonymized_telemetry=False)
-    )
+    chroma_client = get_chroma_client()
 
     if update:
         chroma_client.delete_collection(name=name)
 
-    embedding_function = None
-    if embedding_id is not None:
-        embedding_function = create_langchain_embedding(get_embeddings(embedding_id))
-    else:
-        embedding_function = create_langchain_embedding(get_embeddings("base"))
+    embedding_function = create_langchain_embedding(
+        get_embeddings(embedding_id if embedding_id is not None else "base")
+    )
 
     collection = chroma_client.get_or_create_collection(
         name, embedding_function=embedding_function
     )
     collections[name] = collection
+    st.session_state["collections"] = collections
     return collection
 
 
-vectorstores = {}
-
-
-def get_vectorstore(
-    id, embedding_id="base", update_vectorstores=False, path=SETTINGS.chroma_path
-) -> Chroma:
-    global chroma_client
-    chroma_client = chroma_client or chromadb.PersistentClient(
-        path=path, settings=ChromaSettings(anonymized_telemetry=False)
-    )
-
-    global vectorstores
+def get_vectorstore(id, embedding_id="base", update_vectorstores=False) -> Chroma:
+    vectorstores = st.session_state.get("vectorstores", {})
 
     if id in vectorstores and not update_vectorstores:
         return vectorstores[id]
 
+    chroma_client = get_chroma_client()
     print(f"\n\n\nInit vectorstore {id=} {embedding_id=}\n\n\n")
     vectorstore = Chroma(
         client=chroma_client,
@@ -121,6 +123,7 @@ def get_vectorstore(
     )
 
     vectorstores[id] = vectorstore
+    st.session_state["vectorstores"] = vectorstores
     return vectorstore
 
 

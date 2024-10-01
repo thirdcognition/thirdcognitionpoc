@@ -12,12 +12,17 @@ from lib.models.taxonomy import (
 )
 from lib.models.concepts import (
     ConceptDataTable,
-    ConceptData,
 )
 from lib.models.source import (
     SourceDataTable,
 )
-from lib.helpers import pretty_print
+from lib.models.reference import (
+    Reference,
+    ReferenceType,
+    is_in_references,
+    type_in_references,
+    unique_references,
+)
 
 existing_concept_ids = []
 
@@ -44,7 +49,8 @@ def get_existing_concept_ids(refresh: bool = False) -> List[str]:
     global existing_concept_ids
     if refresh or len(existing_concept_ids) == 0:
         existing_concept_ids = [
-            concept.id for concept in user_db_get_session().query(ConceptDataTable).all()
+            concept.id
+            for concept in user_db_get_session().query(ConceptDataTable).all()
         ]
     return existing_concept_ids
 
@@ -66,12 +72,12 @@ def get_db_concepts(
     concepts = user_db_get_session().query(ConceptDataTable).all()
 
     if source is not None:
-        # print(f"Filtering concepts by source: {source}")
-        # pretty_print(
-        #     [{"sources": concept.sources, "id": concept.id} for concept in concepts],
-        #     force=True,
-        # )
-        concepts = [concept for concept in concepts if source in concept.sources]
+
+        concepts = [
+            concept
+            for concept in concepts
+            if type_in_references(source, concept.references)
+        ]
         # pretty_print(concepts, "filtered concepts", force=True)
     if taxonomy is not None:
         concepts = [
@@ -86,7 +92,10 @@ def get_db_concepts(
 
     return concepts
 
-def update_db_concept(concept: ConceptData, categories=List[str], commit: bool = True):
+
+def update_db_concept(
+    concept: ConceptDataTable, categories=List[str], commit: bool = True
+):
     if db_concept_id_exists(concept.id):
         # print(f"\n\nUpdate existing concept:\n\n{concept.model_dump_json(indent=4)}")
         db_concept = (
@@ -96,18 +105,21 @@ def update_db_concept(concept: ConceptData, categories=List[str], commit: bool =
             .first()
         )
         db_concept.parent_id = concept.parent_id
-        db_concept.concept_contents = concept
-        db_concept.category_tags = list(
-            set(categories + db_concept.category_tags)
+        db_concept.category_tags = list(set(categories + db_concept.category_tags))
+        db_concept.taxonomy = sorted(concept.taxonomy)
+        new_references = (
+            concept.references
+            if isinstance(concept.references, list)
+            else [concept.references]
         )
-        db_concept.taxonomy = concept.taxonomy
-        new_sources = concept.sources if isinstance(concept.sources, list) else [concept.sources]
-        db_concept.sources = list(set(new_sources + db_concept.sources))
+        db_concept.references = unique_references(
+            new_references + db_concept.references
+        )
         db_concept.last_updated = datetime.now()
-
 
     if commit:
         user_db_get_session().commit()
+
 
 def delete_db_concept(concept_id: str, commit: bool = True):
     instance = (
@@ -133,7 +145,7 @@ def delete_db_concept(concept_id: str, commit: bool = True):
 def update_db_concept_rag(
     source: str,
     categories: List[str],
-    concepts: List[ConceptData] = None,
+    concepts: List[ConceptDataTable] = None,
 ):
     category_id = "-".join(categories)
     defined_concept_ids = [concept.id for concept in concepts] if concepts else []
@@ -147,6 +159,7 @@ def update_db_concept_rag(
         .distinct()
         .all()
     )
+    existing_concept_ids = [concept.id for concept in existing_concepts]
     existing_concepts = [
         concept
         for concept in existing_concepts
@@ -161,7 +174,7 @@ def update_db_concept_rag(
     new_ids = []
     old_ids = [concept.id for concept in existing_concepts]
     if concepts is not None:
-        resp: List[tuple[ConceptData, List, List, List]] = get_concept_rag_chunks(
+        resp: List[tuple[ConceptDataTable, List, List, List]] = get_concept_rag_chunks(
             category_id=category_id, concepts=concepts
         )
         for concept, concept_chunks, concept_ids, concept_metadatas in resp:
@@ -180,12 +193,20 @@ def update_db_concept_rag(
 
     if existing_concepts is not None:
         for concept in existing_concepts:
-            existing_chroma_ids.extend(concept.chroma_ids)
-            existing_chroma_collections.extend(concept.chroma_collections)
+            existing_chroma_ids.extend(
+                id for id in concept.chroma_ids if id not in existing_chroma_ids
+            )
+            existing_chroma_collections.extend(
+                collection
+                for collection in concept.chroma_collections
+                if collection not in existing_chroma_collections
+            )
 
             if concept.id in concepts_by_id:
                 concept_ids.append(concept.id)
-                new_concept: ConceptData = concepts_by_id[str(concept.id)]["concept"]
+                new_concept: ConceptDataTable = concepts_by_id[str(concept.id)][
+                    "concept"
+                ]
                 parent_id = concept.parent_id or new_concept.parent_id
                 if parent_id is not concept.parent_id:
                     if parent_id not in old_ids or parent_id not in new_ids:
@@ -195,8 +216,9 @@ def update_db_concept_rag(
                     if parent_concept or parent_id == new_concept.id:
                         print(f"Parent concept with id {parent_id} does not exist.")
                         parent_id = None
-
-                concept.concept_contents = new_concept
+                concept.title = new_concept.title
+                concept.summary = new_concept.summary
+                concept.content = new_concept.content
                 concept.taxonomy = new_concept.taxonomy
                 concept.parent_id = parent_id
                 concept.chroma_ids = concepts_by_id[str(concept.id)]["rag_ids"]
@@ -205,7 +227,18 @@ def update_db_concept_rag(
                 ]
                 concept.category_tags = categories
                 concept.last_updated = datetime.now()
-                concept.sources = list(set(list(concept.sources) + [source]))
+                new_references = (
+                    new_concept.references
+                    if isinstance(new_concept.references, list)
+                    else [new_concept.references]
+                )
+                if not is_in_references(source, ReferenceType.source, new_references):
+                    new_references.append(
+                        Reference(id=source, type=ReferenceType.source, index=0)
+                    )
+                concept.references = unique_references(
+                    concept.references + new_references
+                )
                 handled_concepts.append(concept.id)
 
     if concepts is not None and len(concepts) > 0:
@@ -238,20 +271,28 @@ def update_db_concept_rag(
                     defined_concept_ids.remove(concept.id)
                     defined_concept_ids.append(new_id)
                 concept_ids.append(new_id)
-                new_sources = concept.sources if isinstance(concept.sources, list) else [concept.sources]
-                new_concept = ConceptDataTable(
+                new_references = (
+                    concept.references
+                    if isinstance(concept.references, list)
+                    else [concept.references]
+                )
+                if not is_in_references(source, ReferenceType.source, new_references):
+                    new_references.append(
+                        Reference(id=source, type=ReferenceType.source, index=0)
+                    )
+
+                new_concept = concept.copy(
                     id=new_id,
                     parent_id=parent_id,
-                    concept_contents=concept,
-                    taxonomy=concept.taxonomy,
                     category_tags=categories,
-                    sources=list(set(new_sources + [source])),
+                    references=unique_references(new_references),
                     chroma_ids=concepts_by_id[str(concept.id)]["rag_ids"],
                     chroma_collections=[
                         "rag_" + cat + "_concept" for cat in categories
                     ],
                     last_updated=datetime.now(),
                 )
+
                 user_db_get_session().add(new_concept)
 
     existing_chroma_ids = None if len(existing_chroma_ids) == 0 else existing_chroma_ids

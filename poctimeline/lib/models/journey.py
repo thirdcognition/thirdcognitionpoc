@@ -1,52 +1,41 @@
-from typing import Dict, List, Optional
+from typing import List
 from pydantic import BaseModel, Field
 import sqlalchemy as sqla
 from sqlalchemy.ext.mutable import MutableList
 from lib.db.sqlite import Base
 from lib.load_env import SETTINGS
 from lib.models.concepts import ConceptData
-from lib.models.source import SourceData
 from lib.prompts.journey import JourneyPrompts
+from lib.models.reference import Reference
 
 class JourneyDataTable(Base):
     __tablename__ = SETTINGS.journey_tablename
 
-    # id = Column(Integer, primary_key=True)
-    journeyname = sqla.Column(sqla.String, primary_key=True)
-    files = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
+    id = sqla.Column(sqla.Integer, primary_key=True)
+    journey_name = sqla.Column(sqla.String)
+    journey_template_id = sqla.Column(sqla.String, default=None)
+    references = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
     subjects = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
-    chroma_collections = sqla.Column(
-        MutableList.as_mutable(sqla.PickleType), default=[]
-    )
+    chroma_collections = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
     disabled = sqla.Column(sqla.Boolean, default=False)
-    title = sqla.Column(sqla.String, default="")
-    summary = sqla.Column(sqla.Text, default="")
-    instructions = sqla.Column(sqla.Text, default="")
+    title = sqla.Column(sqla.String, default=None)
+    summary = sqla.Column(sqla.Text, default=None)
+    instructions = sqla.Column(sqla.Text, default=None)
+    complete = sqla.Column(sqla.Boolean, default=False)
     last_updated = sqla.Column(sqla.DateTime, default=None)
 
-class ResourceStructure(BaseModel):
-    title: str = Field(
-        description="Title for the content to help in the task.", title="Title"
-    )
-    summary: str = Field(
-        description="Most important parts of the document", title="Summary"
-    )
-    reference: str = Field(
-        description="Name of the resource, references or link if available.",
-        title="Reference",
-    )
 
 class TaskStructure(BaseModel):
     title: str = Field(description="Title for the content", title="Title")
     description: str = Field(
         description="Objective, or target for the content", title="Description"
     )
-    resources: List[ResourceStructure] = Field(
-        description="List of references to documents or resources to help with the specifics for the content.",
-        title="Resources",
+    references: List[Reference] = Field(
+        description="List of references to topics, concepts or sources to help with the specifics for the content.",
+        title="References",
     )
-    guide: str = Field(
-        description="Detailed guide on how to use the content with the user", title="Guide"
+    instruct: str = Field(
+        description="Detailed instructions on how to use the content with the user", title="Instruct"
     )
     test: str = Field(
         description="Description on how to do a test to verify that the student has succeeded in learning the contents.",
@@ -87,20 +76,6 @@ class SubjectModel(BaseModel):
     steps_amount: int = Field(default=None)
     task_amount: int = Field(default=None)
     concepts: List[ConceptData] = Field(default=None)
-    # files: List[str] = Field(default_factory=list)
-    # db_sources: Dict[str, SourceData] = Field(default_factory=dict)
 
 
-class JourneyModel(BaseModel):
-    journeyname: Optional[str] = None
-    journey_template_id: Optional[str] = None
-    sources: List[str] = Field(default_factory=list)
-    db_sources: Dict[str, SourceData] = Field(default_factory=dict)
-    subjects: List[SubjectModel] = Field(default_factory=list)
-    chroma_collections: List[str] = Field(default_factory=list)
-    disabled: Optional[bool] = False
-    title: Optional[str] = None
-    summary: Optional[str] = None
-    instructions: Optional[str] = None
-    complete: bool = False
 

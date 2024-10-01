@@ -9,7 +9,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
 from admin.sidebar import init_sidebar
-from lib.models.journey import JourneyModel, SubjectModel
+from lib.models.journey import JourneyDataTable, SubjectModel
 from lib.prompts.journey import JourneyPrompts
 from lib.journey_shared import (
     create_subject_prompt_editor,
@@ -92,16 +92,16 @@ async def get_journey_gen(journey_name):
 
     file_categories = get_all_categories()
     default_categories = []
-    journey_details: JourneyModel = None
+    journey_details: JourneyDataTable = None
     if (
         journey_name not in st.session_state.journey_get_details
         or st.session_state.journey_get_details[journey_name] == None
     ):
-        journey_details = JourneyModel(
-            journeyname=journey_name,
+        journey_details = JourneyDataTable(
+            journey_name=journey_name,
             chroma_collections=["rag_" + categories for categories in default_categories],
         )
-        # {"journeyname": journey_name, "categories": default_categories}
+        # {"journey_name": journey_name, "categories": default_categories}
         st.session_state.journey_get_details[journey_name] = journey_details
     else:
         journey_details = st.session_state.journey_get_details[journey_name]
@@ -204,13 +204,13 @@ async def get_journey_gen(journey_name):
         st.session_state.journey_generator_running = False
 
         with st.spinner("Generating journey titles and summaries"):
-            files = []
+            # files = []
             for i, subject in enumerate(journey_details.subjects):
                 title, summary = await llm_gen_title_summary(subject.plan)
                 journey_details.subjects[i].title = title
                 journey_details.subjects[i].summary = summary
 
-                files.extend(subject.files)
+                # files.extend(subject.sources)
 
             title, summary = await llm_gen_title_summary(journey_details.subjects)
 
@@ -218,7 +218,7 @@ async def get_journey_gen(journey_name):
 
             journey_details.title = title
             journey_details.summary = summary
-            journey_details.db_sources = files
+            # journey_details.sources = files
 
         if save_journey(journey_name, journey_details):
             st.success("Journey saved.")
@@ -248,7 +248,7 @@ async def main():
     # db_journey = get_db_journey()
 
     # with st.container(border=True):
-    #     journey_create: JourneyModel = None
+    #     journey_create: JourneyDataTable = None
     #     if "journey_create_data" in st.session_state:
     #         journey_create = st.session_state.journey_create_data
 
@@ -269,7 +269,7 @@ async def main():
     #         st.header(f"Create new journey: {journey_name}")
     #         st.session_state.journey_create_data = await get_journey_gen(journey_name)
     #         if st.session_state.journey_create_data.complete:
-    #             st.session_state.journey_create_data = JourneyModel()
+    #             st.session_state.journey_create_data = JourneyDataTable()
     #             st.session_state.journey_get_details = {}
     #             st.session_state.journey_create = False
     #             st.session_state.journey_generator_running = False

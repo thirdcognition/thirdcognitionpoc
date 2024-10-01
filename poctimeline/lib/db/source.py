@@ -9,18 +9,14 @@ from lib.models.user import user_db_commit, user_db_get_session
 from lib.document_tools import get_source_rag_chunks, get_topic_rag_chunks
 
 from lib.models.source import (
-    SourceContentPage,
     SourceContents,
-    SourceData,
     SourceDataTable,
     SourceType,
 )
-
-
 def get_db_sources(
     reset=False, source=None, categories: List[str] = None
-) -> Dict[str, SourceData]:
-    db_sources: Dict[str, SourceData] = None
+) -> Dict[str, SourceDataTable]:
+    db_sources: Dict[str, SourceDataTable] = None
     if (
         "db_sources" not in st.session_state
         or reset
@@ -49,7 +45,7 @@ def get_db_sources(
             db_sources = st.session_state.db_sources
 
         for source in sources:
-            db_sources[source.source] = SourceData(**source.__dict__)
+            db_sources[source.source] = source
 
         st.session_state.db_sources = db_sources
     else:
@@ -197,69 +193,3 @@ def update_db_source_rag(
     user_db_get_session().commit()
 
 
-def update_db_topic_rag(
-    source: str,
-    categories: List[str],
-    contents: SourceContents,
-):
-    existing_source = (
-        user_db_get_session()
-        .query(SourceDataTable)
-        .filter(SourceDataTable.source == source)
-        .first()
-    )
-
-    if existing_source is None:
-        raise ValueError(f"Source {source} not found in the database.")
-
-    resp: List[tuple[SourceContentPage, List, List, List]] = get_topic_rag_chunks(
-        contents.formatted_topics, source, categories
-    )
-
-    topic_rag_chunks = []
-    topic_rag_ids = []
-    topic_rag_metadatas = []
-
-    existing_topic_chroma_ids = []
-    existing_topic_chroma_collections = []
-    if existing_source is not None and existing_source.source_contents is not None:
-        source_contents: SourceContents = existing_source.source_contents
-        for existing_topic_source in source_contents.formatted_topics:
-            existing_topic_chroma_ids.extend(existing_topic_source.chroma_ids)
-            existing_topic_chroma_collections.extend(
-                existing_topic_source.chroma_collections
-            )
-
-    existing_topic_chroma_ids = (
-        None if len(existing_topic_chroma_ids) == 0 else existing_topic_chroma_ids
-    )
-    existing_topic_chroma_collections = (
-        None
-        if len(existing_topic_chroma_collections) == 0
-        else existing_topic_chroma_collections
-    )
-
-    new_topics = []
-
-    for topic, topic_chunks, topic_ids, topic_metadatas in resp:
-        topic_rag_chunks.extend(topic_chunks)
-        topic_rag_ids.extend(topic_ids)
-        topic_rag_metadatas.extend(topic_metadatas)
-        topic.chroma_ids = topic_ids
-        topic.chroma_collections = ["rag_" + cat + "_topic" for cat in categories]
-        new_topics.append(topic)
-
-    update_rag(
-        categories,
-        topic_rag_ids,
-        topic_rag_chunks,
-        topic_rag_metadatas,
-        existing_topic_chroma_ids,
-        existing_topic_chroma_collections,
-        type="topic",
-    )
-    contents.formatted_topics = new_topics
-
-    existing_source.source_contents = contents
-    existing_source.last_updated = datetime.now()
-    user_db_get_session().commit()

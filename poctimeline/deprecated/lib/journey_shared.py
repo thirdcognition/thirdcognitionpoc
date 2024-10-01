@@ -19,71 +19,18 @@ from lib.load_env import SETTINGS
 from lib.streamlit_tools import llm_edit
 from lib.models.journey import (
     TaskStructure,
-    JourneyModel,
+    JourneyDataTable,
     ResourceStructure,
     StepModel,
     SubjectModel,
     StepStructure,
-    JourneyDataTable
 )
 from lib.models.prompts import CustomPrompt
 from lib.models.source import SourceContents, SourceData
 from lib.prompts.journey import convert_to_journey_prompts
 from lib.prompts.journey import Step, Plan
 
-def save_journey(journey_name, journey: JourneyModel) -> bool:
-    print(f"Save journey {journey_name}")
-    # st.write(f"Save journey {journey_name}")
-    # st.write(journey)
-    database_session = user_db_get_session()
-    journey_db = (
-        database_session.query(JourneyDataTable)
-        .filter(JourneyDataTable.journeyname == journey_name)
-        .first()
-    )
 
-    if journey_db is not None:
-        print("Remove old Journey")
-        database_session.delete(journey_db)
-
-    print("Create journey")
-    journey_db = JourneyDataTable(
-        journeyname=journey_name,
-        files=journey.files,
-        subjects=journey.subjects,
-        title=journey.title,
-        summary=journey.summary,
-        last_updated=datetime.now(),
-        chroma_collections=journey.chroma_collections,
-    )
-    try:
-        database_session.add(journey_db)
-        database_session.commit()
-    except Exception as e:
-        print(f"Error saving journey.\n\n{e}")
-        return False
-
-    get_db_journey(reset=True)
-    return True
-
-
-def delete_journey(journey_name):
-    database_session = user_db_get_session()
-    journey_db = (
-        database_session.query(JourneyDataTable)
-        .filter(JourneyDataTable.journeyname == journey_name)
-        .first()
-    )
-
-    if journey_db is not None:
-        database_session.delete(journey_db)
-        database_session.commit()
-        get_db_journey(reset=True)
-        st.success(f"{journey_name} has been deleted successfully.")
-        time.sleep(0.1)
-        st.rerun()
-    else:
-        st.warning(f"{journey_name} does not exist in the database.")
 
 
 async def llm_gen_title_summary(
@@ -128,7 +75,7 @@ async def llm_gen_title_summary(
 
 
 def llm_gen_plan(
-    content, journey: JourneyModel, subject: SubjectModel
+    content, journey: JourneyDataTable, subject: SubjectModel
 ) -> Plan:
     return get_base_chain("plan")(
         (subject.prompts.plan.system, subject.prompts.plan.user)
@@ -144,7 +91,7 @@ def llm_gen_plan(
 
 def llm_gen_step(
     content,
-    journey: JourneyModel,
+    journey: JourneyDataTable,
     subject: SubjectModel,
     step: Union[Step | StepModel],
     existing_plan: List[Union[Step | StepModel]] = None,
@@ -364,7 +311,7 @@ def llm_gen_json_step(
 
 
 def llm_gen_update_tasks(
-    journey: JourneyModel,
+    journey: JourneyDataTable,
     subject: SubjectModel,
     gen_step: StepModel,
     json_step: StepStructure,
@@ -383,7 +330,7 @@ def llm_gen_update_tasks(
 
 
 def llm_gen_resource(
-    journey: JourneyModel,
+    journey: JourneyDataTable,
     subject: SubjectModel,
     step: StepModel,
     task: TaskStructure,
@@ -419,7 +366,7 @@ def llm_gen_resource(
 
 
 def llm_gen_step_content(
-    journey: JourneyModel,
+    journey: JourneyDataTable,
     subject: SubjectModel,
     step: Union[Step | StepModel],
     progress_cb: Callable[[float, str], None] = None,
@@ -717,19 +664,19 @@ def update_subject_prompts(subject: SubjectModel, bulk: str):
 
 
 async def gen_subject(
-    journey: JourneyModel,
+    journey: JourneyDataTable,
     subject: SubjectModel,
     subject_index: int = 0,
     step_index: int = None,
 ) -> SubjectModel:
-    # journey:JourneyModel = st.session_state.journey_get_details[journey_name]
+    # journey:JourneyDataTable = st.session_state.journey_get_details[journey_name]
     # vectorstore = get_vectorstore("rag_"+ journey["categories"][0], "hyde")
     with st.status(f"Building subject {subject_index+1} document"):
         compressed = build_journey_doc_from_files(subject.db_sources)
         st.success("Generating subject document done.")
     if step_index is None:
         with st.status(f"Building subject {subject_index+1}"):
-            subject = await gen_subject(
+            subject:SubjectModel = await gen_subject(
                 compressed,
                 journey,
                 subject,
@@ -786,7 +733,7 @@ async def gen_subject(
 
 
 async def gen_subject(
-    content, journey: JourneyModel, subject: SubjectModel, subject_index: int = None
+    content, journey: JourneyDataTable, subject: SubjectModel, subject_index: int = None
 ) -> SubjectModel:
     bar = st.progress(0, text="Generating")
 

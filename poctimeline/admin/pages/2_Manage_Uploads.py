@@ -5,6 +5,9 @@ import sys
 from typing import Dict, List
 import streamlit as st
 
+from db.topics import get_topic_by_id
+from lib.models.topics import TopicDataTable
+
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
@@ -18,9 +21,9 @@ from lib.db.taxonomy import get_taxonomy_by_id
 from lib.db.concept import get_concept_by_id
 from lib.db.source import delete_db_source, get_db_sources
 from lib.helpers import pretty_print
-from lib.models.source import SourceContents, SourceDataTable
-from lib.models.concepts import ConceptData, ConceptDataTable
-from lib.models.taxonomy import Taxonomy
+from lib.models.source import SourceContents, SourceDataTable, SourcePage
+from lib.models.concepts import ConceptDataTable
+from lib.models.taxonomy import TaxonomyDataTable
 
 from lib.document_tools import markdown_to_text
 from lib.streamlit_tools import get_all_categories, llm_edit
@@ -121,21 +124,23 @@ async def manage_file(filename):
                 st.rerun(scope="fragment")
 
     if show_details:
+        contents:SourceContents = file_entry.source_contents
         with st.container(border=True):
             filename = file_entry.source
             filetype = filename.split(".")[-1]
-            summary = file_entry.source_contents.summary
-            text = file_entry.source_contents.formatted_content
-            combined_topic = file_entry.source_contents.topic
-            all_topics = file_entry.source_contents.all_topics
-            topics = file_entry.source_contents.formatted_topics
+            summary = contents.summary
+            text = contents.formatted_content
+            combined_topic = contents.topic
+            all_pages:List[SourcePage] = contents.pages
+            # topics = file_entry.source_contents.formatted_topics
+            topic_ids = file_entry.source_topics
             raw = file_entry.texts
 
             if filename in rewrite_text:
                 text = rewrite_text[filename]
 
-            tab1, tab2, tab3, tab4, tab5 = st.tabs(
-                ["Summary", "Formatted", "Unformatted", "Concepts", "RAG"]
+            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
+                ["Summary", "Formatted", "Unformatted", "Topics", "Concepts", "RAG"]
             )
 
             with tab1:
@@ -228,23 +233,19 @@ async def manage_file(filename):
                     st.success("Markdown rewrite complete")
                     rewrite_text[filename] = text
 
-                text_tab1, text_tab2 = st.tabs(["Combined", "Pages/Topics"])
+                text_tab1, text_tab2 = st.tabs(["Combined", "Pages"])
                 with text_tab1:
                     if text != None and len(text) > 0:
 
                         st.write("##### " + combined_topic)
                         st.write("##### Content:\n\n" + text, unsafe_allow_html=True)
                 with text_tab2:
-                    st.write("###### All topics:\n - " + "\n - ".join(all_topics))
-                    for topic in topics:
+                    for i, page in enumerate(all_pages):
                         st.write(
                             "#### Page: "
-                            + str(topic.page_number)
-                            + " - "
-                            + str(topic.topic_index)
+                            + str(i + 1)
                         )
-                        st.write("##### " + topic.topic)
-                        st.write(topic.page_content, unsafe_allow_html=True)
+                        st.write(page.content, unsafe_allow_html=True)
 
                 if update:
                     instance = (
@@ -264,43 +265,63 @@ async def manage_file(filename):
                     st.write(text, unsafe_allow_html=True)
 
             with tab4:
-                tagged_concepts: Dict[str, List[ConceptData]] = defaultdict(list)
-                tags: Dict[str, Taxonomy] = {}
+                tagged_topics: Dict[str, List[TopicDataTable]] = defaultdict(list)
+                for topic_id in file_entry.source_topics:
+                    db_topic = get_topic_by_id(topic_id)
+                    for tag in db_topic.category_tags:
+                        tagged_topics[tag].append(db_topic)
+
+                for topic_tag, topics in tagged_topics.items():
+                    st.write(f"### Topics tagged with: {topic_tag}:")
+                    for topic in topics:
+                        with st.expander(f"{topic.topic} ({topic.id})"):
+                            sub_col1, sub_col2 = st.columns([1, 2])
+                            sub_col1.write("Metadata:")
+                            sub_col1.write(topic.metadata)
+                            sub_col1.write("Category Tags:")
+                            sub_col1.write(topic.category_tags)
+                            sub_col2.write(
+                                f"##### Summary:\n{topic.summary}"
+                            )
+                            sub_col2.write(
+                                f"##### Page Content:\n{topic.page_content}"
+                            )
+
+            with tab5:
+                tagged_concepts: Dict[str, List[ConceptDataTable]] = defaultdict(list)
+                tags: Dict[str, TaxonomyDataTable] = {}
                 for concept_id in file_entry.source_concepts:
                     db_concept = get_concept_by_id(concept_id)
-                    concept_inst: ConceptData = db_concept.concept_contents
-                    for tag in concept_inst.taxonomy:
-                        tagged_concepts[tag].append(concept_inst)
+                    for tag in db_concept.taxonomy:
+                        tagged_concepts[tag].append(db_concept)
                         if tag not in tags:
                             tag_inst = get_taxonomy_by_id(tag)
                             if tag_inst:
-                                tags[tag] = tag_inst.concept_taxonomy
+                                tags[tag] = tag_inst.to_taxonomy()
 
                 for concept_tag, concepts in tagged_concepts.items():
                     if concept_tag in tags:
                         st.write(f"### {tags[concept_tag].title}:")
                         st.write(tags[concept_tag].description)
                         # with st.expander("Concept instances"):
-                        for concept_inst in concepts:
-                            with st.expander(f"Concept: {concept_inst.title}"):
-                                st.write(f"#### {concept_inst.id}")
-                                st.code(concept_inst.id)
+                        for concept in concepts:
+                            with st.expander(f"{concept.title} ({concept.id})"):
                                 sub_col1, sub_col2 = st.columns([1, 2])
                                 sub_col1.write("References:")
-                                sub_col1.write(ref for ref in concept_inst.references)
+                                sub_col1.write(ref for ref in concept.references)
                                 sub_col1.write("Taxonomy:")
-                                sub_col1.write(concept_inst.taxonomy)
+                                sub_col1.write(concept.taxonomy)
                                 sub_col2.write(
-                                    f"##### Summary:\n{concept_inst.summary}"
+                                    f"##### Summary:\n{concept.summary}"
                                 )
                                 sub_col2.write(
-                                    f"##### Content:\n{concept_inst.content}"
+                                    f"##### Content:\n{concept.content}"
                                 )
                     else:
                         st.write(f"### Issue with: {concept_tag}:")
                         st.write(tags.keys())
 
-            with tab5:
+            with tab6:
                 # print(f"{file_entry.chroma_collections=}")
                 rag_id = st.selectbox(
                     "RAG DB",

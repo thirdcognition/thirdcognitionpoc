@@ -10,12 +10,13 @@ from langchain_core.documents import Document
 from langgraph.graph import END, START, StateGraph
 from langchain_community.document_loaders.url_playwright import PlaywrightURLLoader
 
-from lib.db.concept import update_db_concept_rag
+from db.taxonomy import get_taxonomy_item_list
+from db.topics import get_topic_by_id, update_db_topic_rag
+from lib.db.concept import get_concept_by_id, update_db_concept_rag
 from lib.db.source import (
     db_source_exists,
     get_db_sources,
     update_db_source_rag,
-    update_db_topic_rag,
 )
 from lib.document_parse import SourceType, process_source_contents
 from lib.document_tools import (
@@ -24,17 +25,17 @@ from lib.document_tools import (
 )
 from lib.helpers import get_number, get_text_from_completion, pretty_print
 from lib.load_env import SETTINGS
-from lib.models.concepts import ConceptData
-from lib.models.taxonomy import Taxonomy
+from lib.models.concepts import ConceptDataTable
+from lib.models.taxonomy import Taxonomy, TaxonomyDataTable
 from lib.models.source import (
-    topic_to_dict,
-    SourceContentPage,
+    SourcePage,
     SourceContents,
 )
 from lib.graphs.process_text import process_text
-from lib.graphs.find_topics import find_topics
+from lib.graphs.find_topics import find_topics, get_result_dict
 from lib.graphs.find_taxonomy import find_taxonomy
 from lib.graphs.find_concepts import find_concepts
+from lib.models.topics import TopicDataTable, get_topic_item, topic_to_dict
 
 
 def clean_dividers(text: str) -> str:
@@ -84,7 +85,7 @@ class ProcessSourceState(TypedDict):
     find_taxonomy_complete: bool
     find_taxonomy_result: List[Taxonomy]
     find_concepts_complete: bool
-    find_concepts_result: List[ConceptData]
+    find_concepts_result: List[ConceptDataTable]
     rag_update_complete: bool
 
 
@@ -122,9 +123,19 @@ async def get_source_content(state: Dict, config: RunnableConfig):
             split, length_function, SETTINGS.default_llms.instruct_detailed.char_limit
         )
     else:
-        split = []
-        response = []
+        response = source_data.texts
 
+    topics: List[TopicDataTable] = []
+    for topic_id in source_data.source_topics:
+        db_topic = get_topic_by_id(topic_id)
+        topics.append(db_topic)
+
+    concepts: List[ConceptDataTable] = []
+    for concept_id in source_data.source_concepts:
+        db_concept = get_concept_by_id(concept_id)
+        concepts.append(db_concept)
+
+    contents: SourceContents = source_data.source_contents
     return {
         "contents": response,
         "instructions": (
@@ -132,13 +143,25 @@ async def get_source_content(state: Dict, config: RunnableConfig):
             if "instructions" in config["configurable"]
             else None
         ),
-        "get_source_content_complete": True,
-        "content_topics": [
-            topic_to_dict(topic)
-            for topic in source_data.source_contents.formatted_topics
-        ],
-        "summary": source_data.source_contents.summary,
-        "all_topics": source_data.source_contents.all_topics,
+        "process_text_complete": True,
+        "process_text_result": {
+            "summary": contents.summary,
+            "content": contents.formatted_content,
+            "document": Document(page_content=contents.formatted_content, metadata={"source": source, "topic": contents.topic}),
+            "content_pages": [Document(page_content=page.content, metadata=page.metadata) for page in contents.pages],
+        },
+        "find_topics_complete": True,
+        "find_topics_result": {
+            "content_topics": [
+                get_result_dict(get_topic_item(result))
+                for result in topics
+            ],
+            "all_topics": set([item.get("topic", "") for item in topics]),
+        },
+        "find_taxonomy_complete": True,
+        "find_taxonomy_result": [],
+        "find_concepts_complete": True,
+        "find_concepts_result": concepts
     }
 
 
@@ -330,38 +353,44 @@ async def rag_update(state: ProcessSourceState, config: RunnableConfig):
         else ", ".join(state["find_topics_result"]["all_topics"])
     )
     final_contents = state["process_text_result"]["content"]
-    all_topics = state["find_topics_result"]["all_topics"]
+    content_pages: List[Document] = state["process_text_result"]["content_pages"]
+    # all_topics = state["find_topics_result"]["all_topics"]
     summary = state["process_text_result"]["summary"]
     content_topics = state["find_topics_result"]["content_topics"]
 
+    # source_topics = [
+    #     TopicModel(
+    #         page_content=get_text_from_completion(item["page_content"]),
+    #         page_number=get_number(item["page"]) if "page" in item else 0,
+    #         topic_index=get_number(item["topic_index"]) if "topic_index" in item else 0,
+    #         metadata=item["page_content"].metadata,
+    #         topic=item["topic"] or "",
+    #         instruct=(
+    #             item["page_content"].metadata["instruct"]
+    #             if "instruct" in item["page_content"].metadata
+    #             else ""
+    #         ),
+    #         summary=item["summary"] or "",
+    #         id=item["id"] or "",
+    #         chroma_ids=[],
+    #         chroma_collections=[],
+    #     )
+    #     for item in content_topics
+    # ]
 
-
-    source_topics = [
-        SourceContentPage(
-            page_content=get_text_from_completion(item["page_content"]),
-            page_number=get_number(item["page"]) if "page" in item else 0,
-            topic_index=get_number(item["topic_index"]) if "topic_index" in item else 0,
-            metadata=item["page_content"].metadata,
-            topic=item["topic"] or "",
-            instruct=(
-                item["page_content"].metadata["instruct"]
-                if "instruct" in item["page_content"].metadata
-                else ""
-            ),
-            summary=item["summary"] or "",
-            id=item["id"] or "",
-            chroma_ids=[],
-            chroma_collections=[],
+    source_pages = [
+        SourcePage(
+            content=get_text_from_completion(item),
+            page_metadata=item.metadata,
         )
-        for item in content_topics
+        for item in content_pages
     ]
 
     contents = SourceContents(
-        formatted_topics=source_topics,
         formatted_content=final_contents,
         topic=final_topic,
-        all_topics=all_topics,
         summary=summary,
+        pages=source_pages,
     )
 
     filetype = None
@@ -382,7 +411,7 @@ async def rag_update(state: ProcessSourceState, config: RunnableConfig):
         update_db_topic_rag(
             state["filename"] or state["url"],
             state["categories"],
-            contents,
+            content_topics,
         )
 
         if config["configurable"]["update_concepts"]:

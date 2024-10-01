@@ -21,7 +21,7 @@ from typing import Annotated, List, TypedDict
 
 from lib.db.journey import get_db_journey
 from lib.db.rag import get_vectorstore
-from lib.models.journey import JourneyModel, TaskStructure, SubjectModel, StepStructure
+from lib.models.journey import JourneyDataTable, TaskStructure, SubjectModel, StepStructure
 from lib.models.teaching import TeachingTask, TeachingItemPlan, UserData
 from lib.prompts.journey import JourneyPrompts
 from lib.prompts.journey import plan
@@ -99,7 +99,7 @@ def init_state(state:TeachingState, config: RunnableConfig):
     sub_subject_index:int= config["sub_subject_index"]
     step_index:int=config["step_index"]
     init_journey_chat(config["journey_name"])
-    journey:Dict[str, JourneyModel] = get_db_journey(journey_name)
+    journey:Dict[str, JourneyDataTable] = get_db_journey(journey_name)
     step = journey[subject_name].subjects[sub_subject_index].plan[step_index].structured
 
     id = f"{journey_name}{DELIMITER}{subject_name}{DELIMITER}{sub_subject_index}{DELIMITER}{step_index}"

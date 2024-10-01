@@ -23,11 +23,13 @@ from lib.helpers import (
 from lib.load_env import SETTINGS
 from lib.models.topics import (
     ParsedTopic,
+    TopicDataTable,
     get_topic_doc_context,
     get_topic_str,
     parse_topic_items,
     prepare_topic_contents,
 )
+from lib.models.reference import Reference, ReferenceType
 
 # from lib.prompts.topics import TOPIC_COMBINE_INSTRUCT_TAGS
 
@@ -200,6 +202,38 @@ def map_search_topics(state: FindTopicsState):
     ]
 
 
+def get_result_dict(result, reserved_ids=None):
+    if isinstance(result, Dict):
+        return {
+            "page_content": result["document"],
+            "references": (
+                Reference(
+                    id=result["source"],
+                    type=ReferenceType.source,
+                    index=(result["page"] if result["page"] != -1 else result["index"] + 1),
+                )
+                if result["source"]
+                else None
+            ),
+            "page": (result["page"] if result["page"] != -1 else result["index"] + 1),
+            "topic_index": result["topic_index"],
+            "metadata": result["document"].metadata,
+            "topic": result["topic"] or "",
+            "summary": result["summary"] or "",
+            "instruct": result["instruct"] or "",
+            "id": (
+                result["id"]
+                if "id" in result and result["id"]
+                else get_unique_id(
+                    f"{result['index']}-{result['topic_index']}-{result['topic']}",
+                    reserved_ids,
+                )
+            ),
+        }
+    if isinstance(result, TopicDataTable):
+        return result.__dict__
+
+
 async def concat_search_topics(state: FindTopicsState, config: RunnableConfig):
     instructions = state["instructions"] if "instructions" in state else None
     sorted_search_topics: List[Dict] = sorted(
@@ -249,29 +283,7 @@ async def concat_search_topics(state: FindTopicsState, config: RunnableConfig):
     return {
         "search_topics_content_complete": True,
         "concat_search_topics_complete": True,
-        "content_topics": [
-            {
-                "page_content": result["document"],
-                "source": result["source"] or "",
-                "page": (
-                    result["page"] if result["page"] != -1 else result["index"] + 1
-                ),
-                "topic_index": result["topic_index"],
-                "metadata": result["document"].metadata,
-                "topic": result["topic"] or "",
-                "summary": result["summary"] or "",
-                "instruct": result["instruct"] or "",
-                "id": (
-                    result["id"]
-                    if "id" in result and result["id"]
-                    else get_unique_id(
-                        f"{result['index']}-{result['topic_index']}-{result['topic']}",
-                        reserved_ids,
-                    )
-                ),
-            }
-            for result in new_topics
-        ],
+        "content_topics": [get_result_dict(result) for result in new_topics],
         "all_topics": set([item.get("topic", "") for item in new_topics]),
     }
 

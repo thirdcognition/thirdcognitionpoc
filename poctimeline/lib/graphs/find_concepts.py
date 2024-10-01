@@ -24,19 +24,17 @@ from lib.helpers import (
 )
 
 from lib.models.taxonomy import (
-    Taxonomy,
+    TaxonomyDataTable,
     convert_taxonomy_to_json_string,
 )
 from lib.models.concepts import (
-    ConceptDataTable,
     ConceptData,
+    ConceptDataTable,
     ConceptList,
     get_concept_str,
 )
-from lib.models.source import (
-    split_topics,
-)
-from lib.models.topics import get_topic_str
+
+from lib.models.topics import get_topic_str, split_topics
 
 
 class FindConceptsState(TypedDict):
@@ -48,10 +46,10 @@ class FindConceptsState(TypedDict):
     instructions: str
     taxonomy: Dict
     # Generated
-    concepts: List[ConceptData]
+    concepts: List[ConceptDataTable]
     found_concepts: Annotated[list, operator.add]
-    new_concepts: List[ConceptData]
-    collected_concepts: List[ConceptData]
+    new_concepts: List[ConceptDataTable]
+    collected_concepts: List[ConceptDataTable]
     # semantic_contents: List[Document]
     search_concepts_complete: bool = False
     combine_concepts_complete: bool = False
@@ -67,7 +65,7 @@ class ProcessConceptsState(TypedDict):
     filename: str
     url: str
     topics: List[Dict]
-    taxonomy: List[Taxonomy]
+    taxonomy: List[TaxonomyDataTable]
 
 
 _new_ids = {}
@@ -75,7 +73,7 @@ _new_ids = {}
 
 async def map_search_concepts(state: FindConceptsState):
     user_db_commit()
-    taxonomy: List[Taxonomy] = get_taxonomy_item_list(
+    taxonomy: List[TaxonomyDataTable] = get_taxonomy_item_list(
         categories=state["categories"], reset=True
     )
 
@@ -167,7 +165,7 @@ async def search_concepts(state: ProcessConceptsState, config: RunnableConfig):
 
     global_new_ids += new_ids
 
-    return {"found_concepts": new_concepts}
+    return {"found_concepts": [concept.to_concept_data_table() for concept in new_concepts]}
 
 
 async def combine_concepts(state: FindConceptsState, config: RunnableConfig):
@@ -183,20 +181,16 @@ async def combine_concepts(state: FindConceptsState, config: RunnableConfig):
 
 
 async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
-    new_concepts: List[ConceptData] = state["new_concepts"]
+    new_concepts: List[ConceptDataTable] = state["new_concepts"]
 
     source = state["filename"] if "filename" in state else state["url"]
 
     existing_concept_data: List[ConceptDataTable] = get_db_concepts(source=source)
-    existing_concepts_by_id: Dict[str, ConceptData] = {}
+    existing_concepts_by_id: Dict[str, ConceptDataTable] = {}
     existing_concept_ids: List[str] = []
     existing_concepts = []
     if len(existing_concept_data) > 0:
-        for concept_data in existing_concept_data:
-            concept:ConceptData = concept_data.concept_contents
-            # ParsedConcept(
-            # **concept.concept_contents.__dict__
-            # )
+        for concept in existing_concept_data:
             concept.taxonomy = sorted(concept.taxonomy)
             existing_concepts_by_id[concept.id] = concept
         existing_concept_ids = sorted(
@@ -211,7 +205,7 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
     for concept in new_concepts:
         concept.taxonomy = sorted(concept.taxonomy)
     new_concepts = sorted(new_concepts, key=lambda x: ("-".join(x.taxonomy), x.id))
-    new_concepts_by_id: Dict[str, ConceptData] = {
+    new_concepts_by_id: Dict[str, ConceptDataTable] = {
         concept.id: concept for concept in new_concepts
     }
     new_concept_ids = sorted(
@@ -256,7 +250,7 @@ async def collapse_concepts(state: FindConceptsState, config: RunnableConfig):
             all_concepts_by_id[concept.id] = concept
             if concept.id not in new_concept_ids:
                 new_concept_ids.append(concept.id)
-                new_concepts.append(concept)
+                new_concepts.append(concept.to_concept_data_table())
 
         for concept in all_concepts_by_id.values():
             if concept.id in inverted_hierarchy.keys():

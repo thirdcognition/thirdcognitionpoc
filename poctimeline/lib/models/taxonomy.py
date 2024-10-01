@@ -13,14 +13,30 @@ from lib.load_env import SETTINGS
 class TaxonomyDataTable(Base):
     __tablename__ = SETTINGS.concept_taxonomys_tablename
 
-    # id = Column(Integer, primary_key=True)
     id = sqla.Column(sqla.String, primary_key=True)
     parent_id = sqla.Column(sqla.String)
-    concept_taxonomy = sqla.Column(sqla.PickleType, default=None)
+    tag = sqla.Column(sqla.String)
+    type = sqla.Column(sqla.String)
+    title = sqla.Column(sqla.String)
+    description = sqla.Column(sqla.String)
+    taxonomy = sqla.Column(sqla.String)
+    parent_taxonomy = sqla.Column(sqla.String)
     category_tags = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
     last_updated = sqla.Column(sqla.DateTime)
     disabled = sqla.Column(sqla.Boolean, default=False)
+    # concept_taxonomy = sqla.Column(sqla.PickleType, default=None)
 
+    def to_taxonomy(self):
+        return Taxonomy(
+            parent_id=self.parent_id,
+            id=self.id,
+            tag=self.tag,
+            type=self.type,
+            title=self.title,
+            description=self.description,
+            taxonomy=self.taxonomy,
+            parent_taxonomy=self.parent_taxonomy,
+        )
 
 # class ParsedTaxonomy(BaseModel):
 #     parent_id: Optional[str] = Field(
@@ -77,6 +93,18 @@ class Taxonomy(BaseModel):
         title="Parent taxonomy classification",
     )
 
+    def to_taxonomy_data_table(self):
+        return TaxonomyDataTable(
+            parent_id=self.parent_id,
+            id=self.id,
+            tag=self.tag,
+            type=self.type,
+            title=self.title,
+            description=self.description,
+            taxonomy=self.taxonomy,
+            parent_taxonomy=self.parent_taxonomy,
+        )
+
 
 class TaxonomyList(BaseModel):
     taxonomy: List[Taxonomy] = Field(
@@ -104,11 +132,13 @@ class TaxonomyStructureList(BaseModel):
         description="A list of taxonomy identified in the context", title="Taxonomy"
     )
 
-def convert_taxonomy_dict_to_tag_structure_string(data: dict) -> str:
+def convert_taxonomy_to_tag_structure_string(data) -> str:
     if isinstance(data, list):
         category_tag_data = [item["category_tag"] if isinstance(item, dict) else item for item in data]
-    else:
+    elif isinstance(data, dict):
         category_tag_data: Dict = data["category_tag"]
+    else:
+        category_tag_data = [data]
     return get_item_str(
         category_tag_data,
         as_tags=True,
@@ -139,25 +169,25 @@ def convert_taxonomy_dict_to_tag_structure_string(data: dict) -> str:
     # return textwrap.dedent(tag_structure)
 
 
-def convert_taxonomy_to_dict(taxonomy: Taxonomy) -> dict:
-    return {
-        "category_tag": {
-            "title": taxonomy.title,
-            "taxonomy": taxonomy.taxonomy,
-            "parent_taxonomy": taxonomy.parent_taxonomy,
-            "tag": taxonomy.tag,
-            "type": taxonomy.type,
-            "id": taxonomy.id,
-            "parent_id": taxonomy.parent_id,
-            "description": taxonomy.description,
-        }
-    }
+# def convert_taxonomy_to_dict(taxonomy: TaxonomyDataTable) -> dict:
+#     return {
+#         "category_tag": {
+#             "title": taxonomy.title,
+#             "taxonomy": taxonomy.taxonomy,
+#             "parent_taxonomy": taxonomy.parent_taxonomy,
+#             "tag": taxonomy.tag,
+#             "type": taxonomy.type,
+#             "id": taxonomy.id,
+#             "parent_id": taxonomy.parent_id,
+#             "description": taxonomy.description,
+#         }
+#     }
 
 
 def convert_taxonomy_to_json_string(
-    taxonomy: Taxonomy, show_description: bool = False, children: List[str] = None
+    taxonomy: TaxonomyDataTable, show_description: bool = False, children: List[str] = None
 ) -> str:
-    if isinstance(taxonomy, list):
+    if not isinstance(taxonomy, TaxonomyDataTable) and isinstance(taxonomy, list):
         return "[{}]".format(", ".join([convert_taxonomy_to_json_string(t) for t in taxonomy]))
 
     tag_structure = {
@@ -244,11 +274,11 @@ def convert_taxonomy_dict_to_tag_simple_structure_string(
 #     )
 
 
-def convert_taxonomy_dict_to_taxonomy(data: dict) -> Taxonomy:
+def convert_taxonomy_dict_to_taxonomy(data: dict) -> TaxonomyDataTable:
     category_tag_data: Dict = data.get("category_tag", {})
     if not category_tag_data:
         raise ValueError("Invalid data format. 'category_tag' key not found.")
-    return Taxonomy(
+    return TaxonomyDataTable(
         id=category_tag_data.get("id", ""),
         parent_id=category_tag_data.get("parent_id", ""),
         title=category_tag_data.get("title", ""),

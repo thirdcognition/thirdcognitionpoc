@@ -6,6 +6,7 @@ import sys
 import time
 from typing import Dict, List, Union
 import streamlit as st
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 from admin.sidebar import init_sidebar
@@ -15,8 +16,8 @@ from lib.db.source import get_db_sources
 from lib.db.taxonomy import get_db_taxonomy
 from lib.db.concept import get_concept_by_id, get_db_concepts
 from lib.helpers import pretty_print
-from lib.models.concepts import ConceptData, ConceptDataTable
-from lib.models.taxonomy import Taxonomy
+from lib.models.concepts import ConceptDataTable
+from lib.models.taxonomy import TaxonomyDataTable
 
 
 from lib.streamlit_tools import get_all_categories
@@ -35,14 +36,14 @@ This is an *extremely* cool admin tool!
 
 
 def display_concept(
-    concept: ConceptData = None,
+    concept: ConceptDataTable = None,
     concepts: Dict[str, ConceptDataTable] = None,
     id: str = None,
     children: dict = None,
     header: str = None,
 ):
     if concept is None and concepts is not None and id is not None:
-        concept: ConceptData = concepts[id].concept_contents
+        concept = concepts[id]
     if concept is None:
         return
 
@@ -60,7 +61,7 @@ def display_concept(
             child_item: ConceptDataTable = concepts[child]
             display_concept(
                 concepts=concepts,
-                header=f"{header} > {child_item.concept_contents.title}",
+                header=f"{header} > {child_item.title}",
                 id=child,
                 children=(
                     children[child]["children"]
@@ -71,7 +72,7 @@ def display_concept(
 
 
 def build_hierarchy(
-    items: Union[List[ConceptDataTable], List[Taxonomy]],
+    items: Union[List[ConceptDataTable], List[TaxonomyDataTable]],
     parent_id=None,
 ):
     hierarchy = {}
@@ -93,21 +94,18 @@ def concept_hierarchy(categories: List[str]):
         concepts = get_db_concepts(categories=[category])
         concepts_by_id = {concept.id: concept for concept in concepts}
         hierarchy = build_hierarchy(concepts)
-        # pretty_print({
-        #     "hierarchy": hierarchy,
-        #     "concepts": [concept.concept_contents.model_dump_json(indent=2) for concept in concepts]
-        # }, "Concept Hierarchy", force=True)
+
         for id in hierarchy.keys():
             children = hierarchy[id].get("children", [])
             if len(children) > 0:
                 # st.write("---")
-                st.subheader(f"{concepts_by_id[id].concept_contents.title}")
+                st.subheader(f"{concepts_by_id[id].title}")
 
             display_concept(
                 concepts=concepts_by_id,
                 id=id,
                 children=children,
-                header=f"{concepts_by_id[id].concept_contents.title}",
+                header=f"{concepts_by_id[id].title}",
             )
 
             if len(children) > 0:
@@ -115,8 +113,8 @@ def concept_hierarchy(categories: List[str]):
 
 
 def manage_taxonomy(
-    taxonomy: Taxonomy = None,
-    taxonomy_by_id: Dict[str, List[Taxonomy]] = None,
+    taxonomy: TaxonomyDataTable = None,
+    taxonomy_by_id: Dict[str, List[TaxonomyDataTable]] = None,
     id: str = None,
     children: dict = None,
     header: str = None,
@@ -131,13 +129,13 @@ def manage_taxonomy(
         st.subheader(header or taxonomy.title)
         st.write(taxonomy.description)
         for concept_data in concepts:
-            display_concept(concept_data.concept_contents)
+            display_concept(concept_data)
 
     if children and taxonomy_by_id:
         for child in children.keys():
             manage_taxonomy(
                 taxonomy_by_id=taxonomy_by_id,
-                header=f"{header} > {taxonomy_by_id[child].title}",
+                header=f"{header} > {', '.join([taxonomy_item.title for taxonomy_item in taxonomy_by_id[str(child)]]) if isinstance(taxonomy_by_id[str(child)], list) else taxonomy_by_id[str(child)].title}",
                 id=child,
                 children=(
                     children[child]["children"]
@@ -147,7 +145,7 @@ def manage_taxonomy(
             )
 
 
-def taxonomy_hierarchy(taxonomy: Dict[str, List[Taxonomy]]):
+def taxonomy_hierarchy(taxonomy: Dict[str, List[TaxonomyDataTable]]):
     for category in taxonomy.keys():
         taxonomy_by_id = {
             taxonomy_item.id: taxonomy_item for taxonomy_item in taxonomy[category]
@@ -158,7 +156,7 @@ def taxonomy_hierarchy(taxonomy: Dict[str, List[Taxonomy]]):
         # pretty_print({
         #     "hierarchy": hierarchy,
         #     "taxonomy": [taxonomy_item.model_dump_json(indent=2) for taxonomy_item in taxonomy[category]]
-        # }, "Taxonomy Hierarchy", force=True)
+        # }, "TaxonomyDataTable Hierarchy", force=True)
         break_reset = True
 
         for id in hierarchy.keys():
@@ -171,31 +169,15 @@ def taxonomy_hierarchy(taxonomy: Dict[str, List[Taxonomy]]):
                 header=f"{taxonomy_by_id[id].title}",
             )
 
-        # for id in hierarchy.keys():
-        #     children = hierarchy[id].get("children", [])
-        #     if len(children) > 0:
-        #         st.write("---")
-        #         st.subheader(f"{concepts_by_id[id].concept_contents.title}")
 
-        #     display_concept(
-        #         concepts=concepts_by_id,
-        #         id=id,
-        #         children=children,
-        #         header=f"{concepts_by_id[id].concept_contents.title}",
-        #     )
-
-        #     if len(children) > 0:
-        #         st.write("---")
-
-
-def by_taxonomy_items(taxonomy: Dict[str, List[Taxonomy]]):
+def by_taxonomy_items(taxonomy: Dict[str, List[TaxonomyDataTable]]):
     sel_col1, sel_col2 = st.columns([1, 1])
 
     keys = ["parent_taxonomy", "taxonomy", "type", "tag"]
     desc = ["Parent taxonomy", "Taxonomy", "Type", "Tag"]
     structure_by = keys[desc.index(sel_col1.selectbox("Structure by", desc))]
 
-    structured_taxonomy: Dict[str, List[Taxonomy]] = None
+    structured_taxonomy: Dict[str, List[TaxonomyDataTable]] = None
     for category in taxonomy.keys():
         structured_taxonomy = {}
         for item in taxonomy[category]:
@@ -217,17 +199,16 @@ def by_taxonomy_items(taxonomy: Dict[str, List[Taxonomy]]):
 
 def by_source(source_name: str):
     file_entry = get_db_sources(source=source_name)[source_name]
-    tagged_concepts: Dict[str, List[ConceptData]] = defaultdict(list)
-    tags: Dict[str, Taxonomy] = {}
+    tagged_concepts: Dict[str, List[ConceptDataTable]] = defaultdict(list)
+    tags: Dict[str, TaxonomyDataTable] = {}
     st.subheader(f"{source_name}")
     with st.container():
         for concept_id in file_entry.source_concepts:
             db_concept = get_concept_by_id(concept_id)
-            concept_inst: ConceptData = db_concept.concept_contents
             # pretty_print(
             #     concept_inst.model_dump_json(indent=2), "Concept Data", force=True
             # )
-            display_concept(concept_inst)
+            display_concept(db_concept)
         #     for tag in concept_inst.taxonomy:
         #         tagged_concepts[tag].append(concept_inst)
         #         if tag not in tags:
@@ -268,7 +249,7 @@ async def main():
     #     return
 
     if categories:
-        taxonomy: Dict[str, List[Taxonomy]] = get_db_taxonomy(
+        taxonomy: Dict[str, List[TaxonomyDataTable]] = get_db_taxonomy(
             categories=categories
         )
 

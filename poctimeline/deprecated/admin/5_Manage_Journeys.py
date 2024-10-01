@@ -11,7 +11,7 @@ sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 from admin.sidebar import init_sidebar
 from lib.models.journey import (
     TaskStructure,
-    JourneyModel,
+    JourneyDataTable,
     StepModel,
     SubjectModel,
     StepStructure,
@@ -44,7 +44,7 @@ This is an *extremely* cool admin tool!
 )
 
 
-def save_journey_command(journey_name, id, journey: JourneyModel, scope="fragment"):
+def save_journey_command(journey_name, id, journey: JourneyDataTable, scope="fragment"):
     if save_journey(journey_name, journey):
         st.session_state.editing_journey = None
         st.session_state.editing_journey_details = None
@@ -57,7 +57,7 @@ def save_journey_command(journey_name, id, journey: JourneyModel, scope="fragmen
         st.error("Error saving journey")
 
 
-def save_journey_ui(id, journey_name, journey: JourneyModel):
+def save_journey_ui(id, journey_name, journey: JourneyDataTable):
     subcol1, subcol2, _ = st.columns([1, 1, 5])
     if subcol1.button("Save", key=f"save_button_{id}", use_container_width=True):
         save_journey_command(journey_name, id, journey, scope="app")
@@ -73,7 +73,7 @@ def save_journey_ui(id, journey_name, journey: JourneyModel):
 
 
 def journey_details_ui(
-    journey_name: str, journey: JourneyModel, edit_mode: bool = False
+    journey_name: str, journey: JourneyDataTable, edit_mode: bool = False
 ):
     if edit_mode:
         journey.instructions = st.text_area(
@@ -110,10 +110,10 @@ def journey_details_ui(
 def subject_details_ui(
     journey_name: str,
     subject_index: int,
-    journey: JourneyModel,
+    journey: JourneyDataTable,
     edit_mode: bool = False,
 ):
-    subject = journey.subjects[subject_index]
+    subject:SubjectModel = journey.subjects[subject_index]
 
     subject.prompts = create_subject_prompt_editor(
         f"{journey_name}_subject_{subject_index + 1}", subject, edit_mode
@@ -174,7 +174,7 @@ def step_ui(
     journey_name: str,
     subject_index: int,
     step_index: int,
-    journey: JourneyModel,
+    journey: JourneyDataTable,
     edit_mode: bool = False,
     container1: DeltaGenerator = None,
 ):
@@ -268,7 +268,7 @@ def step_tasks_ui(
     journey_name: str,
     subject_index: int,
     step_index: int,
-    journey: JourneyModel,
+    journey: JourneyDataTable,
     edit_mode: bool = False,
     container1: DeltaGenerator = None,
     container2: DeltaGenerator = None,
@@ -419,7 +419,7 @@ def step_tasks_ui(
 
 def edit_task_ui(
     journey_name: str,
-    journey: JourneyModel,
+    journey: JourneyDataTable,
     subject_index: int,
     step_index: int,
     task_index: int,
@@ -524,7 +524,7 @@ def edit_task_ui(
     ] = task
 
 
-def add_subject(journey_name: str, journey: JourneyModel):
+def add_subject(journey_name: str, journey: JourneyDataTable):
     journey.subjects.append(
         SubjectModel(
             title="New subject",
@@ -535,24 +535,24 @@ def add_subject(journey_name: str, journey: JourneyModel):
     )
 
 
-def remove_subject(journey_name: str, journey: JourneyModel, subject_index: int):
+def remove_subject(journey_name: str, journey: JourneyDataTable, subject_index: int):
     journey.subjects.pop(subject_index)
 
 
-def add_step(journey_name: str, journey: JourneyModel, subject_index: int):
+def add_step(journey_name: str, journey: JourneyDataTable, subject_index: int):
     journey.subjects[subject_index].plan.append(
         StepModel(title="New step", tasks="")
     )
 
 
 def remove_step(
-    journey_name: str, journey: JourneyModel, subject_index: int, step_index: int
+    journey_name: str, journey: JourneyDataTable, subject_index: int, step_index: int
 ):
     journey.subjects[subject_index].plan.pop(step_index)
 
 
 def add_task(
-    journey_name: str, journey: JourneyModel, subject_index: int, step_index: int
+    journey_name: str, journey: JourneyDataTable, subject_index: int, step_index: int
 ):
     journey.subjects[subject_index].plan[step_index].structured.tasks.append(
         TaskStructure(title="", description="", resources=[], test="")
@@ -561,7 +561,7 @@ def add_task(
 
 def remove_task(
     journey_name: str,
-    journey: JourneyModel,
+    journey: JourneyDataTable,
     subject_index: int,
     step_index: int,
     task_index: int,
@@ -573,7 +573,7 @@ def remove_task(
 
 def add_resource(
     journey_name: str,
-    journey: JourneyModel,
+    journey: JourneyDataTable,
     subject_index: int,
     step_index: int,
     task_index: int,
@@ -585,7 +585,7 @@ def add_resource(
 
 def generate_resource(
     journey_name: str,
-    journey: JourneyModel,
+    journey: JourneyDataTable,
     subject_index: int,
     step_index: int,
     task_index: int,
@@ -610,7 +610,7 @@ def generate_resource(
 
 def remove_resource(
     journey_name: str,
-    journey: JourneyModel,
+    journey: JourneyDataTable,
     subject_index: int,
     step_index: int,
     task_index: int,
@@ -623,7 +623,7 @@ def remove_resource(
 
 @st.fragment
 async def subjects_ui(
-    journey_name: str, journey_index: int, journey: JourneyModel
+    journey_name: str, journey_index: int, journey: JourneyDataTable
 ):
     col1, col2 = st.columns([1, 1], vertical_alignment="center")
     subject_titles = [subject.title for subject in journey.subjects]
@@ -795,7 +795,7 @@ def main():
     # if "edit_mode" not in st.session_state or len(st.session_state.edit_mode) == 0:
     #     st.session_state.edit_mode = [False for _ in db_journey.keys()]
     # for journey_index, journey_name in enumerate(db_journey.keys()):
-    #     journey: JourneyModel = db_journey[journey_name]
+    #     journey: JourneyDataTable = db_journey[journey_name]
     #     col_edit, col_delete, col2, col3 = st.columns(
     #         [2, 2, 12, 3], vertical_alignment="center"
     #     )

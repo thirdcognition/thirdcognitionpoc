@@ -1,7 +1,7 @@
 import json
 import pprint as pp
 import re
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel
 import streamlit as st
 import yaml
@@ -66,9 +66,11 @@ def validate_category(category: str) -> bool:
         return False
     return True
 
+
 def is_valid_email(email):
-    email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
     return re.match(email_regex, email) is not None
+
 
 def get_session_history(session_id: str) -> BaseChatMessageHistory:
     if "chat_history" not in st.session_state:
@@ -134,6 +136,7 @@ def get_text_from_completion(completion):
 
     return completion_content
 
+
 def get_number(page_number):
     if isinstance(page_number, (int, float)):
         return int(page_number)
@@ -145,7 +148,8 @@ def get_number(page_number):
             return int(page_number)
     return 0
 
-def flatten_dict(d, parent_key='', sep='_'):
+
+def flatten_dict(d, parent_key="", sep="_"):
     items = []
     for k, v in d.items():
         new_key = parent_key + sep + k if parent_key else k
@@ -163,6 +167,7 @@ def flatten_dict(d, parent_key='', sep='_'):
                 print(f"Error flattening key '{new_key}': {e}")
                 continue
     return dict(items)
+
 
 def combine_metadata(docs: List[Document]) -> Dict[str, Any]:
     combined_metadata = {k: v for k, v in docs[0].metadata.items()}
@@ -236,7 +241,9 @@ def get_id_str(item):
     return item
 
 
-def get_unique_id(id_str: str, existing_ids: List[str]):
+def get_unique_id(id_str: str, existing_ids: List[str] = []):
+    if existing_ids is None:
+        existing_ids = []
     id = get_id_str(id_str)
     if id not in existing_ids:
         return id
@@ -285,14 +292,37 @@ def get_item_str(
                     continue
                 elif value is None and not as_json:
                     value = "None"
-
+                # print(key, value)
                 if isinstance(value, Document):
                     value = value.page_content
 
-                if not as_json and not isinstance(
+                if not isinstance(
                     value, (str, int, float, bool, type(None))
                 ):
-                    value = yaml.dump(value)
+                    if not as_json:
+                        value = yaml.dump(value)
+                    else:
+                        if isinstance(value, BaseModel):
+                            value = value.model_dump(mode='json')
+                        elif isinstance(value, Base):
+                            value = value.__dict__
+                        elif isinstance(value, (dict, list, tuple, set)):
+                            if isinstance(value, dict):
+                                value = {k: v for k, v in value.items()}
+                            else:
+                                value = list(value)
+                            for i, v in enumerate(value):
+                                if isinstance(v, (str, int, float, bool, type(None))):
+                                    value[i] = v
+                                elif isinstance(v, BaseModel):
+                                    value[i] = v.model_dump(mode='json')
+                                elif isinstance(v, Base):
+                                    value[i] = v.__dict__
+                                else:
+                                    try:
+                                        dump = json.dumps(v)
+                                    except:
+                                        value[i] = repr(v)
 
                 if isinstance(value, str):
                     if one_liner:

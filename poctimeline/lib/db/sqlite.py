@@ -1,3 +1,4 @@
+import os
 from typing import Dict
 import sqlalchemy as sqla
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
@@ -6,7 +7,6 @@ from lib.load_env import SETTINGS
 
 Base = declarative_base()
 
-chroma_client = None
 database_session:Dict[str, Session] = {}
 
 def init_system_db() -> Session:
@@ -14,9 +14,15 @@ def init_system_db() -> Session:
     return init_db(db_file)
 
 def init_db(db_file=SETTINGS.sqlite_db) -> Session:
+    db_folder = os.path.dirname(os.path.join(SETTINGS.db_path, db_file, "sqlite.db"))
+    if not os.path.exists(db_folder):
+        os.makedirs(db_folder)
+    db_system_file = os.path.join(SETTINGS.db_path, db_file, "sqlite.db")
+
     global database_session
     if db_file not in database_session:
-        engine = sqla.create_engine("sqlite:///{}".format(db_file))
+        print("Open db: {}".format(db_system_file))
+        engine = sqla.create_engine("sqlite:///{}".format(db_system_file))
         Base.metadata.create_all(engine)
         DatabaseSession = sessionmaker(bind=engine, autoflush=False)
         database_session[db_file] = DatabaseSession()
@@ -28,5 +34,6 @@ def db_session(db_file=SETTINGS.sqlite_db) -> Session:
 
 
 def db_commit(db_file=SETTINGS.sqlite_db):
-    database_session[db_file].commit()
+    if db_file in database_session:
+        database_session[db_file].commit()
 

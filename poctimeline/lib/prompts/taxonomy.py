@@ -2,7 +2,7 @@ import os
 import textwrap
 import random
 from typing import Any, Dict, List
-from lib.helpers import read_and_load_yaml
+from lib.helpers.shared import read_and_load_yaml
 from langchain_core.output_parsers import PydanticOutputParser
 from lib.models.taxonomy import Taxonomy, TaxonomyStructureList
 from lib.prompts.base import (

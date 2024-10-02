@@ -6,7 +6,7 @@ import sqlalchemy as sqla
 import streamlit as st
 from lib.models.user import user_db_get_session
 
-from lib.helpers import convert_tags_to_dict, get_id_str, get_unique_id, pretty_print
+from lib.helpers.shared import convert_tags_to_dict, get_id_str, get_unique_id, pretty_print
 from lib.models.taxonomy import TaxonomyDataTable, Taxonomy
 from lib.prompts.taxonomy import TAXONOMY_ALL_TAGS
 

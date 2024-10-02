@@ -15,7 +15,7 @@ from lib.db.taxonomy import (
     handle_new_taxonomy_item,
     update_db_taxonomy,
 )
-from lib.helpers import (
+from lib.helpers.shared import (
     get_id_str,
     get_specific_tag,
     pretty_print,

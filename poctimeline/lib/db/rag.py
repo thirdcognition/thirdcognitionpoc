@@ -8,7 +8,7 @@ from chromadb.config import Settings as ChromaSettings
 from chromadb.api import AsyncClientAPI, ClientAPI
 from lib.chains.init import get_embeddings
 
-from lib.helpers import pretty_print
+from lib.helpers.shared import pretty_print
 from lib.load_env import SETTINGS
 from lib.models.user import get_user_chroma_path
 

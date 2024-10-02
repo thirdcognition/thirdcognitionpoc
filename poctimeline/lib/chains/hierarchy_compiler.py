@@ -4,7 +4,7 @@ from langchain_core.messages import AIMessage
 from pydantic import BaseModel
 
 from lib.chains.init import get_chain
-from lib.helpers import pretty_print
+from lib.helpers.shared import pretty_print
 from lib.load_env import SETTINGS
 
 

@@ -16,7 +16,7 @@ from lib.chains.init import get_chain
 from lib.document_tools import (
     a_semantic_splitter,
 )
-from lib.helpers import (
+from lib.helpers.shared import (
     get_text_from_completion,
     get_unique_id,
 )

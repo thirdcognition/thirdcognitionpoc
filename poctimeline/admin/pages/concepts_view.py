@@ -15,7 +15,7 @@ from lib.streamlit.user import check_auth
 from lib.db.source import get_db_sources
 from lib.db.taxonomy import get_db_taxonomy
 from lib.db.concept import get_concept_by_id, get_db_concepts
-from lib.helpers import pretty_print
+from lib.helpers.shared import pretty_print
 from lib.models.concepts import ConceptDataTable
 from lib.models.taxonomy import TaxonomyDataTable
 

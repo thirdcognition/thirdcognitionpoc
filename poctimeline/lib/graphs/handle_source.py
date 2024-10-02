@@ -10,8 +10,7 @@ from langchain_core.documents import Document
 from langgraph.graph import END, START, StateGraph
 from langchain_community.document_loaders.url_playwright import PlaywrightURLLoader
 
-from db.taxonomy import get_taxonomy_item_list
-from db.topics import get_topic_by_id, update_db_topic_rag
+from lib.db.topics import get_topic_by_id, update_db_topic_rag
 from lib.db.concept import get_concept_by_id, update_db_concept_rag
 from lib.db.source import (
     db_source_exists,
@@ -23,7 +22,7 @@ from lib.document_tools import (
     a_semantic_splitter,
     markdown_to_text,
 )
-from lib.helpers import get_number, get_text_from_completion, pretty_print
+from lib.helpers.shared import get_number, get_text_from_completion, pretty_print
 from lib.load_env import SETTINGS
 from lib.models.concepts import ConceptDataTable
 from lib.models.taxonomy import Taxonomy, TaxonomyDataTable

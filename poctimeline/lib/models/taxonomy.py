@@ -6,7 +6,7 @@ import sqlalchemy as sqla
 from sqlalchemy.ext.mutable import MutableList
 
 from lib.db.sqlite import Base
-from lib.helpers import get_item_str, pretty_print
+from lib.helpers.shared import get_item_str, pretty_print
 from lib.load_env import SETTINGS
 
 

@@ -2,7 +2,7 @@ from typing import Dict
 from langchain_core.runnables import RunnableSequence, RunnableLambda
 from langchain_core.output_parsers import StrOutputParser
 
-from lib.helpers import print_params
+from lib.helpers.shared import print_params
 from lib.prompts.base import PromptFormatter
 
 

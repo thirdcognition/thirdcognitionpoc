@@ -9,7 +9,7 @@ from sqlalchemy.ext.mutable import MutableList
 
 from langchain_core.documents import Document
 from lib.db.sqlite import Base
-from lib.helpers import (
+from lib.helpers.shared import (
     combine_metadata,
     get_id_str,
     get_item_str,

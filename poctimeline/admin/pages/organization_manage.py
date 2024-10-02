@@ -8,7 +8,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../../lib"))
 
 from admin.sidebar import init_sidebar
-from lib.helpers import is_valid_email
+from lib.helpers.shared import is_valid_email
 from lib.streamlit.user import check_auth
 from lib.models.user import (
     AuthStatus,

@@ -85,6 +85,7 @@ class ProviderModelSettings(BaseModel):
     url: Optional[str] = None
     model: Optional[str] = None
     context_size: Optional[int] = None
+    max_tokens: Optional[int] = None
     char_limit: Optional[int] = None
     api_key: Optional[str] = None
     endpoint: Optional[str] = None
@@ -176,6 +177,7 @@ class Settings(BaseModel):
     organizations_tablename: str
     default_organization: tuple[str,str,str]
     super_admin: List[tuple[str, str]] = []
+    file_repository_path: str
 
 
 SETTINGS = Settings(
@@ -198,6 +200,7 @@ SETTINGS = Settings(
     concept_taxonomys_tablename="concept_taxonomys",
     users_tablename="users",
     organizations_tablename="organizations",
+    file_repository_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), "../file_repository")
 )
 
 SETTINGS.default_llms = ModelDefaults()
@@ -241,6 +244,9 @@ for provider in LLM_PROVIDERS:
                 ),
                 context_size=int(
                     os.getenv(f"{provider}_{type.upper()}_CTX_SIZE", 8192)
+                ),
+                max_tokens=int(
+                    os.getenv(f"{provider}_{type.upper()}_OUT_CTX_SIZE", 2048)
                 ),
                 char_limit=int(
                     os.getenv(f"{provider}_{type.upper()}_CHAR_LIMIT", 12000)

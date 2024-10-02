@@ -18,7 +18,7 @@ from langchain_experimental.text_splitter import (
 )
 from langchain.schema.document import Document
 
-from lib.helpers import flatten_dict
+from lib.helpers.shared import flatten_dict
 from lib.load_env import SETTINGS
 from lib.chains.init import get_embeddings
 from lib.models.concepts import ConceptDataTable

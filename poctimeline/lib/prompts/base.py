@@ -15,8 +15,9 @@ from langchain_core.prompts.chat import MessagesPlaceholder, HumanMessagePromptT
 from langchain_core.output_parsers.base import BaseOutputParser
 from langchain_core.exceptions import OutputParserException
 from langchain_core.output_parsers import BaseOutputParser
+from sqlalchemy import Enum
 
-from lib.helpers import pretty_print
+from lib.helpers.shared import pretty_print
 
 # from fewshot_data import FewShotItem, example_tasks
 
@@ -216,6 +217,8 @@ class TagsParser(BaseOutputParser[Union[str, Dict]]):
     optional_tags: List[str] = None
     return_tag: bool = False
     all_tags_required: bool = False
+    required_output_tag: str = "output"
+    required_output_values: Optional[list] = None
 
     def get_child_content(self, node, tags=None) -> tuple[int, str]:
         if tags is None:
@@ -272,16 +275,16 @@ class TagsParser(BaseOutputParser[Union[str, Dict]]):
                 #     if node["tag"] == tag:
                 #         content[tag] += (
                 child_content = self.get_child_content(
-                        parsed_content,
-                        [tag]
-                        # (
-                        #     self.tags + self.optional_tags
-                        #     if isinstance(self.optional_tags, list)
-                        #     else self.tags
-                        # ),
-                    )
+                    parsed_content,
+                    [tag],
+                    # (
+                    #     self.tags + self.optional_tags
+                    #     if isinstance(self.optional_tags, list)
+                    #     else self.tags
+                    # ),
+                )
                 tag_children[tag] = child_content[0]
-                tag_content[tag] = child_content[1].strip()# + 2 * "\n"
+                tag_content[tag] = child_content[1].strip()  # + 2 * "\n"
                 #         )
                 # tag_content[tag] = tag_content[tag].strip()
                 if len(tag_content[tag]) == 0:
@@ -293,7 +296,9 @@ class TagsParser(BaseOutputParser[Union[str, Dict]]):
                 # )
 
         for tag in self.content_tags:
-            if tag in tag_content:
+            if tag in tag_content and (
+                self.required_output_values is None or tag != self.required_output_tag
+            ):
                 del tag_content[tag]
         #     if tag in tag_contents_joined:
         #         del tag_contents_joined[tag]
@@ -302,11 +307,8 @@ class TagsParser(BaseOutputParser[Union[str, Dict]]):
         for node in parsed_content["children"]:
             if node["tag"] not in self.tags:
                 child_content = self.get_child_content(node, self.content_tags)
-                text_contents_joined += (
-                    child_content[1] + 2 * "\n"
-                )
+                text_contents_joined += child_content[1] + 2 * "\n"
         text_contents_joined = text_contents_joined.strip()
-
 
         if (
             self.min_len > 0
@@ -336,7 +338,9 @@ class TagsParser(BaseOutputParser[Union[str, Dict]]):
         if self.all_tags_required:
             missing_tags = []
             for tag in self.tags:
-                if (tag not in tag_content or len(tag_content[tag]) == 0) and (tag not in tag_children or tag_children[tag] == 0):
+                if (tag not in tag_content or len(tag_content[tag]) == 0) and (
+                    tag not in tag_children or tag_children[tag] == 0
+                ):
                     missing_tags.append(tag)
 
             if len(missing_tags) > 0:
@@ -344,10 +348,27 @@ class TagsParser(BaseOutputParser[Union[str, Dict]]):
                     f"Expected a response with all tags: {', '.join(self.tags)}\nMissing tags: {', '.join(missing_tags)}"
                 )
 
+        if self.required_output_values is not None:
+            output_content = str(tag_content[self.required_output_tag]).strip()
+            matched_value = None
+            for item in self.required_output_values:
+                if fuzz.ratio(output_content, item) > 80:
+                    matched_value = item
+                    break
+            if matched_value is None:
+                raise OutputParserException(
+                    f"Expected a response with a value similar to one from these: [{','.join(self.required_output_values)}]\n\nGot: {output_content}"
+                )
+            return matched_value
+
         if self.return_tag:
             resp = {
                 "content": text_contents_joined,
-                "tags": {tag: tag_content[tag] for tag in tag_content.keys() if tag in self.tags},
+                "tags": {
+                    tag: tag_content[tag]
+                    for tag in tag_content.keys()
+                    if tag in self.tags
+                },
                 # "tags_joined": tag_contents_joined,
                 "parsed": parsed_content,
             }

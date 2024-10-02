@@ -69,10 +69,11 @@ def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous) -> AuthStatus:
     with menu_container:
         st.page_link("Admin_Home.py", label="Home")
         if user_level >= UserLevel.org_admin:
-            st.page_link("pages/6_Manage_Organization.py", label="Manage Organization")
-            st.page_link("pages/1_Upload.py", label="Upload files")
-            st.page_link("pages/2_Manage_Uploads.py", label="Manage files")
-            st.page_link("pages/3_Browse_Concepts.py", label="Browse topics")
+            st.page_link("pages/journey_simple_template.py", label="Create Journey")
+            st.page_link("pages/organization_manage.py", label="Manage Organization")
+            st.page_link("pages/source_upload.py", label="Upload files")
+            st.page_link("pages/source_manage.py", label="Manage files")
+            st.page_link("pages/concepts_view.py", label="Browse topics")
         st.divider()
 
     return auth_valid

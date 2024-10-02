@@ -9,7 +9,7 @@ from langgraph.constants import Send
 from langgraph.graph import END, START, StateGraph
 
 from lib.chains.rag_chain import get_rag_chain
-from lib.helpers import get_text_from_completion
+from lib.helpers.shared import get_text_from_completion
 from lib.models.journey import (
     TaskStructure,
     JourneyDataTable,

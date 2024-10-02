@@ -17,7 +17,7 @@ from langchain_core.runnables import (
 )
 from pydantic import BaseModel, ValidationError
 from lib.chains.base import BaseChain
-from lib.helpers import get_text_from_completion, pretty_print, print_params
+from lib.helpers.shared import get_text_from_completion, pretty_print, print_params
 from lib.prompts.base import PromptFormatter
 from lib.prompts.actions import error_retry
 

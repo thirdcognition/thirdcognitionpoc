@@ -17,7 +17,7 @@ from langchain_core.runnables import (
 from lib.chains.base import BaseChain, keep_chain_params, log_chain_params
 from lib.chains.init import get_chain, get_llm
 from lib.db.rag import get_vectorstore_as_retriever
-from lib.helpers import print_params
+from lib.helpers.shared import print_params
 from lib.prompts.base import PromptFormatter
 from lib.prompts.chat import question
 

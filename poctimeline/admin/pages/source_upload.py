@@ -22,7 +22,7 @@ from admin.sidebar import init_sidebar
 from lib.models.user import AuthStatus, UserLevel, user_db_get_session
 from lib.streamlit.user import check_auth
 from lib.graphs.handle_source import handle_source
-from lib.helpers import pretty_print, validate_category
+from lib.helpers.shared import pretty_print, validate_category
 from lib.db.source import get_db_sources
 
 from lib.streamlit_tools import get_all_categories, graph_call

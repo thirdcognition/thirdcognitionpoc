@@ -15,7 +15,7 @@ from langgraph.graph import END, START, StateGraph
 
 from lib.chains.init import get_chain
 from lib.document_tools import a_semantic_splitter
-from lib.helpers import (
+from lib.helpers.shared import (
     combine_metadata,
     get_text_from_completion,
     pretty_print,

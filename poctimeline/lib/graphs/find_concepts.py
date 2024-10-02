@@ -18,7 +18,7 @@ from lib.db.concept import (
 )
 from lib.models.user import user_db_commit
 from lib.db.taxonomy import get_taxonomy_item_list
-from lib.helpers import (
+from lib.helpers.shared import (
     get_unique_id,
     pretty_print,
 )

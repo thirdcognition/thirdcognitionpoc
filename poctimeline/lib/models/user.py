@@ -11,7 +11,7 @@ import sqlalchemy as sqla
 from sqlalchemy.ext.mutable import MutableList
 
 from lib.db.sqlite import Base, db_commit, db_session, init_system_db
-from lib.helpers import pretty_print
+from lib.helpers.shared import pretty_print
 from lib.load_env import SETTINGS
 
 
@@ -174,9 +174,18 @@ def load_auth_config():
     if st.session_state.get("auth_config") is not None:
         return st.session_state["auth_config"]
 
-    auth_config: dict = {}
+    auth_config: dict = None
 
-    if not os.path.isfile(SETTINGS.auth_filename):
+    if os.path.isfile(SETTINGS.auth_filename):
+        with open(SETTINGS.auth_filename) as file:
+            auth_config = yaml.load(file, Loader=SafeLoader)
+
+    try:
+        users = len(auth_config["credentials"]["usernames"].keys()) if auth_config is not None else 0
+    except:
+        users = 0
+
+    if users == 0:
         # If the file does not exist, initialize the dict using the example
         auth_config = {
             "credentials": {
@@ -199,12 +208,12 @@ def load_auth_config():
         }
         # Save the initialized configuration to the YAML file
 
-    else:
-        # If the file exists, load the configuration from the YAML file
-        with open(SETTINGS.auth_filename) as file:
-            auth_config = yaml.load(file, Loader=SafeLoader)
-
     write_auth_config(auth_config)
+
+    if users == 0:
+        for user in SETTINGS.super_admin:
+            create_preauth_email(user[0])
+
     return auth_config
 
 

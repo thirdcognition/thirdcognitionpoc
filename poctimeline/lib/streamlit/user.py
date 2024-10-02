@@ -169,7 +169,11 @@ def check_auth(user_level: UserLevel = UserLevel.user) -> AuthStatus:
         if not st.session_state.get("authentication_status"):
             tab1, tab2 = login_container.tabs(["Login", "Register"])
             with tab1:
-                authenticator.login()
+                try:
+                    authenticator.login()
+                except Exception as e:
+                    manual_logout(authenticator)
+                    authenticator.login()
 
             with tab2:
                 register_user(authenticator=authenticator)

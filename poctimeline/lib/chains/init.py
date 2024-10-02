@@ -33,6 +33,7 @@ from lib.prompts.journey import (
     task_details,
     step_tasks,
     step_content,
+    journey_template_selector,
 )
 from lib.prompts.journey_structured import step_structured
 from lib.prompts.actions import (
@@ -129,7 +130,7 @@ def init_llm(
             region_name=provider.region,
             model_kwargs={"temperature": temperature},
             timeout=30000,
-            max_tokens = 2048,
+            max_tokens = model.max_tokens,
             max_retries = 2,
             **common_kwargs,
         )
@@ -146,7 +147,7 @@ def init_llm(
             ),
             timeout=60000,
             request_timeout=120,
-            max_tokens = 2048 * 8,
+            max_tokens = model.max_tokens,
             max_retries = 2,
             **common_kwargs,
         )
@@ -159,7 +160,7 @@ def init_llm(
             content_formatter=CustomOpenAIChatContentFormatter(),
             model_kwargs={"temperature": temperature},
             timeout=1000,
-            max_tokens = 128,
+            max_tokens = model.max_tokens,
             max_retries = 2,
             **common_kwargs,
         )
@@ -178,7 +179,7 @@ def init_llm(
             repeat_penalty=2,
             timeout=30000,
             max_retries = 2,
-            max_tokens = 2048,
+            max_tokens = model.max_tokens,
             **common_kwargs,
         )
 
@@ -194,7 +195,7 @@ def init_llm(
             ),
             timeout=30000,
             max_retries=2,
-            max_tokens = 2048,
+            max_tokens = model.max_tokens,
             **common_kwargs,
         )
 
@@ -395,6 +396,7 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
         step_tasks,
         True,
     ),
+    "journey_template_selector": ("instruct", journey_template_selector, False),
     "task_details": ("instruct_warm", task_details, True),
     "question": ("chat", question, True),
     "helper": ("chat", helper, False),

@@ -20,7 +20,7 @@ from lib.db.rag import get_chroma_collections
 from lib.db.taxonomy import get_taxonomy_by_id
 from lib.db.concept import get_concept_by_id
 from lib.db.source import delete_db_source, get_db_sources
-from lib.helpers import pretty_print
+from lib.helpers.shared import pretty_print
 from lib.models.source import SourceContents, SourceDataTable, SourcePage
 from lib.models.concepts import ConceptDataTable
 from lib.models.taxonomy import TaxonomyDataTable

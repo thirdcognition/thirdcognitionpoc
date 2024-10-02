@@ -1,3 +1,4 @@
+
 from typing import List
 from pydantic import BaseModel, Field
 import sqlalchemy as sqla
@@ -76,6 +77,5 @@ class SubjectModel(BaseModel):
     steps_amount: int = Field(default=None)
     task_amount: int = Field(default=None)
     concepts: List[ConceptData] = Field(default=None)
-
 
 

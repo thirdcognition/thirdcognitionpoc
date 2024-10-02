@@ -20,7 +20,7 @@ from lib.chains.base_parser import (
     error_retry,
     retry_setup,
 )
-from lib.helpers import get_text_from_completion, print_params
+from lib.helpers.shared import get_text_from_completion, print_params
 from lib.prompts.base import PromptFormatter
 from lib.prompts.hallucination import hallucination
 

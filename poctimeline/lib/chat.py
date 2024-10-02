@@ -9,7 +9,7 @@ from lib.chains.rag_chain import get_rag_chain
 from lib.db.journey import get_db_journey
 from lib.db.source import get_db_sources
 from lib.models.user import user_db_get_session
-from lib.helpers import get_chain_with_history, get_session_history
+from lib.helpers.shared import get_chain_with_history, get_session_history
 from lib.models.journey import JourneyDataTable
 
 DELIMITER = "±~"

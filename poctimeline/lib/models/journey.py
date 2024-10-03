@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 from pydantic import BaseModel, Field
 import sqlalchemy as sqla
 from sqlalchemy.ext.mutable import MutableList
@@ -52,17 +52,17 @@ class JourneyItem(BaseModel):
         title="Unique Identifier",
         description="Unique identifier for the journey item.",
     )
-    template_id: str = Field(
+    template_id: Optional[str] = Field(
         default=None,
         title="Template ID",
         description="Identifier of the template item used for this journey item.",
     )
-    after_id: Union[str, int] = Field(
+    after_id: Optional[str] = Field(
         default=None,
         title="After ID",
         description="Identifier of the sibling that precedes this item.",
     )
-    parent_id: str = Field(
+    parent_id: Optional[str] = Field(
         default=None,
         title="Parent ID",
         description="Identifier of the parent item for this item.",
@@ -70,52 +70,52 @@ class JourneyItem(BaseModel):
     title: str = Field(
         default=None, title="Title", description="Title or name of the journey item."
     )
-    summary: str = Field(
+    summary: Optional[str] = Field(
         default=None,
         title="Summary",
         description="Brief overview or summary of the journey item.",
     )
-    references: List[Reference] = Field(
+    references: Optional[List[Reference]] = Field(
         default=None,
         title="References",
         description="List of references related to the journey item.",
     )
-    children: List["JourneyItem"] = Field(
+    children: Optional[List["JourneyItem"]] = Field(
         default_factory=list,
         title="Children",
         description="List of child items for this item.",
     )
-    instructions: str = Field(
+    instructions: Optional[str] = Field(
         default=None,
         title="Instructions",
         description="Detailed instructions or guidelines related to the journey item.",
     )
-    intro: str = Field(
+    intro: Optional[str] = Field(
         default=None,
         title="Introduction",
         description="Introduction or opening statement related to the journey item.",
     )
-    content: str = Field(
+    content: Optional[str] = Field(
         default=None,
         title="Content",
         description="Main content or details of the journey item.",
     )
-    description: str = Field(
+    description: Optional[str] = Field(
         default=None,
         title="Description",
         description="Additional description or explanation of the journey item.",
     )
-    instruct: str = Field(
+    instruct: Optional[str] = Field(
         default=None,
         title="Instruct",
         description="Specific instructions or guidance for using the journey item.",
     )
-    test: str = Field(
+    test: Optional[str] = Field(
         default=None,
         title="Test",
         description="Description of a test or evaluation related to the journey item.",
     )
-    end_of_day: int = Field(
+    end_of_day: Optional[int] = Field(
         default=None,
         title="Done by end of day #",
         description="Number of days after the start of the journey that the item should be completed.",
@@ -145,17 +145,17 @@ class JourneyItem(BaseModel):
             template_id=data.get("template_id"),
             after_id=data.get("after_id"),
             parent_id=data.get("parent_id"),
-            title=data["title"],
-            summary=data.get("summary", ""),
-            references=data.get("references", []),
+            title=data.get("title"),
+            summary=data.get("summary"),
+            references=data.get("references"),
             children=children,
-            instructions=data.get("instructions", ""),
-            intro=data.get("intro", ""),
-            content=data.get("content", ""),
-            description=data.get("description", ""),
-            instruct=data.get("instruct", ""),
-            test=data.get("test", ""),
-            end_of_day=data["end_of_day"],
+            instructions=data.get("instructions"),
+            intro=data.get("intro"),
+            content=data.get("content"),
+            description=data.get("description"),
+            instruct=data.get("instruct"),
+            test=data.get("test"),
+            end_of_day=data.get("end_of_day"),
             item_type=JourneyItemType(data["type"]),
         )
 
@@ -167,7 +167,7 @@ class JourneyItem(BaseModel):
             "parent_id": self.parent_id,
             "title": self.title,
             "summary": self.summary,
-            "references": [ref.dict() for ref in self.references],
+            "references": [ref.model_dump(mode='json') for ref in self.references],
             "children": [child.to_json() for child in self.children],
             "instructions": self.instructions,
             "intro": self.intro,

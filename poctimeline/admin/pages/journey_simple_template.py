@@ -4,6 +4,7 @@ import os
 import sys
 
 from admin.sidebar import init_sidebar
+from lib.models.journey import JourneyItem, JourneyItemType
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
@@ -37,17 +38,16 @@ def open_module(item):
         st.rerun()
 
 
-def write_item(item):
-    level_multiplier = max((container_level.index(item["type"])-2) * 0.025, 0.01)
+def write_item(item: JourneyItem):
+    level_multiplier = max((container_level.index(item.item_type.value)-2) * 0.025, 0.01)
     print("multiplier", level_multiplier)
-    if item["type"] != container_level[-1] and item["type"] in container_level:
+    if item.item_type.value != container_level[-1] and item.item_type.value in container_level:
         container = st
-        if item["type"] == "journey":
-            st.subheader(item["title"])
-        elif item["type"] == "subject":
-            container = st.expander(label=item["title"])
+        if item.item_type == JourneyItemType.JOURNEY:
+            st.subheader(item.title)
+        elif item.item_type == JourneyItemType.SUBJECT:
+            container = st.expander(label=item.title)
         else:
-        # with st.container(border=True):
             col1, col2 = container.columns(
                 [
                     level_multiplier,
@@ -55,17 +55,17 @@ def write_item(item):
                 ]
             )
             col2.markdown(
-                "####" + ("#" * container_level.index(item["type"])) + " " + item["title"]
+                "####" + ("#" * container_level.index(item.item_type.value)) + " " + item.title
             )
 
-        if item["type"] == "subject":
+        if item.item_type == JourneyItemType.SUBJECT:
             with container:
-                for child in item["children"]:
-                                write_item(child)
-        elif item["children"]:
-            for child in item["children"]:
+                for child in item.children:
+                    write_item(child)
+        elif item.children:
+            for child in item.children:
                 write_item(child)
-    elif item["type"] == "module":
+    elif item.item_type == JourneyItemType.MODULE:
         col1, col2 = st.columns(
             [
                 level_multiplier,
@@ -76,9 +76,9 @@ def write_item(item):
             with st.container(border=True):
                 subcol1, subcol2 = st.columns([0.8, 0.15])
                 with subcol1:
-                    st.markdown(item["title"])
+                    st.markdown(item.title)
                 with subcol2:
-                    if st.button("Open", key=f"open_button_{item['id']}"):
+                    if st.button("Open", key=f"open_button_{item.id}"):
                         open_module(item)
 
 
@@ -195,7 +195,7 @@ async def journey_creation():
     elif st.session_state["journey_creation_state"] == "assignto":
 
         if "journey_creation_data" in st.session_state and st.session_state["journey_creation_data"] is not None:
-            write_item(st.session_state["journey_creation_data"])
+            write_item(JourneyItem.from_json(st.session_state["journey_creation_data"]))
         else:
             st.error("No data to show. Please go back and recreate the journey.")
 
@@ -204,7 +204,7 @@ async def journey_creation():
         container = st.container(border=True)
         with container:
             st.write(
-                st.session_state["journey_creation_data"]
+                JourneyItem.from_json(st.session_state["journey_creation_data"])
                 if "journey_creation_data" in st.session_state
                 else "No data"
             )

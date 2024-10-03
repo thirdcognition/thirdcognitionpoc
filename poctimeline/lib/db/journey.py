@@ -26,8 +26,8 @@ def get_db_journey(
             )
         db_journey = {}
 
-        for step in journey:
-            db_journey[step.journey_name] = step
+        for subsubject in journey:
+            db_journey[subsubject.journey_name] = subsubject
 
         st.session_state["db_journey"] = db_journey
     else:

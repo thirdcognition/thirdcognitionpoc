@@ -19,7 +19,7 @@ from lib.prompts.base import (
 from lib.load_env import SETTINGS
 
 
-class Step(BaseModel):
+class Subsubject(BaseModel):
     title: str = Field(description="Title for the subject", title="Title")
     subject: str = Field(
         description="Describes the subject in one sentence", title="Subject"
@@ -37,7 +37,7 @@ class Step(BaseModel):
 
 
 class Plan(BaseModel):
-    plan: List[Step] = Field(description="List of subjects", title="Subjects")
+    plan: List[Subsubject] = Field(description="List of subjects", title="Subjects")
 
 
 plan = PromptFormatter(
@@ -87,7 +87,7 @@ plan = PromptFormatter(
 )
 plan.parser = PydanticOutputParser(pydantic_object=Plan)
 
-step_content = PromptFormatter(
+subsubject_content = PromptFormatter(
     system=textwrap.dedent(
         f"""
         {ACTOR_INTRODUCTIONS}
@@ -110,7 +110,7 @@ step_content = PromptFormatter(
         instuctions start
         {journey_instructions}
         {subject_instructions}
-        {step_instructions}
+        {subsubject_instructions}
         instructions end
 
         context start
@@ -135,9 +135,9 @@ step_content = PromptFormatter(
         """
     ),
 )
-step_content.parser = TagsParser(min_len=10)
+subsubject_content.parser = TagsParser(min_len=10)
 
-step_intro = PromptFormatter(
+subsubject_intro = PromptFormatter(
     system=textwrap.dedent(
         f"""
         {ACTOR_INTRODUCTIONS}
@@ -159,7 +159,7 @@ step_intro = PromptFormatter(
         instuctions start
         {journey_instructions}
         {subject_instructions}
-        {step_instructions}
+        {subsubject_instructions}
         instructions end
 
         Subject:
@@ -177,9 +177,9 @@ step_intro = PromptFormatter(
         """
     ),
 )
-step_intro.parser = TagsParser(min_len=10)
+subsubject_intro.parser = TagsParser(min_len=10)
 
-step_tasks = PromptFormatter(
+subsubject_modules = PromptFormatter(
     system=textwrap.dedent(
         f"""
         {ACTOR_INTRODUCTIONS}
@@ -199,7 +199,7 @@ step_tasks = PromptFormatter(
         instuctions start
         {journey_instructions}
         {subject_instructions}
-        {step_instructions}
+        {subsubject_instructions}
         instructions end
 
         Amount:
@@ -220,9 +220,9 @@ step_tasks = PromptFormatter(
         """
     ),
 )
-step_tasks.parser = TagsParser(min_len=10)
+subsubject_modules.parser = TagsParser(min_len=10)
 
-task_details = PromptFormatter(
+module_details = PromptFormatter(
     system=textwrap.dedent(
         f"""
         {ACTOR_INTRODUCTIONS}
@@ -240,7 +240,7 @@ task_details = PromptFormatter(
         instuctions start
         {journey_instructions}
         {subject_instructions}
-        {step_instructions}
+        {subsubject_instructions}
         instructions end
 
         Resource description:
@@ -258,24 +258,24 @@ task_details = PromptFormatter(
         """
     ),
 )
-task_details.parser = TagsParser(min_len=20)
+module_details.parser = TagsParser(min_len=20)
 
 
 class JourneyPrompts(BaseModel):
     plan: CustomPrompt = Field(default=CustomPrompt(system=plan.system, user=plan.user))
-    step_content: CustomPrompt = Field(
-        default=CustomPrompt(system=step_content.system, user=step_content.user)
+    subsubject_content: CustomPrompt = Field(
+        default=CustomPrompt(system=subsubject_content.system, user=subsubject_content.user)
     )
-    step_intro: CustomPrompt = Field(
-        default=CustomPrompt(system=step_intro.system, user=step_intro.user)
+    subsubject_intro: CustomPrompt = Field(
+        default=CustomPrompt(system=subsubject_intro.system, user=subsubject_intro.user)
     )
-    step_tasks: CustomPrompt = Field(
-        default=CustomPrompt(system=step_tasks.system, user=step_tasks.user)
+    subsubject_modules: CustomPrompt = Field(
+        default=CustomPrompt(system=subsubject_modules.system, user=subsubject_modules.user)
     )
-    task_details: CustomPrompt = Field(
+    module_details: CustomPrompt = Field(
         default=CustomPrompt(
-            system=task_details.system,
-            user=task_details.user,
+            system=module_details.system,
+            user=module_details.user,
         )
     )
 
@@ -283,10 +283,10 @@ class JourneyPrompts(BaseModel):
 def convert_to_journey_prompts(container: CustomPromptContainer) -> JourneyPrompts:
     return JourneyPrompts(
         plan=container.plan,
-        step_content=container.step_content,
-        step_intro=container.step_intro,
-        step_tasks=container.step_tasks,
-        task_details=container.task_details,
+        subsubject_content=container.subsubject_content,
+        subsubject_intro=container.subsubject_intro,
+        subsubject_modules=container.subsubject_modules,
+        module_details=container.module_details,
     )
 
 

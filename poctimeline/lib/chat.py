@@ -99,7 +99,7 @@ def chat_elements(chat_state, journey_name=None):
 
     journey = None
     subject_index = None
-    step_index = None
+    subsubject_index = None
 
     if (
         "chat_journey" in st.session_state
@@ -108,12 +108,12 @@ def chat_elements(chat_state, journey_name=None):
     ):
         # print(f"{ chat_state = }")
         subject_index = int(chat_state.split(DELIMITER)[1])
-        step_index = int(chat_state.split(DELIMITER)[2])
+        subsubject_index = int(chat_state.split(DELIMITER)[2])
         journey: JourneyDataTable = st.session_state.journey_list[
             st.session_state.chat_journey
         ]
-        # st.subheader(journey.subjects[subject_index].plan[step_index].title)
-        # st.write(journey.subjects[subject_index].plan[step_index].content)
+        # st.subheader(journey.subjects[subject_index].plan[subsubject_index].title)
+        # st.write(journey.subjects[subject_index].plan[subsubject_index].content)
     # print(f"chat state {st.session_state.chat_state} {chat_state}")
     # user_query = None
     # if "user_query" in st.session_state:
@@ -210,7 +210,7 @@ you can do so by selecting any of the subjects provided for you from the menu on
 
     if journey is not None and len(history.messages) == 0:
         history.add_ai_message(
-            AIMessage(journey.subjects[subject_index].plan[step_index].content)
+            AIMessage(journey.subjects[subject_index].plan[subsubject_index].content)
         )
         st.rerun()
 

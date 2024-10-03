@@ -1,6 +1,7 @@
-import streamlit as st
 import os
 import sys
+import streamlit as st
+from streamlit_theme import st_theme
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
@@ -16,7 +17,13 @@ def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous) -> AuthStatus:
     #     ...
     # else:
     #     ...
-    st.logo(f"{current_dir}/static/logo.png")
+    theme = st_theme()
+    # print(theme)
+
+    if theme is not None and theme["base"] == "dark":
+        st.logo(f"{current_dir}/static/logo.png")
+    else:
+        st.logo(f"{current_dir}/static/logo-white.png")
 
     with st.sidebar:
         st.markdown(

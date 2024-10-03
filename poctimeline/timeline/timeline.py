@@ -41,9 +41,9 @@ This is an *extremely* cool app!
         or ("active_journey" in st.session_state and st.session_state.active_journey)
         or None
     )
-    chat_step = (
+    chat_subsubject = (
         st.query_params.get("state", None)
-        or ("active_step" in st.session_state and st.session_state.active_step)
+        or ("active_subsubject" in st.session_state and st.session_state.active_subsubject)
         or ""
     )
     journey_found = init_journey_chat(journey_name)
@@ -56,10 +56,10 @@ This is an *extremely* cool app!
         st.session_state.active_journey = journey_name
 
     if (
-        "active_step" not in st.session_state
-        or chat_step != st.session_state.active_step
+        "active_subsubject" not in st.session_state
+        or chat_subsubject != st.session_state.active_subsubject
     ):
-        st.session_state.active_step = chat_step
+        st.session_state.active_subsubject = chat_subsubject
 
     # st.header("ThirdCognition Proof of concept demostration")
     if "chat_state" not in st.session_state:
@@ -118,15 +118,15 @@ This is an *extremely* cool app!
                 with st.expander(
                     f"{subject.title}", expanded=(f"{journey_name}{DELIMITER}{i}" in chat_state or (0 == i and chat_state == "default"))
                 ):
-                    for j, step in enumerate(subject.plan):
-                        step_id = f"{journey_name}{DELIMITER}{i}{DELIMITER}{j}"
+                    for j, subsubject in enumerate(subject.plan):
+                        subsubject_id = f"{journey_name}{DELIMITER}{i}{DELIMITER}{j}"
                         if st.button(
-                            step.title,
+                            subsubject.title,
                             use_container_width=True,
-                            disabled=(step_id == chat_state),
-                            key=f"step_{step_id}",
+                            disabled=(subsubject_id == chat_state),
+                            key=f"subsubject_{subsubject_id}",
                         ):  # , on_click=set_chat_state, args=(i, task)
-                            chat_state = step_id
+                            chat_state = subsubject_id
                             st.session_state.chat_state = chat_state
                             st.session_state.chat_journey = journey_name
                             st.rerun()

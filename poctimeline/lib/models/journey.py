@@ -26,7 +26,7 @@ class JourneyDataTable(Base):
     last_updated = sqla.Column(sqla.DateTime, default=None)
 
 
-class TaskStructure(BaseModel):
+class ModuleStructure(BaseModel):
     title: str = Field(description="Title for the content", title="Title")
     description: str = Field(
         description="Objective, or target for the content", title="Description"
@@ -43,27 +43,27 @@ class TaskStructure(BaseModel):
         title="Test",
     )
 
-class StepStructure(BaseModel):
+class SubsubjectStructure(BaseModel):
     title: str = Field(description="Title of the class", title="Title")
     subject: str = Field(description="Subject of the class", title="Subject")
     intro: str = Field(description="Introduction to the class", title="Intro")
     content: str = Field(description="Detailed content of the class", title="Content")
-    tasks: List[TaskStructure] = Field(
+    modules: List[ModuleStructure] = Field(
         description="List of content for the subject.",
         title="Content",
     )
 
 
-class StepModel(BaseModel):
+class SubsubjectModel(BaseModel):
     title: str = Field(default=None)
     subject: str = Field(default=None)
     content: str = Field(default=None)
     concepts: List[ConceptData] = Field(default=None)
     intro: str = Field(default=None)
     summary: str = Field(default=None)
-    tasks: str = Field(default=None)
-    structured: StepStructure = Field(
-        default=StepStructure(title="", subject="", intro="", content="", tasks=[])
+    modules: str = Field(default=None)
+    structured: SubsubjectStructure = Field(
+        default=SubsubjectStructure(title="", subject="", intro="", content="", modules=[])
     )
     instructions: str = Field(default=None)
 
@@ -71,11 +71,11 @@ class StepModel(BaseModel):
 class SubjectModel(BaseModel):
     title: str = Field(default=None)
     summary: str = Field(default=None)
-    plan: List[StepModel] = Field(default_factory=list)
+    plan: List[SubsubjectModel] = Field(default_factory=list)
     prompts: JourneyPrompts = Field(default=JourneyPrompts())
     instructions: str = Field(default=None)
-    steps_amount: int = Field(default=None)
-    task_amount: int = Field(default=None)
+    subsubjects_amount: int = Field(default=None)
+    module_amount: int = Field(default=None)
     concepts: List[ConceptData] = Field(default=None)
 
 

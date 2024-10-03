@@ -210,7 +210,7 @@ you can do so by selecting any of the subjects provided for you from the menu on
 
     if journey is not None and len(history.messages) == 0:
         history.add_ai_message(
-            AIMessage(journey.subjects[subject_index].plan[subsubject_index].content)
+            AIMessage(journey.children[subject_index].children[subsubject_index].content)
         )
         st.rerun()
 

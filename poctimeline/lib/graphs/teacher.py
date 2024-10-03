@@ -21,7 +21,7 @@ from typing import Annotated, List, TypedDict
 
 from lib.db.journey import get_db_journey
 from lib.db.rag import get_vectorstore
-from lib.models.journey import JourneyDataTable, ModuleStructure, SubjectModel, SubsubjectStructure
+from lib.models.journey import JourneyDataTable, JourneyItem
 from lib.models.teaching import TeachingTask, TeachingItemPlan, UserData
 from lib.prompts.journey import JourneyPrompts
 from lib.prompts.journey import plan
@@ -29,7 +29,7 @@ from lib.prompts.journey import plan
 journey_teaching_plan_parser = PydanticOutputParser(pydantic_object=TeachingItemPlan)
 
 _planner_chain: dict[str, Chain] = {}
-def get_planner_chain(subject: SubjectModel):
+def get_planner_chain(subject: JourneyItem):
     id = f"{subject.title}:{subject.summary}"
     if id in _planner_chain:
         return _planner_chain[id]
@@ -50,7 +50,7 @@ def get_planner_chain(subject: SubjectModel):
     )
     return _planner_chain[id]
 
-def prepare_planner_input(subject_data: SubsubjectStructure, task_data: ModuleStructure, previous_tasks: List[TeachingTask], amount=5):
+def prepare_planner_input(subject_data: JourneyItem, task_data: JourneyItem, previous_tasks: List[TeachingTask], amount=5):
 
     subject_description = textwrap.dedent(f"""
         Main subject: {subject_data.title}
@@ -81,7 +81,7 @@ class TeachingConfig(TypedDict):
     subject_index: int
     sub_subject_index: int
     module_index: int
-    subject_data: SubsubjectStructure
+    subject_data: JourneyItem
     user_data: UserData
 
 class TeachingState(TypedDict):
@@ -100,7 +100,7 @@ def init_state(state:TeachingState, config: RunnableConfig):
     module_index:int=config["module_index"]
     init_journey_chat(config["journey_name"])
     journey:Dict[str, JourneyDataTable] = get_db_journey(journey_name)
-    subsubject = journey[subject_index].subjects[sub_subject_index].plan[module_index].structured
+    subsubject = journey[subject_index].children[sub_subject_index].children[module_index]
 
     id = f"{journey_name}{DELIMITER}{subject_index}{DELIMITER}{sub_subject_index}{DELIMITER}{module_index}"
 
@@ -115,25 +115,25 @@ def init_state(state:TeachingState, config: RunnableConfig):
     }
 
 def introduce_class(state: TeachingState):
-    subject_data:SubsubjectStructure = state["subject_data"]
+    subject_data:JourneyItem = state["subject_data"]
     messages = state["pre_class_messages"]
     messages = messages + [AIMessage(content=subject_data.intro)]
     return {"pre_class_messages": messages}
 
 def chat_in_class(state: TeachingState, message: str):
-    subject_data:SubsubjectStructure = state["subject_data"]
+    subject_data:JourneyItem = state["subject_data"]
     current_task_index:int = state["current_task_index"] or 0
     past_tasks:List[TeachingTask] = state["past_tasks"]
     current_task:TeachingTask = state["current_task"]
 
 def continue_class(state: TeachingState):
-    subject_data:SubsubjectStructure = state["subject_data"]
+    subject_data:JourneyItem = state["subject_data"]
     current_task_index:int = state["current_task_index"] or 0
     past_tasks:List[TeachingTask] = state["past_tasks"]
     current_task:TeachingTask = state["current_task"]
 
 def pre_plan_task(state: TeachingState):
-    subject_data:SubsubjectStructure = state["subject_data"]
+    subject_data:JourneyItem = state["subject_data"]
     current_task_index:int = state["current_task_index"]
     past_tasks:List[TeachingTask] = state["past_tasks"]
 

@@ -5,7 +5,7 @@ import sys
 from typing import Dict, List
 import streamlit as st
 
-from db.topics import get_topic_by_id
+from lib.db.topics import get_topic_by_id
 from lib.models.topics import TopicDataTable
 
 

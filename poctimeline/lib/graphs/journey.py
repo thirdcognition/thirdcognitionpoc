@@ -11,14 +11,12 @@ from langgraph.graph import END, START, StateGraph
 from lib.chains.rag_chain import get_rag_chain
 from lib.helpers.shared import get_text_from_completion
 from lib.models.journey import (
-    ModuleStructure,
+    JourneyItem,
     JourneyDataTable,
-    SubsubjectModel,
-    SubjectModel,
     SubsubjectStructure,
 )
 from lib.models.concepts import ConceptData
-from lib.models.source import SourceData, SourceDataTable
+from lib.models.source import SourceDataTable
 from lib.prompts.journey import JourneyPrompts, Subsubject
 from lib.chains.init import get_base_chain, get_chain
 from lib.streamlit_tools import llm_edit
@@ -59,8 +57,8 @@ class JourneyCreationState(TypedDict):
     categories: List[str]
     journey: JourneyDataTable
     references: List[Reference]
-    subjects: Annotated[list[SubjectModel], operator.add]
-    subjects_sorted: List[SubjectModel]
+    subjects: Annotated[list[JourneyItem], operator.add]
+    subjects_sorted: List[JourneyItem]
     subjects_done: bool = False
     journey_done: bool = False
 
@@ -73,12 +71,12 @@ class SujectCreationConfig(TypedDict):
 
 class SubjectCreationState(TypedDict):
     journey: JourneyDataTable
-    subject: SubjectModel
+    subject: JourneyItem
     references: List[Reference]
     initial_plan: List[Subsubject]
     initial_plan_done: bool = False
-    plan: Annotated[list[SubsubjectModel], operator.add]
-    plan_sorted: List[SubsubjectModel]
+    plan: Annotated[list[JourneyItem], operator.add]
+    plan_sorted: List[JourneyItem]
     plan_done: bool = False
     subject_done: bool = False
 
@@ -93,7 +91,7 @@ class SubsubjectCreationConfig(TypedDict):
 class SubsubjectCreationState(TypedDict):
     journey: JourneyDataTable
     # concepts: List[ConceptData]
-    subsubject: SubsubjectModel
+    subsubject: JourneyItem
     concepts_content: str
     subject_title: str
     modules: str
@@ -113,23 +111,23 @@ def get_journey_items(
     state: Union[JourneyCreationState, SubjectCreationState, SubsubjectCreationState], config
 ) -> tuple[
     JourneyDataTable,
-    SubjectModel,
-    SubsubjectModel,
+    JourneyItem,
+    JourneyItem,
     JourneyTemplate,
     SubjectTemplate,
     SubsubjectTemplate,
 ]:
     journey: JourneyDataTable = state["journey"] if "journey" in state else None
-    subject: SubjectModel = (
-        journey.subjects[config["configurable"]["subject_index"]]
+    subject: JourneyItem = (
+        journey.children[config["configurable"]["subject_index"]]
         if journey is not None
         else None
     )
-    subsubject: SubsubjectModel = (
+    subsubject: JourneyItem = (
         state["subsubject"]
         if "subsubject" in state
         else (
-            subject.plan[config["configurable"]["subsubject_index"]]
+            subject.children[config["configurable"]["subsubject_index"]]
             if subject is not None
             else None
         )
@@ -169,7 +167,7 @@ async def modules_build(
         else subject_template.default_module_amount
     )
 
-    concepts = state["concepts"] if "concepts" in state else subsubject.concepts
+    concepts = state["concepts"] if "concepts" in state else subsubject.references
     class_content = "\n".join(
         [
             f"{concept.title}:\n{concept.content}\nReferences: {", ".join([f"{item.source} ({item.page_number})" for item in concept.references])}"
@@ -253,7 +251,7 @@ async def subsubject_structured_build(
 
 
 async def process_module_to_content(
-    module: ModuleStructure, doc_chain: RunnableSequence, context: str
+    module: JourneyItem, doc_chain: RunnableSequence, context: str
 ):
     content = (
         "\n\n"
@@ -288,7 +286,7 @@ async def content_prepare_build(
     if structured is not None and isinstance(structured, SubsubjectStructure):
         tasks = [
             process_module_to_content(module, doc_chain, state)
-            for module in structured.modules
+            for module in structured.children
         ]
         contents = await asyncio.gather(*tasks)
         return "\n\n".join(contents)
@@ -387,11 +385,11 @@ async def subsubject_build(
         state, config
     )
 
-    new_subsubject = SubsubjectModel(
+    new_subsubject = JourneyItem(
         title=subsubject.title,
         subject=subsubject.subject,
         summary=subsubject.summary,
-        concepts=subsubject.concepts,
+        references=subsubject.references,
         content=state["content"].strip(),
         intro=state["intro"].strip(),  # class_intro.strip(),
         modules=state["modules"].strip(),
@@ -491,7 +489,7 @@ async def subsubject_build(state: SubsubjectBuildState) -> SubjectCreationState:
         if "concept_id" in state["concepts"]:
             concepts.append(state["concepts"][concecpt_id])
 
-    subsubject = SubsubjectModel(
+    subsubject = JourneyItem(
         title=subsubject.title, subject=subsubject.subject, summary=subsubject.summary, concepts=concepts
     )
 
@@ -584,10 +582,10 @@ async def summary_build(
         }
     )
 
-    new_subject = SubjectModel(
+    new_subject = JourneyItem(
         title=title,
         summary=summary,
-        plan=plan,
+        children=plan,
         prompts=subject.prompts if subject else subject_template.subject_prompts,
         instructions=(
             subject.instructions if subject else subject_template.subject_instruction

@@ -82,7 +82,7 @@ This is an *extremely* cool app!
             st.subheader("ThirdCognition Virtual Buddy", divider=True)
         else:
             subject_index = int(chat_state.split(DELIMITER)[1])
-            st.subheader(journey.subjects[subject_index].title, divider=True)
+            st.subheader(journey.children[subject_index].title, divider=True)
         # st.subheader(journey["title"], divider=True)
         # st.write(journey["summary"])
 
@@ -114,11 +114,11 @@ This is an *extremely* cool app!
 
             print(f"{chat_state=}")
 
-            for i, subject in enumerate(journey.subjects):
+            for i, subject in enumerate(journey.children):
                 with st.expander(
                     f"{subject.title}", expanded=(f"{journey_name}{DELIMITER}{i}" in chat_state or (0 == i and chat_state == "default"))
                 ):
-                    for j, subsubject in enumerate(subject.plan):
+                    for j, subsubject in enumerate(subject.children):
                         subsubject_id = f"{journey_name}{DELIMITER}{i}{DELIMITER}{j}"
                         if st.button(
                             subsubject.title,

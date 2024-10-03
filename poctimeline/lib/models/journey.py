@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Optional, Union
 from pydantic import BaseModel, Field
@@ -32,6 +33,61 @@ class JourneyDataTable(Base):
     instructions = sqla.Column(sqla.Text, default=None)
     complete = sqla.Column(sqla.Boolean, default=False)
     last_updated = sqla.Column(sqla.DateTime, default=None)
+
+    def create_from_journey_item(self, session, journey_item):
+        # Create a new JourneyDataTable item from the JourneyItem
+        new_journey = JourneyDataTable(
+            id=journey_item.id,
+            journey_name=journey_item.title,
+            journey_template_id=journey_item.template_id,
+            references=journey_item.references,
+            children=journey_item.children,
+            # Assuming that prompts and template are not present in JourneyItem
+            prompts=[],
+            template=[],
+            disabled=False,
+            title=journey_item.title,
+            summary=journey_item.summary,
+            instructions=journey_item.instructions,
+            complete=False,
+            last_updated=datetime.now()
+        )
+
+        # Add the new JourneyDataTable item to the session and commit the changes
+        session.add(new_journey)
+        session.commit()
+
+        return new_journey
+
+    def to_journey_item(self):
+        # Create a new JourneyItem object from the data in the JourneyDataTable
+        journey_item = JourneyItem(
+            id=self.id,
+            template_id=self.journey_template_id,
+            title=self.title,
+            summary=self.summary,
+            references=self.references,
+            children=self.children,
+            instructions=self.instructions,
+            item_type="journey"
+        )
+
+        return journey_item
+
+
+    def update_from_journey_item(self, session, journey_item):
+        # Update the fields of the JourneyDataTable object with the data from the JourneyItem object
+        self.journey_name = journey_item.title
+        self.journey_template_id = journey_item.template_id
+        self.references = journey_item.references
+        self.children = journey_item.children
+        self.title = journey_item.title
+        self.summary = journey_item.summary
+        self.instructions = journey_item.instructions
+        self.last_updated = datetime.now()
+
+        # Commit the changes to the database
+        session.commit()
 
 
 from typing import Any, Dict, List, Union

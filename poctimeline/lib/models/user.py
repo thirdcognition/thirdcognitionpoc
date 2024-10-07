@@ -9,6 +9,7 @@ import yaml
 from yaml.loader import SafeLoader
 import sqlalchemy as sqla
 from sqlalchemy.ext.mutable import MutableList
+from sqlalchemy.orm import Session
 
 from lib.db.sqlite import Base, db_commit, db_session, init_system_db
 from lib.helpers.shared import pretty_print
@@ -142,7 +143,7 @@ def init_org_db():
         session.commit()
 
 
-def user_db_get_session():
+def user_db_get_session() -> Session:
     init_system_db()
     organization = get_user_org(st.session_state.get("username"))
     return db_session(organization.db_name) if organization else None

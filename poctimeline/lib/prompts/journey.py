@@ -58,8 +58,8 @@ plan = PromptFormatter(
     user=textwrap.dedent(  # Use get_journey_format_example instead
         """
         instuctions start
-        {journey_instructions}
-        {section_instructions}
+        {journey_content_instructions}
+        {section_content_instructions}
         instructions end
 
         context start
@@ -68,7 +68,7 @@ plan = PromptFormatter(
 
         ----------------
         format structure start
-        {format_instructions}
+        {format_content_instructions}
         format structure end
         ----------------
 
@@ -108,9 +108,9 @@ module_content = PromptFormatter(
     user=textwrap.dedent(  # Use get_journey_format_example instead
         """
         instuctions start
-        {journey_instructions}
-        {section_instructions}
-        {module_instructions}
+        {journey_content_instructions}
+        {section_content_instructions}
+        {module_content_instructions}
         instructions end
 
         context start
@@ -157,9 +157,9 @@ module_intro = PromptFormatter(
     user=textwrap.dedent(  # Use get_journey_format_example instead
         """
         instuctions start
-        {journey_instructions}
-        {section_instructions}
-        {module_instructions}
+        {journey_content_instructions}
+        {section_content_instructions}
+        {module_content_instructions}
         instructions end
 
         Section:
@@ -197,9 +197,9 @@ module_actions = PromptFormatter(
     user=textwrap.dedent(  # Use get_journey_format_example instead
         """
         instuctions start
-        {journey_instructions}
-        {section_instructions}
-        {module_instructions}
+        {journey_content_instructions}
+        {section_content_instructions}
+        {module_content_instructions}
         instructions end
 
         Amount:
@@ -238,9 +238,9 @@ action_details = PromptFormatter(
     user=textwrap.dedent(  # Use get_journey_format_example instead
         """
         instuctions start
-        {journey_instructions}
-        {section_instructions}
-        {module_instructions}
+        {journey_content_instructions}
+        {section_content_instructions}
+        {module_content_instructions}
         instructions end
 
         Resource description:

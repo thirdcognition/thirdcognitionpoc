@@ -32,7 +32,7 @@ class ModuleTemplate(BaseModel):
 class SectionTemplate(BaseModel):
     id: str
     section_instruction: str
-    section_prompt_instructions: str
+    section_prompt_content_instructions: str
     section_prompts: JourneyPrompts
     module_templates: List[ModuleTemplate]
     module_amount: 3
@@ -180,8 +180,8 @@ async def actions_build(
     ).ainvoke(
         {
             "context": class_content,
-            "journey_instructions": journey_template.journey_instruction,
-            "section_instructions": section_template.section_instruction,
+            "journey_content_instructions": journey_template.journey_instruction,
+            "section_content_instructions": section_template.section_instruction,
             "subject": section_title,
             "amount": action_amount,
             # "chat_history": previous_class_sections + previous_class_actions
@@ -318,9 +318,9 @@ async def content_build(
     ).ainvoke(
         {
             "context": prep_content,
-            "journey_instructions": journey_template.journey_instruction,
-            "section_instructions": section_template.section_instruction,
-            "module_instructions": (
+            "journey_content_instructions": journey_template.journey_instruction,
+            "section_content_instructions": section_template.section_instruction,
+            "module_content_instructions": (
                 module.instructions
                 if section is not None
                 else module_template.instructions
@@ -352,17 +352,17 @@ async def intro_build(
     ).ainvoke(
         {
             "context": state["content"],
-            "journey_instructions": (
+            "journey_content_instructions": (
                 journey.instructions
                 if journey is not None
                 else journey_template.journey_instruction
             ),
-            "section_instructions": (
+            "section_content_instructions": (
                 section.instructions
                 if section is not None
                 else section_template.section_instruction
             ),
-            "module_instructions": (
+            "module_content_instructions": (
                 module.instructions
                 if section is not None
                 else module_template.instructions
@@ -454,12 +454,12 @@ async def new_plan_build(
         {
             "context": content,
             "amount": section_template.module_amount,
-            "journey_instructions": (
+            "journey_content_instructions": (
                 journey.instructions
                 if journey is not None
                 else journey_template.journey_instruction
             ),
-            "section_instructions": (
+            "section_content_instructions": (
                 section.instructions
                 if section is not None
                 else section_template.section_instruction

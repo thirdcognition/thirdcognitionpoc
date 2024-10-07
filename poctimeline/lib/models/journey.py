@@ -1,9 +1,10 @@
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field
 import sqlalchemy as sqla
 from sqlalchemy.ext.mutable import MutableList
+from sqlalchemy.orm import Session
 from lib.db.sqlite import Base
 from lib.load_env import SETTINGS
 from lib.prompts.journey import JourneyPrompts
@@ -13,11 +14,25 @@ from lib.models.reference import Reference
 class JourneyDataTable(Base):
     __tablename__ = SETTINGS.journey_tablename
 
-    id = sqla.Column(sqla.Integer, primary_key=True)
+    id = sqla.Column(sqla.String, primary_key=True)
     journey_name = sqla.Column(sqla.String)
     journey_template_id = sqla.Column(sqla.String, default=None)
+    parent_id = sqla.Column(sqla.String, default=None)
+    after_id = sqla.Column(sqla.String, default=None)
     references = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
     children = sqla.Column(MutableList.as_mutable(sqla.PickleType), default=[])
+    use_guide = sqla.Column(sqla.Text, default=None)
+    title = sqla.Column(sqla.String, default=None)
+    icon = sqla.Column(sqla.String, default=None)
+    intro = sqla.Column(sqla.Text, default=None)
+    summary = sqla.Column(sqla.Text, default=None)
+    description = sqla.Column(sqla.Text, default=None)
+    content_instructions = sqla.Column(sqla.PickleType, default=None)
+    content = sqla.Column(sqla.Text, default=None)
+    test = sqla.Column(sqla.Text, default=None)
+    action = sqla.Column(sqla.Text, default=None)
+    end_of_day = sqla.Column(sqla.Integer, default=None)
+    item_type = sqla.Column(sqla.String)
     chroma_collections = sqla.Column(
         MutableList.as_mutable(sqla.PickleType), default=[]
     )
@@ -28,29 +43,37 @@ class JourneyDataTable(Base):
         sqla.PickleType, default=[]
     )  # JourneyPrompts = Field(default=JourneyPrompts())
     disabled = sqla.Column(sqla.Boolean, default=False)
-    title = sqla.Column(sqla.String, default=None)
-    summary = sqla.Column(sqla.Text, default=None)
-    instructions = sqla.Column(sqla.Text, default=None)
     complete = sqla.Column(sqla.Boolean, default=False)
     last_updated = sqla.Column(sqla.DateTime, default=None)
 
-    def create_from_journey_item(self, session, journey_item):
+    def create_from_journey_item(self, session: Session, journey_item: "JourneyItem"):
         # Create a new JourneyDataTable item from the JourneyItem
         new_journey = JourneyDataTable(
             id=journey_item.id,
             journey_name=journey_item.title,
             journey_template_id=journey_item.template_id,
+            parent_id=journey_item.parent_id,
+            after_id=journey_item.after_id,
             references=journey_item.references,
             children=journey_item.children,
+            use_guide=journey_item.use_guide,
+            title=journey_item.title,
+            icon=journey_item.icon,
+            intro=journey_item.intro,
+            summary=journey_item.summary,
+            description=journey_item.description,
+            content_instructions=journey_item.content_instructions,
+            content=journey_item.content,
+            test=journey_item.test,
+            action=journey_item.action,
+            end_of_day=journey_item.end_of_day,
+            item_type=journey_item.item_type,
             # Assuming that prompts and template are not present in JourneyItem
             prompts=[],
             template=[],
             disabled=False,
-            title=journey_item.title,
-            summary=journey_item.summary,
-            instructions=journey_item.instructions,
             complete=False,
-            last_updated=datetime.now()
+            last_updated=datetime.now(),
         )
 
         # Add the new JourneyDataTable item to the session and commit the changes
@@ -64,35 +87,49 @@ class JourneyDataTable(Base):
         journey_item = JourneyItem(
             id=self.id,
             template_id=self.journey_template_id,
-            title=self.title,
-            summary=self.summary,
+            parent_id=self.parent_id,
+            after_id=self.after_id,
             references=self.references,
             children=self.children,
-            instructions=self.instructions,
-            item_type="journey"
+            use_guide=self.use_guide,
+            title=self.title,
+            icon=self.icon,
+            intro=self.intro,
+            summary=self.summary,
+            description=self.description,
+            content_instructions=self.content_instructions,
+            content=self.content,
+            test=self.test,
+            action=self.action,
+            end_of_day=self.end_of_day,
+            item_type=self.item_type,
         )
 
         return journey_item
 
-
-    def update_from_journey_item(self, session, journey_item):
+    def update_from_journey_item(self, session: Session, journey_item: "JourneyItem"):
         # Update the fields of the JourneyDataTable object with the data from the JourneyItem object
         self.journey_name = journey_item.title
         self.journey_template_id = journey_item.template_id
+        self.parent_id = journey_item.parent_id
+        self.after_id = journey_item.after_id
         self.references = journey_item.references
         self.children = journey_item.children
+        self.use_guide = journey_item.use_guide
         self.title = journey_item.title
+        self.intro = journey_item.intro
         self.summary = journey_item.summary
-        self.instructions = journey_item.instructions
+        self.description = journey_item.description
+        self.content_instructions = journey_item.content_instructions
+        self.content = journey_item.content
+        self.test = journey_item.test
+        self.action = journey_item.action
+        self.end_of_day = journey_item.end_of_day
+        self.item_type = journey_item.item_type
         self.last_updated = datetime.now()
 
         # Commit the changes to the database
         session.commit()
-
-
-from typing import Any, Dict, List, Union
-from enum import Enum
-from pydantic import BaseModel, Field
 
 
 class JourneyItemType(Enum):
@@ -100,6 +137,43 @@ class JourneyItemType(Enum):
     SECTION = "section"
     MODULE = "module"
     ACTION = "action"
+
+
+class ContentInstructions(BaseModel):
+    # content_role: From which roles point of view the content is generated from
+    role: Optional[str] = Field(
+        default=None,
+        title="Role",
+        description="The role or perspective from which the content is generated.",
+    )
+    # topic: The topic for the generated content
+    topic: Optional[str] = Field(
+        default=None,
+        title="Topic",
+        description="The main topic or subject of the generated content.",
+    )
+    # instructions: Any instructions for the content generation
+    instructions: Optional[str] = Field(
+        default=None,
+        title="Instructions",
+        description="Detailed instructions or guidelines for generating the content.",
+    )
+
+    @classmethod
+    def from_json(cls, data: Dict[str, Any]) -> "ContentInstructions":
+        return cls(
+            role=data.get("role"),
+            topic=data.get("topic"),
+            instructions=data.get("instructions"),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        data = {
+            "role": self.role,
+            "topic": self.topic,
+            "instructions": self.instructions,
+        }
+        return {k: v for k, v in data.items() if v is not None}
 
 
 class JourneyItem(BaseModel):
@@ -113,63 +187,73 @@ class JourneyItem(BaseModel):
         title="Template ID",
         description="Identifier of the template item used for this journey item.",
     )
-    after_id: Optional[str] = Field(
-        default=None,
-        title="After ID",
-        description="Identifier of the sibling that precedes this item.",
-    )
     parent_id: Optional[str] = Field(
         default=None,
         title="Parent ID",
         description="Identifier of the parent item for this item.",
     )
-    title: str = Field(
-        default=None, title="Title", description="Title or name of the journey item."
-    )
-    summary: Optional[str] = Field(
+    after_id: Optional[str] = Field(
         default=None,
-        title="Summary",
-        description="Brief overview or summary of the journey item.",
-    )
-    references: Optional[List[Reference]] = Field(
-        default=None,
-        title="References",
-        description="List of references related to the journey item.",
+        title="After ID",
+        description="Identifier of the sibling that precedes this item.",
     )
     children: Optional[List["JourneyItem"]] = Field(
         default_factory=list,
         title="Children",
         description="List of child items for this item.",
     )
-    instructions: Optional[str] = Field(
+    references: Optional[List[Reference]] = Field(
         default=None,
-        title="Instructions",
-        description="Detailed instructions or guidelines related to the journey item.",
+        title="References",
+        description="List of references related to the journey item.",
+    )
+    use_guide: Optional[str] = Field(
+        default=None,
+        title="Usage guidance",
+        description="Specific instructions or guidance for using the journey item.",
+    )
+    title: str = Field(
+        default=None, title="Title", description="Title or name of the journey item."
+    )
+    icon: Optional[str] = Field(
+        default=None,
+        title="Icon",
+        description="Icon or image associated with the journey item.",
     )
     intro: Optional[str] = Field(
         default=None,
         title="Introduction",
         description="Introduction or opening statement related to the journey item.",
     )
-    content: Optional[str] = Field(
+    summary: Optional[str] = Field(
         default=None,
-        title="Content",
-        description="Main content or details of the journey item.",
+        title="Summary",
+        description="Brief overview or summary of the journey item.",
     )
     description: Optional[str] = Field(
         default=None,
         title="Description",
         description="Additional description or explanation of the journey item.",
     )
-    instruct: Optional[str] = Field(
+    content_instructions: Optional[ContentInstructions] = Field(
         default=None,
-        title="Instruct",
-        description="Specific instructions or guidance for using the journey item.",
+        title="Content instructions",
+        description="Detailed instructions in how to generate content for the item.",
+    )
+    content: Optional[str] = Field(
+        default=None,
+        title="Content",
+        description="Main content or details of the journey item.",
     )
     test: Optional[str] = Field(
         default=None,
         title="Test",
         description="Description of a test or evaluation related to the journey item.",
+    )
+    action: Optional[str] = Field(
+        default=None,
+        title="Action",
+        description="Description of an action connected to the journey item.",
     )
     end_of_day: Optional[int] = Field(
         default=None,
@@ -199,17 +283,22 @@ class JourneyItem(BaseModel):
         return cls(
             id=data["id"],
             template_id=data.get("template_id"),
-            after_id=data.get("after_id"),
             parent_id=data.get("parent_id"),
-            title=data.get("title"),
-            summary=data.get("summary"),
-            references=data.get("references"),
+            after_id=data.get("after_id"),
             children=children,
-            instructions=data.get("instructions"),
+            references=data.get("references"),
+            use_guide=data.get("use_guide"),
+            title=data.get("title"),
+            icon=data.get("icon"),
             intro=data.get("intro"),
-            content=data.get("content"),
+            summary=data.get("summary"),
             description=data.get("description"),
-            instruct=data.get("instruct"),
+            content_instructions=(
+                ContentInstructions.from_json(data.get("content_instructions"))
+                if data.get("content_instructions")
+                else None
+            ),
+            content=data.get("content"),
             test=data.get("test"),
             end_of_day=data.get("end_of_day"),
             item_type=JourneyItemType(data["type"]),
@@ -219,18 +308,24 @@ class JourneyItem(BaseModel):
         data = {
             "id": self.id,
             "template_id": self.template_id,
-            "after_id": self.after_id,
             "parent_id": self.parent_id,
-            "title": self.title,
-            "summary": self.summary,
-            "references": [ref.model_dump(mode='json') for ref in self.references],
+            "after_id": self.after_id,
+            "references": [ref.model_dump(mode="json") for ref in self.references],
             "children": [child.to_json() for child in self.children],
-            "instructions": self.instructions,
+            "use_guide": self.use_guide,
+            "title": self.title,
+            "icon": self.icon,
             "intro": self.intro,
-            "content": self.content,
+            "summary": self.summary,
             "description": self.description,
-            "instruct": self.instruct,
+            "content_instructions": (
+                self.content_instructions.to_json()
+                if self.content_instructions
+                else None
+            ),
+            "content": self.content,
             "test": self.test,
+            "action": self.action,
             "end_of_day": self.end_of_day,
             "type": self.item_type.value,
         }
@@ -262,9 +357,9 @@ class ActionModel(BaseModel):
         description="List of references to topics, concepts or sources to help with the specifics for the content.",
         title="References",
     )
-    instruct: str = Field(
+    use_guide: str = Field(
         description="Detailed instructions on how to use the content with the user",
-        title="Instruct",
+        title="Usage guidance",
     )
     test: str = Field(
         description="Description on how to do a test to verify that the student has succeeded in learning the contents.",
@@ -290,7 +385,7 @@ class ActionModel(BaseModel):
                 title=self.title or journey_item.title,
                 description=self.description or journey_item.description,
                 references=self.references or journey_item.references,
-                instruct=self.instruct or journey_item.instruct,
+                use_guide=self.use_guide or journey_item.use_guide,
                 test=self.test or journey_item.test,
                 end_of_day=self.end_of_day or journey_item.end_of_day,
                 item_type=JourneyItemType.ACTION,
@@ -303,7 +398,7 @@ class ActionModel(BaseModel):
             title=self.title,
             description=self.description,
             references=self.references,
-            instruct=self.instruct,
+            use_guide=self.use_guide,
             test=self.test,
             end_of_day=self.end_of_day,
             item_type=JourneyItemType.ACTION,
@@ -327,6 +422,10 @@ class ModuleStructure(BaseModel):
         title="Parent ID",
     )
     title: str = Field(description="The title or name of this subject.", title="Title")
+    icon: str = Field(
+        description="Icon to represent this subject. Use an icon from the provided options.",
+        title="Icon",
+    )
     subject: str = Field(description="Section of this subject", title="Section")
     intro: str = Field(description="Introduction to this subject", title="Intro")
     content: str = Field(
@@ -382,7 +481,8 @@ class ModuleStructure(BaseModel):
                 after_id=self.after_id or after_id or journey_item.after_id,
                 parent_id=self.parent_id or journey_item.parent_id,
                 title=self.title or journey_item.title,
-                instructions=journey_item.instructions,
+                icon=self.icon or journey_item.icon,
+                content_instructions=journey_item.content_instructions,
                 intro=self.intro or journey_item.intro,
                 content=self.content or journey_item.content,
                 references=self.references or journey_item.references,
@@ -402,6 +502,7 @@ class ModuleStructure(BaseModel):
             after_id=self.after_id or after_id,
             parent_id=self.parent_id,
             title=self.title,
+            icon=self.icon,
             intro=self.intro,
             content=self.content,
             references=self.references,

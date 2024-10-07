@@ -66,18 +66,20 @@ class UserLevel(Enum):
         return NotImplemented
 
 
-
 class UserDataTable(Base):
     __tablename__ = SETTINGS.users_tablename
 
     # id = Column(Integer, primary_key=True)
     email = sqla.Column(sqla.String, primary_key=True)
     username = sqla.Column(sqla.String, nullable=True)
-    realname = sqla.Column(sqla.String, nullable=True)
+    name = sqla.Column(sqla.String, nullable=True)
+    password = sqla.Column(sqla.String, nullable=True)
     level = sqla.Column(sqla.Integer, default=100)
     organization_id = sqla.Column(sqla.String)
     journey_ids = sqla.Column(MutableList.as_mutable(sqla.PickleType), nullable=True)
     disabled = sqla.Column(sqla.Boolean, default=False)
+    failed_login_attempts = sqla.Column(sqla.Integer, default=0)
+    logged_in = sqla.Column(sqla.Boolean, default=False)
 
 
 class OrganizationDataTable(Base):
@@ -103,16 +105,18 @@ def init_org_db():
         # If the user does not exist, add them as an admin
         users = []
         for user in SETTINGS.super_admin:
+            print(f"Adding super admin: {user=}")
             new_user = UserDataTable(
                 email=user[0],
-                username=user[1],
-                realname=None,  # Assuming realname is provided in the SETTINGS.super_admin list
+                username=None,
+                name=None,  # Assuming name is provided in the SETTINGS.super_admin list
+                password=None,
                 level=UserLevel.super_admin.value,
                 organization_id=SETTINGS.default_organization[0],
                 journey_ids=[],
                 disabled=False,
             )
-            create_preauth_email(user[0])
+            # create_preauth_email(user[0])
             session.add(new_user)
         session.commit()
 
@@ -141,12 +145,14 @@ def init_org_db():
 def user_db_get_session():
     init_system_db()
     organization = get_user_org(st.session_state.get("username"))
-    return db_session(organization.db_name)
+    return db_session(organization.db_name) if organization else None
+
 
 def get_user_chroma_path():
     init_system_db()
     organization = get_user_org(st.session_state.get("username"))
     return os.path.join(SETTINGS.db_path, organization.db_name, SETTINGS.chroma_path)
+
 
 def user_db_commit():
     init_system_db()
@@ -155,19 +161,76 @@ def user_db_commit():
 
 
 def write_auth_config(auth_config: dict) -> bool:
-    st.session_state["auth_config"] = auth_config
-    auth_config_str = str(auth_config)
-    auth_config_hash = hashlib.md5(auth_config_str.encode()).hexdigest()
-    if (
-        "auth_config_hash" not in st.session_state
-        or st.session_state["auth_config_hash"] != auth_config_hash
-    ):
-        st.session_state["auth_config_hash"] = auth_config_hash
-        with open(SETTINGS.auth_filename, "w", encoding="utf-8") as file:
-            yaml.dump(auth_config, file, default_flow_style=False)
-        return True
+    session = init_system_db()
 
-    return False
+    # Get current user data from database
+    current_users = session.query(UserDataTable).all()
+
+    # Create a dictionary of current user data for easy lookup
+    current_user_data = {user.email: user for user in current_users}
+
+    # Initialize a flag to track if there have been any changes
+    changes_made = False
+
+    # Iterate over the user data in auth_config
+    for username, user_data in auth_config["credentials"]["usernames"].items():
+        # If the user is not in the database, add them
+        email = user_data["email"]
+        if email not in current_user_data:
+            new_user = UserDataTable(
+                email=email,
+                username=username,
+                name=user_data.get("name"),
+                password=user_data.get("password"),
+                failed_login_attempts=user_data.get("failed_login_attempts"),
+                logged_in=user_data.get("logged_in"),
+            )
+            session.add(new_user)
+            changes_made = True
+        # If the user is in the database, check if their data has changed
+        else:
+            current_user = current_user_data[email]
+            if (
+                current_user.username
+                != username
+                or current_user.name != user_data.get("name", current_user.name)
+                or current_user.password
+                != user_data.get("password", current_user.password)
+                or current_user.failed_login_attempts
+                != user_data.get(
+                    "failed_login_attempts", current_user.failed_login_attempts
+                )
+                or current_user.logged_in
+                != user_data.get("logged_in", current_user.logged_in)
+            ):
+                # If the user data has changed, update the database
+                current_user.username = username
+                current_user.name = user_data.get("name", current_user.name)
+                current_user.password = user_data.get("password", current_user.password)
+                current_user.failed_login_attempts = user_data.get(
+                    "failed_login_attempts", current_user.failed_login_attempts
+                )
+                current_user.logged_in = user_data.get(
+                    "logged_in", current_user.logged_in
+                )
+                changes_made = True
+
+    # Iterate over the pre-authorized emails in auth_config
+    for email in auth_config["pre-authorized"]["emails"]:
+        # If the email is not in the database, add it as an empty user
+        if email not in current_user_data:
+            new_user = UserDataTable(email=email)
+            session.add(new_user)
+            changes_made = True
+
+    # If there have been any changes, commit them to the database
+    if changes_made:
+        session.commit()
+
+    # Update the session state with the new auth_config
+    st.session_state["auth_config"] = auth_config
+
+    return changes_made
 
 
 def load_auth_config():
@@ -176,43 +239,35 @@ def load_auth_config():
 
     auth_config: dict = None
 
-    if os.path.isfile(SETTINGS.auth_filename):
-        with open(SETTINGS.auth_filename) as file:
-            auth_config = yaml.load(file, Loader=SafeLoader)
+    session = init_system_db()
+    users = session.query(UserDataTable).all()
+    auth_config = {
+        "credentials": {"usernames": {}},
+        "cookie": {
+            "expiry_days": SETTINGS.auth_cookie_expiry,
+            "key": SETTINGS.auth_cookie_secret,  # Must be string
+            "name": SETTINGS.auth_cookie_key,
+        },
+        "pre-authorized": {"emails": []},
+    }
 
-    try:
-        users = len(auth_config["credentials"]["usernames"].keys()) if auth_config is not None else 0
-    except:
-        users = 0
-
-    if users == 0:
-        # If the file does not exist, initialize the dict using the example
-        auth_config = {
-            "credentials": {
-                "usernames": {
-                    # "username": {
-                    #     "email": "markus@thirdcognition.com",
-                    #     "failed_login_attempts": 0,
-                    #     "logged_in": False,
-                    #     "name": "Markus Haverinen",
-                    #     "password": ""  # Will be hashed automatically
-                    # }
-                }
-            },
-            "cookie": {
-                "expiry_days": SETTINGS.auth_cookie_expiry,
-                "key": SETTINGS.auth_cookie_secret,  # Must be string
-                "name": SETTINGS.auth_cookie_key,
-            },
-            "pre-authorized": {"emails": []},
-        }
-        # Save the initialized configuration to the YAML file
+    for user in users:
+        if user.username:
+            auth_config["credentials"]["usernames"][user.username] = {
+                "email": user.email,
+                "failed_login_attempts": user.failed_login_attempts,
+                "logged_in": user.logged_in,
+                "name": user.name,
+                "password": user.password,  # Password should be hashed
+            }
+        elif user.email:
+            auth_config["pre-authorized"]["emails"].append(user.email)
 
     write_auth_config(auth_config)
 
-    if users == 0:
-        for user in SETTINGS.super_admin:
-            create_preauth_email(user[0])
+    # if len(users) == 0:
+    #     for user in SETTINGS.super_admin:
+    #         create_preauth_email(user[0])
 
     return auth_config
 
@@ -245,7 +300,7 @@ def get_all_users(org_id: str = None, reset=False) -> List[UserDataTable]:
     elif is_org_admin():
         org_id = get_user_org_id()
         if org_id is not None:
-        # If the user is an org_admin, return all users in their org
+            # If the user is an org_admin, return all users in their org
             users = session.query(UserDataTable).filter_by(organization_id=org_id).all()
     else:
         # If the user is not a super_admin or an org_admin, return an empty list
@@ -318,7 +373,10 @@ def is_user() -> bool:
 
 
 @cache
-def get_db_user(db_user: str = None, email: str = None) -> UserDataTable:
+def get_db_user(db_user: str = None, email: str = None, reset: bool = False) -> UserDataTable:
+    if reset:
+        get_db_user.cache_clear()
+
     if db_user is None and email is None:
         raise ValueError("Either db_user or email must be provided")
 
@@ -334,7 +392,10 @@ def get_db_user(db_user: str = None, email: str = None) -> UserDataTable:
 
 
 @cache
-def get_user_org(db_user: str = None, email: str = None) -> OrganizationDataTable:
+def get_user_org(db_user: str = None, email: str = None, reset: bool = False) -> OrganizationDataTable:
+    if reset:
+        get_user_org.cache_clear()
+
     if db_user is None and email is None:
         raise ValueError("Either db_user or email must be provided")
 
@@ -384,7 +445,7 @@ def has_access(email=None, org_id=None, user_level: UserLevel = UserLevel.user):
 def add_user(
     email: str,
     username: str = None,
-    realname: str = None,
+    name: str = None,
     org_id: str = None,
     journeys: list = None,
     level: UserLevel = None,
@@ -419,8 +480,8 @@ def add_user(
         if org_id is not None and user.organization_id != org_id:
             user.organization_id = org_id
             updated = True
-        if realname is not None and user.realname != realname:
-            user.realname = realname
+        if name is not None and user.name != name:
+            user.name = name
             updated = True
         if journeys is not None and user.journey_ids != journeys:
             user.journey_ids = journeys
@@ -438,7 +499,7 @@ def add_user(
         new_user = UserDataTable(
             email=email,
             username=username,
-            realname=realname,
+            name=name,
             level=(level or UserLevel.user).value,
             organization_id=org_id,
             journey_ids=journeys,
@@ -446,7 +507,7 @@ def add_user(
         )
         session.add(new_user)
         session.commit()
-        create_preauth_email(email)
+        # create_preauth_email(email)
     get_all_users(reset=True)
     get_db_user.cache_clear()
 
@@ -478,7 +539,7 @@ def set_user_org(email: str, org_id: str):
         print(f"User with email {email} does not exist.")
 
 
-def set_user_realname(email: str, realname: str):
+def set_user_name(email: str, name: str):
     session = init_system_db()
 
     has_access(email)
@@ -487,8 +548,8 @@ def set_user_realname(email: str, realname: str):
     user = get_db_user(email=email)
 
     if user:
-        # If the user exists, update their realname
-        user.realname = realname
+        # If the user exists, update their name
+        user.name = name
         session.commit()
     else:
         print(f"User with email {email} does not exist.")

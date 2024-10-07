@@ -54,7 +54,8 @@ def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous) -> AuthStatus:
         menu_items = st.empty()
 
 
-    auth_valid = check_auth(req_user_level)
+    auth_valid = check_auth(req_user_level) #st.session_state.get("auth_level", check_auth(req_user_level))
+    #st.session_state["auth_level"] = auth_valid
     user_level: UserLevel = UserLevel.anonymous
     if auth_valid != AuthStatus.NO_LOGIN:
         user_level = check_auth_level()

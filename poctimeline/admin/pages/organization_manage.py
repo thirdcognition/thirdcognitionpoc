@@ -28,7 +28,7 @@ from lib.models.user import (
     set_user_journeys,
     set_user_level,
     set_user_org,
-    set_user_realname,
+    set_user_name,
 )
 from lib.models.user import AuthStatus, UserLevel
 from lib.streamlit.user import check_auth
@@ -138,7 +138,7 @@ def manage_users():
         user_data.append(
             {
                 "Disabled": user.disabled,
-                "Name": user.realname,
+                "Name": user.name,
                 "Email": user.email,
                 "Username": user.username,
                 "Level": UserLevel(user.level).name,
@@ -225,7 +225,7 @@ def manage_users():
             if row["Username"] != df.at[index, "Username"]:
                 st.warning(f"Username for {row['Email']} cannot be changed.")
         if row["Name"] != df.at[index, "Name"]:
-            set_user_realname(row["Email"], row["Name"])
+            set_user_name(row["Email"], row["Name"])
         if row["Level"] != df.at[index, "Level"]:
             set_user_level(row["Email"], UserLevel[row["Level"]])
         if row["Organization ID"] != df.at[index, "Organization ID"]:

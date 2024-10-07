@@ -174,7 +174,7 @@ async def actions_build(
             for concept in concepts
         ]
     )
-    subject_title = f"Title: {module.title}\nSection: {module.section}"
+    section_title = f"Title: {module.title}\nSection: {module.section}"
     class_actions = await get_base_chain("module_actions")(
         (prompt.system, prompt.user)
     ).ainvoke(
@@ -182,7 +182,7 @@ async def actions_build(
             "context": class_content,
             "journey_instructions": journey_template.journey_instruction,
             "section_instructions": section_template.section_instruction,
-            "subject": subject_title,
+            "subject": section_title,
             "amount": action_amount,
             # "chat_history": previous_class_sections + previous_class_actions
         }

@@ -25,7 +25,7 @@ from lib.models.user import (
     set_authenticator,
     set_disable_user,
     set_user_org,
-    set_user_realname,
+    set_user_name,
     write_auth_config,
 )
 
@@ -144,16 +144,36 @@ def list_all_users(org_id=None):
         st.error("Not enough access: Only super_admin and org_admin can view users.")
 
 
-def check_auth(user_level: UserLevel = UserLevel.user) -> AuthStatus:
+def check_auth(user_level: UserLevel = UserLevel.user, reset:bool = False) -> AuthStatus:
+    cur_user_level = st.session_state.get("user_level")
+    authenticator = get_authenticator()
+    if user_level is not None and st.session_state.get("username") is not None and not reset and authenticator:
+        user = get_db_user(st.session_state["username"])
+        org = get_user_org(st.session_state["username"])
+        if user is not None and org is not None:
+            with st.sidebar:
+                message = st.columns([2, 1], vertical_alignment="bottom")
+                message[0].write(
+                    f'{org.organization_name if org is not None else ''}\n\nWelcome *{user.name}*'
+                )
+
+                with message[1]:
+                    authenticator.logout("Logout")
+                auth_status = (
+                    AuthStatus.NO_ACCESS
+                    if check_auth_level() < user_level
+                    else AuthStatus.LOGGED_IN
+                )
+            return auth_status
+
     init_org_db()
     with st.sidebar:
-
         auth_config = load_auth_config()
         auth_config_str = str(auth_config)
-        auth_config_hashed = (
-            st.session_state.get("auth_config_hash")
-            or hashlib.md5(auth_config_str.encode()).hexdigest()
-        )
+        # auth_config_hashed = (
+        #     st.session_state.get("auth_config_hash")
+        #     or hashlib.md5(auth_config_str.encode()).hexdigest()
+        # )
 
         authenticator = stauth.Authenticate(
             auth_config["credentials"],
@@ -184,8 +204,8 @@ def check_auth(user_level: UserLevel = UserLevel.user) -> AuthStatus:
 
         if st.session_state.get("authentication_status"):
             login_container.empty()
-            user = get_db_user(st.session_state["username"])
-            org = get_user_org(st.session_state["username"])
+            user = get_db_user(st.session_state["username"], reset=True)
+            org = get_user_org(st.session_state["username"], reset=True)
             if user.disabled or org.disabled:
                 manual_logout(authenticator)
                 st.rerun()
@@ -197,9 +217,10 @@ def check_auth(user_level: UserLevel = UserLevel.user) -> AuthStatus:
 
             with message[1]:
                 authenticator.logout("Logout")
+            cur_user_level = check_auth_level()
             auth_status = (
                 AuthStatus.NO_ACCESS
-                if check_auth_level() < user_level
+                if cur_user_level < user_level
                 else AuthStatus.LOGGED_IN
             )
         else:
@@ -212,12 +233,14 @@ def check_auth(user_level: UserLevel = UserLevel.user) -> AuthStatus:
                 )
                 auth_status = AuthStatus.NO_LOGIN
             else:
+                cur_user_level = check_auth_level()
                 auth_status = (
                     AuthStatus.NO_ACCESS
-                    if check_auth_level() < user_level
+                    if cur_user_level < user_level
                     else AuthStatus.LOGGED_IN
                 )
 
+        st.session_state["user_level"] = cur_user_level
         return auth_status
 
 
@@ -334,14 +357,14 @@ def update_user_details(user_id):
 
     with container:
         new_username = st.text_input("Username", value=user.username)
-        new_realname = st.text_input("Real Name", value=user.realname)
+        new_name = st.text_input("Real Name", value=user.name)
         if st.button("Update"):
             # set_user_org(user.email, new_org_id)
             auth_config = load_auth_config()
             auth_config["credentials"]["usernames"][new_username] = auth_config[
                 "credentials"
             ]["usernames"].pop(user.username)
-            set_user_realname(user.email, new_realname)
+            set_user_name(user.email, new_name)
             if write_auth_config(auth_config):
                 st.success("User details updated successfully!")
 

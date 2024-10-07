@@ -24,6 +24,9 @@ from lib.models.source import SourceDataTable
 def get_all_categories():
     database_session = user_db_get_session()
 
+    if database_session is None:
+        return None
+
     if "file_categories" not in st.session_state:
         uniq_categories = []
         categories = database_session.query(SourceDataTable.category_tags).distinct()

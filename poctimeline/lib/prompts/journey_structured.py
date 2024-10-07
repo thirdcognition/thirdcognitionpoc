@@ -1,6 +1,6 @@
 from langchain_core.output_parsers import PydanticOutputParser
-from lib.models.journey import SubsubjectStructure
+from lib.models.journey import ModuleStructure
 from lib.prompts.actions import structured
 
-subsubject_structured = structured.customize()
-subsubject_structured.parser = PydanticOutputParser(pydantic_object=SubsubjectStructure)
+module_structured = structured.customize()
+module_structured.parser = PydanticOutputParser(pydantic_object=ModuleStructure)

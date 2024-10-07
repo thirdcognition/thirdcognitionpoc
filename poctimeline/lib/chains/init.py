@@ -29,13 +29,13 @@ from lib.load_env import (
 from lib.prompts.base import PromptFormatter
 from lib.prompts.journey import (
     plan,
-    subsubject_intro,
-    module_details,
-    subsubject_modules,
-    subsubject_content,
+    module_intro,
+    action_details,
+    module_actions,
+    module_content,
     journey_template_selector,
 )
-from lib.prompts.journey_structured import subsubject_structured
+from lib.prompts.journey_structured import module_structured
 from lib.prompts.actions import (
     action,
     summary,
@@ -302,7 +302,7 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
         summary_with_title,
         True,
     ),
-    "module": ("instruct_0", action, False),
+    "action": ("instruct_0", action, False),
     "grader": ("structured", grader, False),
     "check": ("instruct_0", check, False),
     "text_formatter_simple": ("instruct", text_formatter_simple, False),
@@ -383,21 +383,21 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
         journey_prompts,
         True,
     ),
-    "subsubject_structured": ("structured", subsubject_structured, False),
+    "module_structured": ("structured", module_structured, False),
     "plan": (
         "structured_detailed" if not DEVMODE else "structured",
         plan,
         True,
     ),
-    "subsubject_content": ("instruct_detailed_warm", subsubject_content, True),
-    "subsubject_intro": ("instruct_warm", subsubject_intro, True),
-    "subsubject_modules": (
+    "module_content": ("instruct_detailed_warm", module_content, True),
+    "module_intro": ("instruct_warm", module_intro, True),
+    "module_actions": (
         "instruct_detailed" if not DEVMODE else "instruct",
-        subsubject_modules,
+        module_actions,
         True,
     ),
     "journey_template_selector": ("instruct", journey_template_selector, False),
-    "module_details": ("instruct_warm", module_details, True),
+    "action_details": ("instruct_warm", action_details, True),
     "question": ("chat", question, True),
     "helper": ("chat", helper, False),
     "chat": ("chat", chat, False),

@@ -172,6 +172,7 @@ def check_auth(user_level: UserLevel = UserLevel.user) -> AuthStatus:
                 try:
                     authenticator.login()
                 except Exception as e:
+                    print("Logout...")
                     manual_logout(authenticator)
                     authenticator.login()
 

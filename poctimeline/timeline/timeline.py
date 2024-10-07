@@ -41,9 +41,9 @@ This is an *extremely* cool app!
         or ("active_journey" in st.session_state and st.session_state.active_journey)
         or None
     )
-    chat_subsubject = (
+    chat_module = (
         st.query_params.get("state", None)
-        or ("active_subsubject" in st.session_state and st.session_state.active_subsubject)
+        or ("active_module" in st.session_state and st.session_state.active_module)
         or ""
     )
     journey_found = init_journey_chat(journey_name)
@@ -56,10 +56,10 @@ This is an *extremely* cool app!
         st.session_state.active_journey = journey_name
 
     if (
-        "active_subsubject" not in st.session_state
-        or chat_subsubject != st.session_state.active_subsubject
+        "active_module" not in st.session_state
+        or chat_module != st.session_state.active_module
     ):
-        st.session_state.active_subsubject = chat_subsubject
+        st.session_state.active_module = chat_module
 
     # st.header("ThirdCognition Proof of concept demostration")
     if "chat_state" not in st.session_state:
@@ -81,8 +81,8 @@ This is an *extremely* cool app!
         if chat_state == "default":
             st.subheader("ThirdCognition Virtual Buddy", divider=True)
         else:
-            subject_index = int(chat_state.split(DELIMITER)[1])
-            st.subheader(journey.children[subject_index].title, divider=True)
+            section_index = int(chat_state.split(DELIMITER)[1])
+            st.subheader(journey.children[section_index].title, divider=True)
         # st.subheader(journey["title"], divider=True)
         # st.write(journey["summary"])
 
@@ -114,19 +114,19 @@ This is an *extremely* cool app!
 
             print(f"{chat_state=}")
 
-            for i, subject in enumerate(journey.children):
+            for i, section in enumerate(journey.children):
                 with st.expander(
-                    f"{subject.title}", expanded=(f"{journey_name}{DELIMITER}{i}" in chat_state or (0 == i and chat_state == "default"))
+                    f"{section.title}", expanded=(f"{journey_name}{DELIMITER}{i}" in chat_state or (0 == i and chat_state == "default"))
                 ):
-                    for j, subsubject in enumerate(subject.children):
-                        subsubject_id = f"{journey_name}{DELIMITER}{i}{DELIMITER}{j}"
+                    for j, module in enumerate(section.children):
+                        module_id = f"{journey_name}{DELIMITER}{i}{DELIMITER}{j}"
                         if st.button(
-                            subsubject.title,
+                            module.title,
                             use_container_width=True,
-                            disabled=(subsubject_id == chat_state),
-                            key=f"subsubject_{subsubject_id}",
+                            disabled=(module_id == chat_state),
+                            key=f"module_{module_id}",
                         ):  # , on_click=set_chat_state, args=(i, task)
-                            chat_state = subsubject_id
+                            chat_state = module_id
                             st.session_state.chat_state = chat_state
                             st.session_state.chat_journey = journey_name
                             st.rerun()

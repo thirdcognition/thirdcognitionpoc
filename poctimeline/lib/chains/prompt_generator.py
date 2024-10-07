@@ -23,17 +23,17 @@ class CustomPrompt(BaseModel):
 
 class CustomPromptContainer(BaseModel):
     plan: CustomPrompt = Field(description="Description for the plan of the scenario.")
-    subsubject_content: CustomPrompt = Field(
-        description="Detailed explanation of each subsubject in the scenario."
+    module_content: CustomPrompt = Field(
+        description="Detailed explanation of each module in the scenario."
     )
-    subsubject_intro: CustomPrompt = Field(
+    module_intro: CustomPrompt = Field(
         description="Introduction to the scenario, setting the context."
     )
-    subsubject_modules: CustomPrompt = Field(
-        description="Tasks that should be taken in each subsubject of the scenario."
+    module_actions: CustomPrompt = Field(
+        description="Tasks that should be taken in each module of the scenario."
     )
-    module_details: CustomPrompt = Field(
-        description="Specific details about the modules to be taken in each subsubject."
+    action_details: CustomPrompt = Field(
+        description="Specific details about the actions to be taken in each module."
     )
 
 

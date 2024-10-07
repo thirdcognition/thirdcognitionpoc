@@ -26,8 +26,8 @@ def get_db_journey(
             )
         db_journey = {}
 
-        for subsubject in journey:
-            db_journey[subsubject.journey_name] = subsubject
+        for module in journey:
+            db_journey[module.journey_name] = module
 
         st.session_state["db_journey"] = db_journey
     else:

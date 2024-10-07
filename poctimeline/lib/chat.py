@@ -98,8 +98,8 @@ def chat_elements(chat_state, journey_name=None):
         st.session_state.chat_history_seen[chat_state] = []
 
     journey = None
-    subject_index = None
-    subsubject_index = None
+    section_index = None
+    module_index = None
 
     if (
         "chat_journey" in st.session_state
@@ -107,13 +107,13 @@ def chat_elements(chat_state, journey_name=None):
         and st.session_state.chat_journey != ""
     ):
         # print(f"{ chat_state = }")
-        subject_index = int(chat_state.split(DELIMITER)[1])
-        subsubject_index = int(chat_state.split(DELIMITER)[2])
+        section_index = int(chat_state.split(DELIMITER)[1])
+        module_index = int(chat_state.split(DELIMITER)[2])
         journey: JourneyDataTable = st.session_state.journey_list[
             st.session_state.chat_journey
         ]
-        # st.subheader(journey.subjects[subject_index].plan[subsubject_index].title)
-        # st.write(journey.subjects[subject_index].plan[subsubject_index].content)
+        # st.subheader(journey.sections[section_index].plan[module_index].title)
+        # st.write(journey.sections[section_index].plan[module_index].content)
     # print(f"chat state {st.session_state.chat_state} {chat_state}")
     # user_query = None
     # if "user_query" in st.session_state:
@@ -196,7 +196,7 @@ outside of your respective organization.
 {journey.summary}
 
 You can now ask any questions you might have 👇. If you want to experience the preliminary learning journey,
-you can do so by selecting any of the subjects provided for you from the menu on the left.
+you can do so by selecting any of the sections provided for you from the menu on the left.
                     """,
             )
         else:
@@ -210,7 +210,7 @@ you can do so by selecting any of the subjects provided for you from the menu on
 
     if journey is not None and len(history.messages) == 0:
         history.add_ai_message(
-            AIMessage(journey.children[subject_index].children[subsubject_index].content)
+            AIMessage(journey.children[section_index].children[module_index].content)
         )
         st.rerun()
 

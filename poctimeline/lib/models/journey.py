@@ -97,9 +97,9 @@ from pydantic import BaseModel, Field
 
 class JourneyItemType(Enum):
     JOURNEY = "journey"
-    SUBJECT = "subject"
-    SUBSUBJECT = "subsubject"
+    SECTION = "section"
     MODULE = "module"
+    ACTION = "action"
 
 
 class JourneyItem(BaseModel):
@@ -179,7 +179,7 @@ class JourneyItem(BaseModel):
     item_type: JourneyItemType = Field(
         ...,
         title="Item Type",
-        description="Type of the journey item. Can be 'subject', 'subsubject' or 'module'.",
+        description="Type of the journey item. Can be 'subject', 'module' or 'action'.",
     )
 
     @classmethod
@@ -238,10 +238,10 @@ class JourneyItem(BaseModel):
 
 
 # The rest of the code remains the same as it is not part of the requested edit.
-class ModuleModel(BaseModel):
+class ActionModel(BaseModel):
     id: str = Field(
         default=None,
-        description="Unique identifier for the module. If available use the existing ID.",
+        description="Unique identifier for the action. If available use the existing ID.",
         title="ID",
     )
     after_id: str = Field(
@@ -251,7 +251,7 @@ class ModuleModel(BaseModel):
     )
     parent_id: str = Field(
         default=None,
-        description="Identifier of the parent subject for this module.",
+        description="Identifier of the parent subject for this action.",
         title="Parent ID",
     )
     title: str = Field(description="Title for the content", title="Title")
@@ -271,13 +271,13 @@ class ModuleModel(BaseModel):
         title="Test",
     )
     end_of_day: int = Field(
-        description="Number of days after the start of the journey that the module should be completed.",
+        description="Number of days after the start of the journey that the action should be completed.",
         title="Done by end of day #",
     )
 
     def to_journey_item(self, journey_item: JourneyItem = None) -> JourneyItem:
         """
-        Converts the ModuleModel instance to a JourneyItem instance.
+        Converts the ActionModel instance to a JourneyItem instance.
         If a JourneyItem instance is provided, the new instance will use the values
         from the old instance as defaults.
         """
@@ -293,7 +293,7 @@ class ModuleModel(BaseModel):
                 instruct=self.instruct or journey_item.instruct,
                 test=self.test or journey_item.test,
                 end_of_day=self.end_of_day or journey_item.end_of_day,
-                item_type=JourneyItemType.MODULE,
+                item_type=JourneyItemType.ACTION,
             )
 
         return JourneyItem(
@@ -306,14 +306,14 @@ class ModuleModel(BaseModel):
             instruct=self.instruct,
             test=self.test,
             end_of_day=self.end_of_day,
-            item_type=JourneyItemType.MODULE,
+            item_type=JourneyItemType.ACTION,
         )
 
 
-class SubsubjectStructure(BaseModel):
+class ModuleStructure(BaseModel):
     id: str = Field(
         default=None,
-        description="Unique identifier for the subsubject. If available use the existing ID.",
+        description="Unique identifier for the module. If available use the existing ID.",
         title="ID",
     )
     after_id: str = Field(
@@ -327,7 +327,7 @@ class SubsubjectStructure(BaseModel):
         title="Parent ID",
     )
     title: str = Field(description="The title or name of this subject.", title="Title")
-    subject: str = Field(description="Subject of this subject", title="Subject")
+    subject: str = Field(description="Section of this subject", title="Section")
     intro: str = Field(description="Introduction to this subject", title="Intro")
     content: str = Field(
         description="Detailed content of this subject", title="Content"
@@ -336,12 +336,12 @@ class SubsubjectStructure(BaseModel):
         description="List of references to topics, concepts or sources to help with the specifics for the content.",
         title="References",
     )
-    children: List[Union[ModuleModel, "SubsubjectStructure"]] = Field(
-        description="List of child subjects and modules for this subject.",
+    children: List[Union[ActionModel, "ModuleStructure"]] = Field(
+        description="List of child subjects and actions for this subject.",
         title="children",
     )
     end_of_day: int = Field(
-        description="Number of days after the start of the journey that the subsubject should be completed.",
+        description="Number of days after the start of the journey that the module should be completed.",
         title="Done by end of day #",
     )
 
@@ -349,7 +349,7 @@ class SubsubjectStructure(BaseModel):
         self, journey_item: JourneyItem = None, after_id: str = None
     ) -> JourneyItem:
         """
-        Converts the SubsubjectStructure instance to a JourneyItem instance.
+        Converts the ModuleStructure instance to a JourneyItem instance.
         If a JourneyItem instance is provided, the new instance will use the values
         from the old instance as defaults.
         """
@@ -358,7 +358,7 @@ class SubsubjectStructure(BaseModel):
             if self.children is not None:
                 last_child_id = None
                 for child in self.children:
-                    if isinstance(child, SubsubjectStructure):
+                    if isinstance(child, ModuleStructure):
                         existing_child = next(
                             (c for c in journey_item.children if c.id == child.id), None
                         )
@@ -387,12 +387,12 @@ class SubsubjectStructure(BaseModel):
                 content=self.content or journey_item.content,
                 references=self.references or journey_item.references,
                 children=children or journey_item.children,
-                item_type=JourneyItemType.SUBSUBJECT,
+                item_type=JourneyItemType.MODULE,
             )
 
         if self.children is not None:
             for i, child in enumerate(self.children):
-                if isinstance(child, SubsubjectStructure):
+                if isinstance(child, ModuleStructure):
                     after_id = children[-1].id if i > 0 else None
                     children.append(child.to_journey_item(after_id=after_id))
                 else:
@@ -406,5 +406,5 @@ class SubsubjectStructure(BaseModel):
             content=self.content,
             references=self.references,
             children=children,
-            item_type=JourneyItemType.SUBSUBJECT,
+            item_type=JourneyItemType.MODULE,
         )

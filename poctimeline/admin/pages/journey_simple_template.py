@@ -26,12 +26,12 @@ This is an *extremely* cool admin tool!
     },
 )
 
-container_level = ["journey", "subject", "subsubject", "module"]
+container_level = ["journey", "section", "module", "action"]
 
 
 @st.dialog(f"Get familiar with...", width="large")
-def open_module(item):
-    st.write(f"Let's get started with module {item['title']}")
+def open_action(item):
+    st.write(f"Let's get started with action {item['title']}")
     feedback = st.text_input("Provide feedback...")
     if st.button("Submit"):
         st.session_state.vote = {"item": item, "reason": feedback}
@@ -45,7 +45,7 @@ def write_item(item: JourneyItem):
         container = st
         if item.item_type == JourneyItemType.JOURNEY:
             st.subheader(item.title)
-        elif item.item_type == JourneyItemType.SUBJECT:
+        elif item.item_type == JourneyItemType.SECTION:
             container = st.expander(label=item.title)
         else:
             col1, col2 = container.columns(
@@ -58,14 +58,14 @@ def write_item(item: JourneyItem):
                 "####" + ("#" * container_level.index(item.item_type.value)) + " " + item.title
             )
 
-        if item.item_type == JourneyItemType.SUBJECT:
+        if item.item_type == JourneyItemType.SECTION:
             with container:
                 for child in item.children:
                     write_item(child)
         elif item.children:
             for child in item.children:
                 write_item(child)
-    elif item.item_type == JourneyItemType.MODULE:
+    elif item.item_type == JourneyItemType.ACTION:
         col1, col2 = st.columns(
             [
                 level_multiplier,
@@ -79,7 +79,7 @@ def write_item(item: JourneyItem):
                     st.markdown(item.title)
                 with subcol2:
                     if st.button("Open", key=f"open_button_{item.id}"):
-                        open_module(item)
+                        open_action(item)
 
 
 async def journey_creation():

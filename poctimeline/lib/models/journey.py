@@ -266,6 +266,9 @@ class JourneyItem(BaseModel):
         description="Type of the journey item. Can be 'subject', 'module' or 'action'.",
     )
 
+    def __str__(self):
+        return self.title
+
     @classmethod
     def from_json(cls, data: Dict[str, Any]) -> "JourneyItem":
         children = None
@@ -300,6 +303,7 @@ class JourneyItem(BaseModel):
             ),
             content=data.get("content"),
             test=data.get("test"),
+            action=data.get("action"),
             end_of_day=data.get("end_of_day"),
             item_type=JourneyItemType(data["type"]),
         )
@@ -330,6 +334,26 @@ class JourneyItem(BaseModel):
             "type": self.item_type.value,
         }
         return {k: v for k, v in data.items() if v is not None}
+
+    def flatten(self, type_filter: Optional[JourneyItemType] = None) -> List["JourneyItem"]:
+        items = [self]
+        if self.children:
+            for child in self.children:
+                items.extend(child.flatten())
+
+        if type_filter:
+            items = [item for item in items if item.item_type == type_filter]
+        return items
+
+    def get_relations(self) -> Dict[str, "JourneyItem"]:
+        relations = {}
+        if self.children is not None:
+            for child in self.children:
+                relations[child.id] = self
+
+            for child in self.children:
+                relations.update(child.get_relations())
+        return relations
 
 
 # The rest of the code remains the same as it is not part of the requested edit.

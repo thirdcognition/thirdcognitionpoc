@@ -1,4 +1,5 @@
 import json
+import os
 import pprint as pp
 import re
 from typing import Any, Dict, List, Optional, Union
@@ -16,6 +17,8 @@ from langchain_core.chat_history import BaseChatMessageHistory
 from lib.load_env import DEBUGMODE
 from lib.db.sqlite import Base
 
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
 
 def print_params(msg="", params=""):
     if DEBUGMODE:

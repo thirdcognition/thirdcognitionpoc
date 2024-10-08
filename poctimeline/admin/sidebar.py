@@ -9,6 +9,23 @@ sys.path.append(os.path.dirname(current_dir + "/../lib"))
 from lib.models.user import AuthStatus, UserLevel, check_auth_level
 from lib.streamlit.user import check_auth
 
+theme = None
+
+def get_image(id, path="") -> str:
+    global theme
+    # theme = st_theme()
+    # print(theme)
+
+    if theme is not None and theme["base"] == "dark":
+        id = id + "_dark"
+
+    path = os.path.join(current_dir, 'static', path) if path != "" else os.path.join(current_dir, 'static')
+    # print(os.path.join(path, f"{id}.png"))
+    return os.path.join(path, f"{id}.png")
+
+def get_theme():
+    global theme
+    return theme
 
 def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous) -> AuthStatus:
     # from streamlit_javascript import st_javascript
@@ -17,13 +34,14 @@ def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous) -> AuthStatus:
     #     ...
     # else:
     #     ...
+    global theme
     theme = st_theme()
     # print(theme)
 
-    if theme is not None and theme["base"] == "dark":
-        st.logo(f"{current_dir}/static/logo.png")
-    else:
-        st.logo(f"{current_dir}/static/logo-white.png")
+    st.logo(get_image("logo"))
+    # if theme is not None and theme["base"] == "dark":
+    # else:
+    #     st.logo(get_image("logo-white", ""))
 
     with st.sidebar:
         st.markdown(

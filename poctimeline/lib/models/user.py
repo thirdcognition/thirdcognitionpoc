@@ -273,17 +273,19 @@ def load_auth_config():
     return auth_config
 
 
-authenticator: stauth.Authenticate = None
+# authenticator: stauth.Authenticate = None
 
 
 def get_authenticator():
-    global authenticator
+    # global authenticator
+    authenticator = st.session_state.get("st_auth")
     return authenticator
 
 
 def set_authenticator(auth: stauth.Authenticate):
-    global authenticator
-    authenticator = auth
+    # global authenticator
+
+    st.session_state["st_auth"] = auth
 
 
 # super_admin can access all, org_admin can access all in their org

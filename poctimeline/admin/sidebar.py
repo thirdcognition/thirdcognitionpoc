@@ -73,6 +73,7 @@ def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous) -> AuthStatus:
 
 
     auth_valid = check_auth(req_user_level) #st.session_state.get("auth_level", check_auth(req_user_level))
+    print(f"auth_valid: {auth_valid}")
     #st.session_state["auth_level"] = auth_valid
     user_level: UserLevel = UserLevel.anonymous
     if auth_valid != AuthStatus.NO_LOGIN:
@@ -95,7 +96,8 @@ def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous) -> AuthStatus:
     with menu_container:
         st.page_link("Admin_Home.py", label="Home")
         if user_level >= UserLevel.org_admin:
-            st.page_link("pages/journey_simple_template.py", label="Create Journey")
+            st.page_link("pages/journey_simple_create.py", label="Create Journey")
+            st.page_link("pages/journey_simple_manage.py", label="Manage Journeys")
             st.page_link("pages/organization_manage.py", label="Manage Organization")
             st.page_link("pages/source_upload.py", label="Upload files")
             st.page_link("pages/source_manage.py", label="Manage files")

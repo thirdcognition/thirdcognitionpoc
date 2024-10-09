@@ -4,8 +4,10 @@ import hashlib
 import jwt
 import streamlit as st
 import streamlit_authenticator as stauth
+from streamlit_authenticator.utilities import Validator
 import yaml
 
+from lib.helpers.shared import pretty_print
 from lib.load_env import SETTINGS
 from lib.models.user import (
     AuthStatus,
@@ -28,6 +30,13 @@ from lib.models.user import (
     set_user_name,
     write_auth_config,
 )
+
+
+class MyValidator(Validator):
+    def validate_name(self, name:str=None) -> bool:
+        return True
+    def validate_password(self, password: str=None) -> bool:
+        return True
 
 
 def add_preregistered_email_ui():
@@ -144,17 +153,28 @@ def list_all_users(org_id=None):
         st.error("Not enough access: Only super_admin and org_admin can view users.")
 
 
-def check_auth(user_level: UserLevel = UserLevel.user, reset:bool = False) -> AuthStatus:
+def check_auth(
+    user_level: UserLevel = UserLevel.user, reset: bool = False
+) -> AuthStatus:
     cur_user_level = st.session_state.get("user_level")
-    authenticator = get_authenticator()
-    if user_level is not None and st.session_state.get("username") is not None and not reset and authenticator:
+    authenticator: stauth.Authenticate = get_authenticator()
+    if authenticator:
+        get_manual_login(authenticator)
+    # print(f"Authenticator: {authenticator}")
+    if (
+        user_level is not None
+        and st.session_state.get("username") is not None
+        and not reset
+        and authenticator
+    ):
+        # print(f"check_auth: {st.session_state.get('username', 'username none')} - {cur_user_level} - {user_level}")
         user = get_db_user(st.session_state["username"])
         org = get_user_org(st.session_state["username"])
         if user is not None and org is not None:
             with st.sidebar:
                 message = st.columns([2, 1], vertical_alignment="bottom")
                 message[0].write(
-                    f'{org.organization_name if org is not None else ''}\n\nWelcome *{user.name}*'
+                    f'{org.organization_name if org is not None else ""}\n\nWelcome *{user.name}*'
                 )
 
                 with message[1]:
@@ -169,50 +189,69 @@ def check_auth(user_level: UserLevel = UserLevel.user, reset:bool = False) -> Au
     init_org_db()
     with st.sidebar:
         auth_config = load_auth_config()
-        auth_config_str = str(auth_config)
+        # auth_config_str = str(auth_config)
         # auth_config_hashed = (
         #     st.session_state.get("auth_config_hash")
         #     or hashlib.md5(auth_config_str.encode()).hexdigest()
         # )
 
-        authenticator = stauth.Authenticate(
-            auth_config["credentials"],
-            auth_config["cookie"]["name"],
-            auth_config["cookie"]["key"],
-            auth_config["cookie"]["expiry_days"],
-            auth_config["pre-authorized"],
+        new_authenticator: stauth.Authenticate = (
+            authenticator
+            if isinstance(authenticator, stauth.Authenticate)
+            else stauth.Authenticate(
+                auth_config["credentials"],
+                auth_config["cookie"]["name"],
+                auth_config["cookie"]["key"],
+                auth_config["cookie"]["expiry_days"],
+                validator=MyValidator(),
+            )
         )
-        set_authenticator(authenticator)
+        if authenticator != new_authenticator and new_authenticator is not None:
+            set_authenticator(new_authenticator)
+            authenticator = new_authenticator
+
         message = st.empty()
         login_container = st.empty()
 
         if not st.session_state.get("authentication_status"):
+            get_manual_login(authenticator)
+
             tab1, tab2 = login_container.tabs(["Login", "Register"])
             with tab1:
                 try:
                     authenticator.login()
+                    if st.session_state["authentication_status"]:
+                        print("Login...")
+                        manual_login(
+                            authenticator,
+                            st.session_state["username"],
+                            st.session_state["name"],
+                        )
                 except Exception as e:
-                    print("Logout...")
-                    manual_logout(authenticator)
-                    authenticator.login()
+                    if "There are multiple" not in e:
+                        print("Logout...")
+                        print(e)
+                        manual_logout(authenticator)
+                        authenticator.login()
 
             with tab2:
                 register_user(authenticator=authenticator)
 
         write_auth_config(auth_config)
-            # st.rerun()
+        # st.rerun()
 
         if st.session_state.get("authentication_status"):
             login_container.empty()
             user = get_db_user(st.session_state["username"], reset=True)
             org = get_user_org(st.session_state["username"], reset=True)
             if user.disabled or org.disabled:
+                print("Logout")
                 manual_logout(authenticator)
                 st.rerun()
 
             message = st.columns([2, 1], vertical_alignment="bottom")
             message[0].write(
-                f'{org.organization_name if org is not None else ''}\n\nWelcome *{st.session_state["name"]}*'
+                f'{org.organization_name if org is not None else ""}\n\nWelcome *{st.session_state["name"]}*'
             )
 
             with message[1]:
@@ -246,7 +285,7 @@ def check_auth(user_level: UserLevel = UserLevel.user, reset:bool = False) -> Au
 
 def user_details():
     auth_config = load_auth_config()
-    print(f"{('authentication_status' not in st.session_state)=}")
+    # print(f"{('authentication_status' not in st.session_state)=}")
     authenticator = get_authenticator("authentication_status" not in st.session_state)
     logged_in = False
 
@@ -288,47 +327,106 @@ def user_details():
     return logged_in
 
 
-def manual_login(authenticator: stauth.Authenticate, username_of_registered_user: str, name_of_registered_user: str):
+def get_manual_login(authenticator: stauth.Authenticate):
+    auth_config = load_auth_config()
+    # try:
+    token: str = authenticator.cookie_controller.cookie_model.cookie_manager.get(
+        auth_config["cookie"]["name"]
+    )
+    if token is None:
+        # print("token is none")
+        return False
+    # print(f"{token=}")
+    cookie = jwt.decode(
+        token.encode(),
+        auth_config["cookie"]["key"],
+        algorithms=["HS256"],
+    )
+    # print(f"{cookie=}")
+    if cookie["exp_date"] < datetime.datetime.utcnow().timestamp():
+        # print("Cookie expired")
+        authenticator.cookie_controller.cookie_model.cookie_manager.delete(
+            auth_config["cookie"]["name"]
+        )
+        return False
+    else:
+        # print("Cookie valid")
+        st.session_state["username"] = cookie["username"]
+        st.session_state["name"] = get_db_user(cookie["username"]).name
+        st.session_state["authentication_status"] = True
+        return True
+    # except Exception as e:
+    #     print(e)
+
+
+def manual_login(
+    authenticator: stauth.Authenticate,
+    username_of_registered_user: str,
+    name_of_registered_user: str,
+):
+    # print("Manual login")
+    auth_config = load_auth_config()
+    # token = authenticator.cookie_controller.cookie_model.cookie_manager.get(auth_config["cookie"]["name"])
+    token = authenticator.cookie_controller.get_cookie()
+
+    if token is not None:
+        # print("Cookie already set")
+        authenticator.cookie_controller.delete_cookie()
+        # authenticator.cookie_controller.cookie_model.cookie_manager.delete(auth_config["cookie"]["name"])
+
     st.session_state["username"] = username_of_registered_user
     st.session_state["name"] = name_of_registered_user
-    authenticator.exp_date = (
-        datetime.datetime.utcnow()
-        + datetime.timedelta(days=authenticator.cookie_expiry_days)
-    ).timestamp()
+
     token = jwt.encode(
         {
             "username": username_of_registered_user,
-            "exp_date": authenticator.exp_date,
+            "exp_date": (
+                datetime.datetime.utcnow() + datetime.timedelta(days=30)
+            ).timestamp(),
         },
-        authenticator.key,
+        auth_config["cookie"]["key"],
         algorithm="HS256",
     )
-    authenticator.cookie_manager.set(
-        authenticator.cookie_name,
-        token,
-        expires_at=datetime.datetime.now()
-        + datetime.timedelta(days=authenticator.cookie_expiry_days),
+    try:
+        authenticator.cookie_controller.cookie_model.cookie_manager.set(
+            auth_config["cookie"]["name"],
+            token,
+            expires_at=datetime.datetime.now() + datetime.timedelta(days=30),
+            key="manual_login_" + username_of_registered_user,
         )
-    st.session_state["authentication_status"] = True
+        st.session_state["authentication_status"] = True
+    except Exception as e:
+        print("cookie set error", e)
+
 
 def manual_logout(authenticator: stauth.Authenticate):
-    authenticator.cookie_manager.delete(authenticator.cookie_name)
-    authenticator.credentials['usernames'][st.session_state['username']]['logged_in'] = False
-    st.session_state['logout'] = True
-    st.session_state['name'] = None
-    st.session_state['username'] = None
-    st.session_state['authentication_status'] = None
+    print("Manual logout")
+    auth_config = load_auth_config()
+    authenticator.cookie_controller.cookie_model.cookie_manager.delete(
+        auth_config["cookie"]["name"]
+    )
+    authenticator.path["usernames"][st.session_state["username"]]["logged_in"] = False
+    st.session_state["logout"] = True
+    st.session_state["name"] = None
+    st.session_state["username"] = None
+    st.session_state["authentication_status"] = None
+
 
 def register_user(authenticator: stauth.Authenticate):
     # Using st_auth register new user and reflect changes to database
     auth_config = load_auth_config()
+
     email_of_registered_user, username_of_registered_user, name_of_registered_user = (
-        authenticator.register_user(preauthorization=True)
+        authenticator.register_user(
+            pre_authorized=auth_config["pre-authorized"]["emails"], captcha=False, key="user_registration"
+        )
     )
     # password = authenticator.credentials["usernames"][username_of_registered_user]["password"]
 
     if email_of_registered_user:
-        manual_login(authenticator, username_of_registered_user, name_of_registered_user)
+        manual_login(
+            authenticator, username_of_registered_user, name_of_registered_user
+        )
         # hashed_password = stauth.Hasher([password]).generate()
         add_user(
             email_of_registered_user,

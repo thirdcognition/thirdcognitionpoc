@@ -249,39 +249,45 @@ class JourneyItemType(Enum):
     ACTION = "action"
 
     def __eq__(self, other):
-        if isinstance(other, JourneyItemType):
+        if isinstance(other, Enum):
             return self.value == other.value
+        if isinstance(other, str):
+            return self.value == other
         return False
 
     def __gt__(self, other):
-        if isinstance(other, JourneyItemType):
-            order = ["journey", "section", "module", "action"]
+        order = ["journey", "section", "module", "action"]
+        if isinstance(other, Enum):
             return order.index(self.value) > order.index(other.value)
+        if isinstance(other, str):
+            return order.index(self.value) > order.index(other)
         return NotImplemented
 
     def __lt__(self, other):
-        if isinstance(other, JourneyItemType):
-            order = ["journey", "section", "module", "action"]
+        order = ["journey", "section", "module", "action"]
+        if isinstance(other, Enum):
             return order.index(self.value) < order.index(other.value)
+        if isinstance(other, str):
+            return order.index(self.value) < order.index(other)
         return NotImplemented
 
 
 class ContentInstructions(BaseModel):
     # content_role: From which roles point of view the content is generated from
     role: Optional[str] = Field(
-        default=None,
+        default="",
         title="Role",
         description="The role or perspective from which the content is generated.",
     )
     # topic: The topic for the generated content
     topic: Optional[str] = Field(
-        default=None,
+        default="",
         title="Topic",
         description="The main topic or subject of the generated content.",
     )
     # instructions: Any instructions for the content generation
     instructions: Optional[str] = Field(
-        default=None,
+        default="",
         title="Instructions",
         description="Detailed instructions or guidelines for generating the content.",
     )
@@ -529,12 +535,28 @@ class JourneyItem(BaseModel):
     def get_child_by_id(self, id: str) -> Optional["JourneyItem"]:
         if self.id == id:
             return self
-        if self.children:
-            for child in self.children:
-                item = child.get_child_by_id(id)
-                if item:
-                    return item
+        # if self.children:
+        #     for child in self.children:
+        #         item = child.get_child_by_id(id)
+        #         if item:
+        #             return item
+        children_by_id = self.all_children_by_id()
+        if id in children_by_id.keys():
+            return children_by_id[id]
+
         return None
+
+    def all_children_by_id(self, reset=False) -> dict[str, "JourneyItem"]:
+        cache_key = "all_children"
+        if self.cache.get(cache_key) and not reset:
+            return self.cache.get(cache_key)
+
+        all_children = self.flatten(reset=reset)
+
+        all_children_by_id = {child.id: child for child in all_children}
+
+        self.cache[cache_key] = all_children_by_id
+        return all_children_by_id
 
     def get_relations(self, reset=False) -> Dict[str, "JourneyItem"]:
         if self.cache.get("relations") and not reset:

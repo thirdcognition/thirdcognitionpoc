@@ -1,4 +1,3 @@
-from enum import Enum
 import time
 from typing import List
 
@@ -31,7 +30,7 @@ from lib.models.user import AuthStatus, UserLevel
 st.set_page_config(
     page_title="TC POC: Admin",
     page_icon="static/icon.png",
-    layout="centered",
+    layout="wide",
     menu_items={
         "About": """# ThirdCognition PoC
 [ThirdCognition](https://thirdcognition.com)
@@ -51,9 +50,18 @@ async def main():
     st.markdown(" ")
     db_journey_items = get_all_journeys_from_db()
 
+    journey_rows = [3 for _ in range(len(db_journey_items)//3 + 1)]
+    journey_grid = grid(*journey_rows, vertical_align="center")
+
     for db_journey in db_journey_items:
-        with ui.card(db_journey.title):
-            st.code(db_journey.id)
+        with journey_grid.container(border=True):
+            with stylable_container(key=f"journey_{db_journey.id}_card", css_styles=""):
+                st.subheader(db_journey.title)
+                st.code(db_journey.id)
+                if st.button("Open", key=f"journey_{db_journey.id}_open"):
+                    st.session_state["journey_edit_id"] = db_journey.id
+                    st.switch_page("pages/journey_simple_edit.py")
+
 
 
 if __name__ == "__main__":

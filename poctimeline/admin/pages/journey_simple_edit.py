@@ -1,4 +1,3 @@
-from enum import Enum
 import time
 from typing import List
 
@@ -15,6 +14,7 @@ from admin.sidebar import get_image, get_theme, init_sidebar
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
+from lib.streamlit.journey import ChildPosition, get_journey_item_cache
 from lib.models.journey import (
     JourneyItem,
     JourneyItemType,
@@ -45,6 +45,8 @@ selected_symbol = "&#9673;"
 unselected_symbol = "&#9678;"
 up_down_symbol = "&#8597;"
 below_symbol = "&#8615;"
+image_symbol = "&#9968;"
+edit_symbol = "&#9881;"
 
 container_level = ["journey", "section", "module", "action"]
 
@@ -91,7 +93,8 @@ def open_logo_dialog(item: JourneyItem, journey: JourneyItem):
                     print("Change icon", item.icon, logo_id)
                     if item.icon != logo_id:
                         item.icon = logo_id
-                        st.rerun(scope="fragment")
+                        item.save_to_db()
+                        st.rerun()
                     else:
                         item.icon = None
 
@@ -105,60 +108,68 @@ def open_logo_dialog(item: JourneyItem, journey: JourneyItem):
     print("logo", item.icon)
 
 
-@st.dialog(f"Change contents of..", width="large")
-def open_action(item: JourneyItem, journey: JourneyItem):
+@st.dialog(f"Change contents of...", width="large")
+def open_item(item: JourneyItem, journey: JourneyItem):
+    edit_item(item, journey)
+
+
+@st.fragment
+def edit_item(item: JourneyItem, journey: JourneyItem):
     # st.write(f"Let's get started with action {item.title}")
     journey_relations = journey.get_relations()
 
     ancestry = item.get_ancestry(journey)
+    all_children = journey.all_children_by_id()
 
-    # ancestry: list[JourneyItem] = [parent]
-    # while parent:
-    #     # add parent to the beginning of the list and check its parent
-    #     if parent.id and parent.id in journey_relations.keys():
-    #         parent = journey_relations[parent.id]
-    #     elif parent.id is not None:
-    #         parent = None
-    #     if parent and parent not in ancestry:
-    #         ancestry.insert(0, parent)
-
-    # ancestry.append(item)
-
-    section_items = journey.flatten(JourneyItemType.SECTION)
-    section_options = [item.id for item in section_items]
-    # Get all MODULE type items from journey children and children's children
-    module_items = journey.flatten(JourneyItemType.MODULE)
-    module_options = [item.id for item in module_items]
-    # Get all ACTION type items from journey children and children's children
-    action_items = journey.flatten(JourneyItemType.ACTION)
-    action_options = [item.id for item in action_items]
+    section_options = [
+        (item.id, item.parent_id) for item in journey.flatten(JourneyItemType.SECTION)
+    ]
+    module_options = [
+        (item.id, item.parent_id) for item in journey.flatten(JourneyItemType.MODULE)
+    ]
+    action_options = [
+        (item.id, item.parent_id) for item in journey.flatten(JourneyItemType.ACTION)
+    ]
 
     id_str = ""
     # form = st.form(key="journey_item_form_" + item.id, border=False)
     # Loop through ancestry and add fields for each item
     for ancestor in ancestry:
         id_str = f"{id_str}_{ancestor.id}" if id_str else ancestor.id
-        with st.expander(
-            f"{ancestor.item_type.value.capitalize()} Details:",
-            expanded=ancestor.item_type == JourneyItemType.ACTION,
+        if (
+            JourneyItemType.ACTION == item.item_type
+            and JourneyItemType.ACTION != ancestor.item_type
         ):
+            continue
+
+        if ancestor.item_type != item.item_type:
+            container = st.expander(
+                f"{ancestor.item_type.value.capitalize()} Details:",
+                expanded=JourneyItemType.ACTION == ancestor.item_type,
+            )
+        else:
+            container = st.container(border=True)
+
+        with container:
             st.write(ancestor.title)
-            # Create input fields for each attribute of the JourneyItem object
-            # ancestor.id = st.text_input('Unique Identifier', value=ancestor.id)
-            # ancestor.template_id = st.text_input('Template ID', value=ancestor.template_id)
 
             if (
-                ancestor.item_type != JourneyItemType.JOURNEY
-                and ancestor.item_type != JourneyItemType.SECTION
+                JourneyItemType.JOURNEY != ancestor.item_type
+                and JourneyItemType.SECTION != ancestor.item_type
             ):
-                if ancestor.item_type == JourneyItemType.MODULE:
-                    items = section_items
-                    options = section_options
+                if JourneyItemType.MODULE == ancestor.item_type:
+                    sel_options = section_options
                 else:
-                    items = module_items
-                    options = module_options
+                    sel_options = module_options
 
-                ancestor.parent_id = st.selectbox(
+                options = [
+                    id[0]
+                    for id in sel_options
+                    if id[1] == all_children[ancestor.parent_id].parent_id
+                ]
+                items = [all_children[id] for id in options]  # section_items
+
+                ancestor_parent_index = st.selectbox(
                     "Parent",
                     options=items,
                     index=(
@@ -169,33 +180,34 @@ def open_action(item: JourneyItem, journey: JourneyItem):
                     key="parent_" + id_str,
                 )
 
-            if ancestor.item_type != JourneyItemType.JOURNEY:
-                if ancestor.item_type == JourneyItemType.SECTION:
-                    items = section_items
-                    options = section_options
-                elif ancestor.item_type == JourneyItemType.MODULE:
-                    items = module_items
-                    options = module_options
+            if JourneyItemType.JOURNEY != ancestor.item_type:
+                if JourneyItemType.SECTION == ancestor.item_type:
+                    sel_options = section_options
+                elif JourneyItemType.MODULE == ancestor.item_type:
+                    sel_options = module_options
                 else:
-                    items = action_items
-                    options = action_options
+                    sel_options = action_options
+
+                options = [id[0] for id in sel_options if id[1] == ancestor.parent_id]
+                items = [all_children[id] for id in options]  # section_items
+
                 if (
                     ancestor.id in journey_relations.keys()
                     and len(journey_relations[ancestor.id].children) > 1
                 ):
-                    ancestor.after_id = st.selectbox(
+                    ancestor_after_index = st.selectbox(
                         "After",
-                        options=items,
+                        options=["First item"] + items,
                         index=(
-                            options.index(ancestor.after_id)
+                            options.index(ancestor.after_id) + 1
                             if ancestor.after_id in options
-                            else None
+                            else 0
                         ),
                         key="after_" + id_str,
                     )
 
             ancestor.title = st.text_input("Title", value=ancestor.title)
-            if ancestor.item_type == JourneyItemType.ACTION:
+            if JourneyItemType.ACTION == ancestor.item_type:
 
                 # # ancestor.icon = st.text_input("Icon", value=ancestor.icon, key = "icon_"+id_str)
                 # # ancestor.intro = st.text_area("Introduction", value=ancestor.intro, key = "intro_"+id_str)
@@ -212,61 +224,253 @@ def open_action(item: JourneyItem, journey: JourneyItem):
                     "Action", value=ancestor.action, key="action_" + id_str
                 )
 
-            ancestor.end_of_day = st.number_input(
-                "Done by end of day #", value=ancestor.end_of_day, key="eod_" + id_str
-            )
+            if JourneyItemType.ACTION == ancestor.item_type:
+                ancestor.end_of_day = st.number_input(
+                    "Done by end of day #",
+                    value=ancestor.end_of_day,
+                    key="eod_" + id_str,
+                )
             # ancestor.item_type = st.selectbox(
             #     "Item Type", options=[e.value for e in JourneyItemType]
             # )
 
-    if st.button("Save", use_container_width=True, type="primary"):
+    if st.button("Save", use_container_width=True, type="primary", key="save_button_"+id_str):
         # st.session_state.vote = {"item": item, "reason": feedback}
         st.rerun()
 
 
 level_step = 1
 
+@st.fragment
+def write_section_module(item: JourneyItem, journey: JourneyItem, item_id: str):
+    item_state: dict = st.session_state["journey_item_state"].get(item_id, {})
 
-class ChildPosition(Enum):
-    FIRST = 1
-    MIDDLE = 2
-    LAST = 3
+    if item_state["open"]:
+
+        # with container:
+        with stylable_container(
+            key="journey_process_container_" + item_id,
+            css_styles=[
+                """
+                {
+                    gap: 0;
+                }
+                """,
+                """
+                > div[data-testid=stVerticalBlockBorderWrapper]:nth-child(2) {
+                    margin-top:1rem;
+                }
+                """,
+            ],
+        ):
+            if JourneyItemType.MODULE == item.item_type and item.icon:
+                with stylable_container(
+                    key="journey_process_button_container_" + item_id,
+                    css_styles=[
+                        """
+                        .stColumn:last-child {
+                            justify-content: flex-end;
+                            display: flex;
+                        }
+                        """,
+                        """
+                        .stColumn:last-child > div {
+                            width: 4rem;
+                        }
+                        """,
+                        """
+                        .stElementContainer:first-child button {
+                            margin-top: 1rem;
+                        }
+                        """,
+                        """
+                        .stVerticalBlock {
+                            gap: 0.5rem;
+                        }
+                        """,
+                        """
+                        button p {
+                            font-weight: bold;
+                            font-size: 1.33rem;
+                        }
+                        """,
+                    ],
+                ):
+                    _, image_col, edit_col = st.columns([0.2, 0.6, 0.2])
+
+                    image_col.image(
+                        get_image(item.icon, "icon_files"),
+                        use_column_width=True,
+                    )
+
+                    if edit_col.button(
+                        image_symbol,
+                        use_container_width=True,
+                        key=f"journey_process_change_item_image_{item_id}",
+                    ):
+                        open_logo_dialog(item, journey)
+
+                    if edit_col.button(
+                        edit_symbol,
+                        key=f"edit_button_{item_id}",
+                        type="secondary",
+                        use_container_width=True,
+                        disabled=item_state.get("edit", False),
+                    ):
+                        item_state["edit"] = True
+                        st.rerun(scope="fragment")
+                        # open_item(item, journey)
+
+            if item_state.get("edit"):
+                with st.container(border=True):
+                    title_con, cancel_con = st.columns([0.9, 0.1])
+                    title_con.subheader("Edit: " + item.title)
+                    if cancel_con.button(
+                        "X", key=f"cancel_edit_" + item.id, use_container_width=True
+                    ):
+                        del item_state["edit"]
+                        st.rerun(scope="fragment")
+                    edit_item(item, journey)
+
+                # pretty_print(item, force=True)
+            else:
+                for index, child in enumerate(item.children):
+                    position = (
+                        ChildPosition.FIRST
+                        if index == 0
+                        else (
+                            ChildPosition.LAST
+                            if index == len(item.children) - 1
+                            else ChildPosition.MIDDLE
+                        )
+                    )
+                    write_item(child, journey=journey, position=position)
 
 
 @st.fragment
-def edit_journey(journey: JourneyItem):
-    theme = get_theme()
-    # with st.container(border=True):
-    with stylable_container(
-        key="journey_creation_section_container",
-        css_styles=[
-            f"""
-            {{
-                border: 1px solid {theme["borderColor"] if theme != None and theme["base"] == "dark" else theme["borderColorLight"]};
-                border-radius: 0.5rem;
-                overflow: hidden;
-                padding: 0.25rem 0.75rem;
-                padding-top: 1.5rem;
-                gap: 0;
-            }}
-            """,
-            """
-            > div[data-testid=stVerticalBlockBorderWrapper]:last-child > div > div[data-testid=stVerticalBlock] {
-                gap: 0;
+def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
+    item_state: dict = st.session_state["journey_item_state"].get(item_id, {})
+
+    if item_state.get("edit"):
+        with st.container(border=True):
+            title_con, cancel_con = st.columns([0.9, 0.1])
+            title_con.subheader("Edit: " + item.title)
+            if cancel_con.button(
+                "X", key=f"cancel_edit_" + item.id, use_container_width=True
+            ):
+                del item_state["edit"]
+                st.rerun(scope="fragment")
+            edit_item(item, journey)
+        return
+
+    move_item: JourneyItem = st.session_state.get("journey_item_move")
+    in_move = move_item is not None
+    _, subcol1, subcol2 = st.columns([0.025, 0.8, 0.1])
+    with subcol1:
+        with stylable_container(
+            key=f"content_container_{item_id}",
+            css_styles="""
+            {
+                margin: 1rem 0;
+                padding-top: 1rem;
+                gap: 0.5rem;
             }
             """,
-            """
-            div[data-testid=stHeadingWithActionElements] {
-                margin-bottom: 1rem;
-            }
+        ):
+            # header_row1, _, header_row2 = st.columns(
+            #     [0.15, 0.05, 0.8], vertical_alignment="center"
+            # )
+            # header_row1.image(
+            #     get_image(item.icon, "icon_files"), use_column_width=True
+            # )
+            st.markdown("##### " + item.title)
+            st.markdown(item.description)
+    with subcol2:
+        key = f"button_container_{item_id}"
+        with stylable_container(
+            key=key,
+            css_styles=[
+                f"""
+                {{
+                    margin-top: 2.2rem;
+                    gap: 0.5rem;
+                    width: 4rem;
+                    display: flex;
+                    justify-content: flex-end;
+                }}
             """,
-        ],
-    ):
-        # st.write(st.session_state["journey_creation_data"])
+                """
+                button p {
+                    font-weight: bold;
+                    font-size: 1.33rem;
+                }
+            """,
+            ],
+        ):
+            if in_move:
+                if move_item.id == item.id and st.button(
+                    selected_symbol,
+                    key=f"move_button_{item_id}",
+                    type="secondary",
+                    use_container_width=True,
+                ):
+                    move_item.move(item, journey)
+                    st.session_state["journey_item_move"] = None
+                    st.rerun()
+                elif move_item.id != item.id and st.button(
+                    below_symbol,
+                    key=f"move_button_{item_id}",
+                    type="secondary",
+                    use_container_width=True,
+                    disabled=move_item.after_id == item.id,
+                ):
+                    move_item.move(item, journey)
+                    st.session_state["journey_item_move"] = None
+                    st.rerun()
+            else:
+                with st.popover("\+", use_container_width=True):
+                    if st.button(
+                        "Add new before",
+                        key=f"add_before_button_{item_id}",
+                        type="secondary",
+                        use_container_width=True,
+                    ):
+                        print("add before")
+                    if st.button(
+                        "Add new after",
+                        key=f"add_after_button_{item_id}",
+                        type="secondary",
+                        use_container_width=True,
+                    ):
+                        print("add after")
+                if st.button(
+                    up_down_symbol,
+                    key=f"move_button_{item_id}",
+                    type="secondary",
+                    use_container_width=True,
+                ):
+                    st.session_state["journey_item_move"] = item
+                    st.rerun()
+                if st.button(
+                    edit_symbol,
+                    key=f"edit_button_{item_id}",
+                    type="secondary",
+                    use_container_width=True,
+                    disabled=item_state.get("edit", False),
+                ):
+                    item_state["edit"] = True
+                    st.rerun(scope="fragment")
+                    # open_item(item, journey)
+                with st.popover("&#9747;", use_container_width=True):
+                    if st.button(
+                        f"Are you sure you want to remove:\n\n{item.title}?",
+                        key=f"delete_button_{item_id}",
+                        use_container_width=True,
+                    ):
+                        print("remove")
 
-        write_item(journey, journey=journey)
 
-
+@st.fragment
 def write_item(
     item: JourneyItem,
     id_chain="",
@@ -279,6 +483,8 @@ def write_item(
     st.session_state["journey_item_state"] = st.session_state.get(
         "journey_item_state", {}
     )
+    item_state: dict = st.session_state["journey_item_state"].get(item_id, {})
+    st.session_state["journey_item_state"][item_id] = item_state
     level_multiplier = max(
         (container_level.index(item.item_type.value) - 1) * level_step, 0.01
     )
@@ -293,8 +499,6 @@ def write_item(
         ancestry_ids = [ancestor.id for ancestor in ancestry]
 
         if item.id in ancestry_ids:
-            # print(f"{item.id} is in:")
-            # pretty_print(ancestry_ids, force=True)
             select_column.button(
                 selected_symbol, key=f"move_item_{item_id}_parent", disabled=True
             )
@@ -302,7 +506,6 @@ def write_item(
             if select_column.button(unselected_symbol, key=f"move_item_{item_id}_in"):
                 move_item.move(item, journey)
                 st.session_state["journey_item_move"] = None
-                # ancestry = move_item.get_ancestry(journey, reset=True)
                 st.rerun()
     else:
         main_container = st.empty()
@@ -311,27 +514,19 @@ def write_item(
         item.item_type.value != container_level[-1]
         and item.item_type.value in container_level
     ):
-        # print(
-        #     container_level,
-        #     item.item_type.value,
-        #     container_level.index(item.item_type.value),
-        #     type(item.item_type),
-        #     f"\n{item.item_type == JourneyItemType.JOURNEY=}",
-        #     f"\n{item.item_type == JourneyItemType.SECTION=}",
-        #     f"\n{item.item_type == JourneyItemType.MODULE=}",
-        #     f"\n{item.item_type == JourneyItemType.ACTION=}\n\n"
-        # )
-        item_state: dict = st.session_state["journey_item_state"].get(item_id, {})
+
         item_state["open"] = item_state.get("open", False)
-        st.session_state["journey_item_state"][item_id] = item_state
-        if item.item_type == JourneyItemType.JOURNEY:
+        if JourneyItemType.JOURNEY == item.item_type:
             container = main_container
         else:
             theme = get_theme()
-            if theme["base"] == "light":
-                color = theme["borderColorLight"]
+            if theme is not None:
+                if theme["base"] == "light":
+                    color = theme["borderColorLight"]
+                else:
+                    color = theme["borderColor"]
             else:
-                color = theme["borderColor"]
+                color = "gray"
 
             key = f"item_container_{item_id}"
             with main_container:
@@ -381,11 +576,11 @@ def write_item(
                 """,
                     ],
                 )
-        if item.item_type == JourneyItemType.JOURNEY:
+        if JourneyItemType.JOURNEY == item.item_type:
             st.subheader(item.title)
         elif (
-            item.item_type == JourneyItemType.SECTION
-            or item.item_type == JourneyItemType.MODULE
+            JourneyItemType.SECTION == item.item_type
+            or JourneyItemType.MODULE == item.item_type
         ):
 
             col1, col3 = container.columns([0.9, 0.1], vertical_alignment="center")
@@ -408,81 +603,11 @@ def write_item(
             )
 
         if (
-            item.item_type == JourneyItemType.SECTION
-            or item.item_type == JourneyItemType.MODULE
+            JourneyItemType.SECTION == item.item_type
+            or JourneyItemType.MODULE == item.item_type
         ):
-            if item_state["open"]:
-                # with container:
-                with stylable_container(
-                    key="journey_process_container_" + item_id,
-                    css_styles=[
-                        """
-                        {
-                            gap: 0;
-                        }
-                        """, """
-                        > div[data-testid=stVerticalBlockBorderWrapper]:nth-child(2) {
-                            margin-top:1rem;
-                        }
-                        """
-                    ],
-                ):
-                    if item.item_type == JourneyItemType.MODULE and item.icon:
-                        with stylable_container(
-                            key="journey_process_button_container_" + item_id,
-                            css_styles=[
-                                """
-                                .stColumn:last-child {
-                                    justify-content: flex-end;
-                                    display: flex;
-                                }
-                                """,
-                                """
-                                .stColumn:last-child > div {
-                                    width: 4rem;
-                                }
-                                """,
-                                """
-                                button {
-                                    margin-top: 1rem;
-                                    gap: 0;
-                                    width: 4rem;
-                                }
-                                """,
-                                """
-                                button p {
-                                    font-weight: bold;
-                                    font-size: 1.33rem;
-                                }
-                                """,
-                            ],
-                        ):
-                            _, image_col, edit_col = st.columns([0.2, 0.6, 0.2])
+            write_section_module(item, journey, item_id)
 
-                            image_col.image(
-                                get_image(item.icon, "icon_files"),
-                                use_column_width=True,
-                            )
-
-                            if edit_col.button(
-                                "&#9968;",
-                                use_container_width=True,
-                                key=f"journey_process_change_item_image_{item_id}",
-                            ):
-                                open_logo_dialog(item, journey)
-
-                        # pretty_print(item, force=True)
-                    for index, child in enumerate(item.children):
-                        position = (
-                            ChildPosition.FIRST
-                            if index == 0
-                            else (
-                                ChildPosition.LAST
-                                if index == len(item.children) - 1
-                                else ChildPosition.MIDDLE
-                            )
-                        )
-                        write_item(child, journey=journey, position=position)
         elif item.children:
             for index, child in enumerate(item.children):
                 position = (
@@ -496,120 +621,62 @@ def write_item(
                 )
 
                 write_item(child, journey=journey, position=position)
-    elif item.item_type == JourneyItemType.ACTION:
-        _, subcol1, subcol2 = st.columns([0.025, 0.8, 0.1])
-        with subcol1:
-            with stylable_container(
-                key=f"content_container_{item_id}",
-                css_styles="""
-                {
-                    margin: 1rem 0;
-                    padding-top: 1rem;
-                    gap: 0.5rem;
-                }
-                """,
-            ):
-                # header_row1, _, header_row2 = st.columns(
-                #     [0.15, 0.05, 0.8], vertical_alignment="center"
-                # )
-                # header_row1.image(
-                #     get_image(item.icon, "icon_files"), use_column_width=True
-                # )
-                st.markdown("##### " + item.title)
-                st.markdown(item.description)
-        with subcol2:
-            key = f"button_container_{item_id}"
-            with stylable_container(
-                key=key,
-                css_styles=[
-                    f"""
-                    {{
-                        margin-top: 2.2rem;
-                        gap: 0.5rem;
-                        width: 4rem;
-                        display: flex;
-                        justify-content: flex-end;
-                    }}
-                """,
-                    """
-                    button p {
-                        font-weight: bold;
-                        font-size: 1.33rem;
-                    }
-                """,
-                ],
-            ):
-                if in_move:
-                    if move_item.id == item.id and st.button(
-                        selected_symbol,
-                        key=f"move_button_{item_id}",
-                        type="secondary",
-                        use_container_width=True,
-                    ):
-                        move_item.move(item, journey)
-                        st.session_state["journey_item_move"] = None
-                        st.rerun()
-                    elif move_item.id != item.id and st.button(
-                        below_symbol,
-                        key=f"move_button_{item_id}",
-                        type="secondary",
-                        use_container_width=True,
-                        disabled=move_item.after_id == item.id,
-                    ):
-                        move_item.move(item, journey)
-                        st.session_state["journey_item_move"] = None
-                        st.rerun()
-                else:
-                    with st.popover("\+", use_container_width=True):
-                        if st.button(
-                            "Add new before",
-                            key=f"add_before_button_{item_id}",
-                            type="secondary",
-                            use_container_width=True,
-                        ):
-                            print("add before")
-                        if st.button(
-                            "Add new after",
-                            key=f"add_after_button_{item_id}",
-                            type="secondary",
-                            use_container_width=True,
-                        ):
-                            print("add after")
-                    if st.button(
-                        up_down_symbol,
-                        key=f"move_button_{item_id}",
-                        type="secondary",
-                        use_container_width=True,
-                    ):
-                        st.session_state["journey_item_move"] = item
-                        st.rerun()
-                    if st.button(
-                        "&#9881;",
-                        key=f"edit_button_{item_id}",
-                        type="secondary",
-                        use_container_width=True,
-                    ):
-                        open_action(item, journey)
-                    with st.popover("&#9747;", use_container_width=True):
-                        if st.button(
-                            f"Are you sure you want to remove:\n\n{item.title}?",
-                            key=f"delete_button_{item_id}",
-                            use_container_width=True,
-                        ):
-                            print("remove")
+    elif JourneyItemType.ACTION == item.item_type:
+        write_action(item, journey, item_id)
+
+
+@st.fragment
+def edit_journey(journey: JourneyItem):
+    theme = get_theme()
+    # with st.container(border=True):
+    border_color = "gray"
+    if theme != None and theme["base"] == "dark":
+        border_color = theme["borderColor"]
+    elif theme != None:
+        border_color = theme["borderColorLight"]
+
+    with stylable_container(
+        key="journey_creation_section_container",
+        css_styles=[
+            f"""
+            {{
+                border: 1px solid {border_color};
+                border-radius: 0.5rem;
+                overflow: hidden;
+                padding: 0.25rem 0.75rem;
+                padding-top: 1.5rem;
+                gap: 0;
+            }}
+            """,
+            """
+            > div[data-testid=stVerticalBlockBorderWrapper]:last-child > div > div[data-testid=stVerticalBlock] {
+                gap: 0;
+            }
+            """,
+            """
+            div[data-testid=stHeadingWithActionElements] {
+                margin-bottom: 1rem;
+            }
+            """,
+        ],
+    ):
+        # st.write(st.session_state["journey_creation_data"])
+
+        write_item(journey, journey=journey)
 
 
 def journey_edit():
     journey_id = (
         st.query_params.get("journey", None)
-        or ("journey_creation_id" in st.session_state and st.session_state.journey_creation_id)
+        or ("journey_edit_id" in st.session_state and st.session_state.journey_edit_id)
         or None
     )
-    if (
-        journey_id is not None
-    ):
-
-        journey: JourneyItem = JourneyItem.load_from_db(journey_id)
+    if journey_id is not None:
+        if journey_id not in get_journey_item_cache().keys():
+            journey: JourneyItem = JourneyItem.load_from_db(journey_id)
+            get_journey_item_cache()[journey_id] = journey
+        else:
+            journey = get_journey_item_cache()[journey_id]
 
         print("Journey ID", journey_id)
         print(f"Journey keys: {get_available_journeys()}")
@@ -618,46 +685,46 @@ def journey_edit():
     else:
         st.error("No data to show. Please go back and recreate the journey.")
 
-    st.subheader("Assign Journey")
+    # st.subheader("Assign Journey")
 
-    with st.container(border=True):
-        # st.write(
-        #     JourneyItem.from_json(st.session_state["journey_creation_data"])
-        #     if "journey_creation_data" in st.session_state
-        #     else "No data"
-        # )
-        assign_to = st.multiselect(
-            "Assign Journey to",
-            [
-                "Individual(s)",
-                "Team(s)",
-                "Department(s)",
-                "Location(s)",
-                "Subsidiary",
-            ],
-            ["Individual(s)"],
-        )
-        st.divider()
+    # with st.container(border=True):
+    #     # st.write(
+    #     #     JourneyItem.from_json(st.session_state["journey_creation_data"])
+    #     #     if "journey_creation_data" in st.session_state
+    #     #     else "No data"
+    #     # )
+    #     assign_to = st.multiselect(
+    #         "Assign Journey to",
+    #         [
+    #             "Individual(s)",
+    #             "Team(s)",
+    #             "Department(s)",
+    #             "Location(s)",
+    #             "Subsidiary",
+    #         ],
+    #         ["Individual(s)"],
+    #     )
+    #     st.divider()
 
-        st.subheader("Assign to Individual(s)")
-        emp_id = st.text_input(
-            "Employee Details (Name / ID)",
-            placeholder="eg. John Smith / XH12345",
-            key=1,
-        )
-        st.button("Add Employee", type="primary")
-        st.markdown(" ")
+    #     st.subheader("Assign to Individual(s)")
+    #     emp_id = st.text_input(
+    #         "Employee Details (Name / ID)",
+    #         placeholder="eg. John Smith / XH12345",
+    #         key=1,
+    #     )
+    #     st.button("Add Employee", type="primary")
+    #     st.markdown(" ")
 
-    col1, col2, col3 = st.columns([0.15, 0.7, 0.15])
-    with col1:
-        # st.page_link("pages/create_journey_2.py", label="Back")
-        if st.button("Back", use_container_width=True):
-            st.session_state["journey_creation_state"] = "init"
-            st.rerun()
-    with col3:
-        if st.button("Continue", use_container_width=True):
-            print("donothing")
-        # st.page_link("main.py", label="Continue")
+    # col1, col2, col3 = st.columns([0.15, 0.7, 0.15])
+    # with col1:
+    #     # st.page_link("pages/create_journey_2.py", label="Back")
+    #     if st.button("Back", use_container_width=True):
+    #         st.session_state["journey_creation_state"] = "init"
+    #         st.rerun()
+    # with col3:
+    #     if st.button("Continue", use_container_width=True):
+    #         print("donothing")
+    #     # st.page_link("main.py", label="Continue")
 
 
 async def main():

@@ -1,4 +1,3 @@
-from enum import Enum
 import time
 from typing import List
 
@@ -11,16 +10,13 @@ import os
 import sys
 
 from admin.sidebar import get_image, get_theme, init_sidebar
+from lib.streamlit.journey import get_journey_item_cache
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
 from lib.models.journey import (
     JourneyItem,
-    JourneyItemType,
-    add_journey_to_cache,
-    get_available_journeys,
-    get_journey_from_cache,
 )
 from lib.chains.init import get_chain
 from lib.helpers.journey import load_journey_template, match_title_to_cat_and_id
@@ -39,9 +35,6 @@ This is an *extremely* cool admin tool!
     },
 )
 
-@st.cache_resource
-def get_journey_item_cache() -> dict[str, JourneyItem]:
-    return {}
 
 @st.fragment
 async def journey_creation():
@@ -228,7 +221,10 @@ async def journey_creation():
                     print("Create journey " + journey.id)
                     journey.title = journey_name
                     journey.save_to_db()
-                    st.session_state["journey_creation_id"] = journey.id
+                    st.session_state["journey_edit_id"] = journey.id
+                    st.session_state["journey_creation_id"] = None
+                    st.session_state["journey_creation_data"] = None
+                    st.session_state["journey_creation_state"] = None
                     st.switch_page("pages/journey_simple_edit.py")
                 # st.page_link("main.py", label="Continue")
 

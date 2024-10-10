@@ -116,6 +116,7 @@ class JourneyDataTable(Base):
         )
 
         if db_journey_item is None:
+            print("Create new db item", journey_item.template_id, journey_item.id)
             db_journey_item = JourneyDataTable(
                 id=journey_item.id,
                 journey_name=journey_item.title,
@@ -149,6 +150,7 @@ class JourneyDataTable(Base):
             )
             session.add(db_journey_item)
         else:
+            print("Update existing db item", journey_item.id)
             db_journey_item.id = journey_item.id
             db_journey_item.journey_name = journey_item.title
             db_journey_item.journey_template_id = journey_item.template_id
@@ -182,6 +184,8 @@ class JourneyDataTable(Base):
 
         # Add the new JourneyDataTable item to the session and commit the changes
         if commit:
+            print("Save to db", journey_item.id)
+            get_journey_data_from_db.cache_clear()
             session.commit()
 
         return db_journey_item
@@ -256,6 +260,7 @@ class JourneyDataTable(Base):
                 JourneyDataTable.create_from_journey_item(child, session, False)
 
         # Commit the changes to the database
+        get_journey_data_from_db.cache_clear()
         session.commit()
 
 
@@ -459,9 +464,9 @@ class JourneyItem(BaseModel):
         if isinstance(data, str):
             data = json.loads(data)
         children = None
-        template_id = data.get("template_id")
+        template_id = data.get("template_id", data.get("id") if from_template else None)
 
-        if from_template:
+        if from_template and data.get("id") == template_id:
             template_id = data.get("id")
             data["id"] = str(
                 uuid.uuid5(uuid.NAMESPACE_DNS, data.get("id", "journey_template"))
@@ -471,8 +476,8 @@ class JourneyItem(BaseModel):
             children = []
             prev_id = None
             for child in data.get("children", []):
-                child_template_id = child.get("template_id")
-                if from_template:
+                child_template_id = child.get("template_id", child.get("id") if from_template else None)
+                if from_template and child.get("id") == child_template_id:
                     child_template_id = child.get("id")
                     child["id"] = str(
                         uuid.uuid5(
@@ -488,7 +493,8 @@ class JourneyItem(BaseModel):
                             "parent_id": data["id"],
                             "after_id": after_id,
                             "template_id": child_template_id,
-                        }
+                        },
+                        from_template,
                     )
                 )
                 prev_id = child["id"]
@@ -772,6 +778,9 @@ class JourneyItem(BaseModel):
     def save_to_db(self) -> JourneyDataTable:
         session = user_db_get_session()
         self.reset_cache()
+
+        print("Save to db", self.id)
+
         return JourneyDataTable.create_from_journey_item(self, session)
 
     @classmethod

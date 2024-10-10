@@ -164,7 +164,7 @@ def edit_item_ancestor(
                     options=["[as first item]"] + titles,
                     index=(
                         options.index(ancestor.after_id) + 1
-                        if ancestor.after_id in options
+                        if ancestor.after_id in options and ancestor.after_id is not None
                         else 0
                     ),
                     key="after_" + id_str,
@@ -173,7 +173,7 @@ def edit_item_ancestor(
                 if ancestor_after_title == "[as first item]":
                     if ancestor.after_id is not None:
                         changes.append(
-                            (ancestor.title, "Move to first", ancestor.after_id, None)
+                            (ancestor.title, "Move to first", all_children[ancestor.after_id].title, None, titles)
                         )
                         ancestor.move(None, journey)
                         journey.save_to_db()

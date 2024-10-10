@@ -225,7 +225,7 @@ async def journey_creation():
                     st.session_state["journey_creation_id"] = None
                     st.session_state["journey_creation_data"] = None
                     st.session_state["journey_creation_state"] = None
-                    st.switch_page("pages/journey_simple_edit.py")
+                    st.switch_page("pages/journey_edit.py")
                 # st.page_link("main.py", label="Continue")
 
         # st.subheader("Assign Journey")
@@ -274,6 +274,7 @@ async def main():
     st.title("Create new Journey")
 
     if init_sidebar(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
+        st.switch_page("Admin_Home.py")
         return
 
     st.markdown(" ")

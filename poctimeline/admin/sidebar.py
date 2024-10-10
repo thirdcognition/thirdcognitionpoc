@@ -11,6 +11,7 @@ from lib.streamlit.user import check_auth
 
 theme = None
 
+
 def get_image(id, path="") -> str:
     global theme
     # theme = st_theme()
@@ -19,13 +20,19 @@ def get_image(id, path="") -> str:
     if theme is not None and theme["base"] == "dark":
         id = id + "_dark"
 
-    path = os.path.join(current_dir, 'static', path) if path != "" else os.path.join(current_dir, 'static')
+    path = (
+        os.path.join(current_dir, "static", path)
+        if path != ""
+        else os.path.join(current_dir, "static")
+    )
     # print(os.path.join(path, f"{id}.png"))
     return os.path.join(path, f"{id}.png")
+
 
 def get_theme():
     global theme
     return theme
+
 
 def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous) -> AuthStatus:
     # from streamlit_javascript import st_javascript
@@ -71,15 +78,14 @@ def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous) -> AuthStatus:
         )
         menu_items = st.empty()
 
-
-    auth_valid = check_auth(req_user_level) #st.session_state.get("auth_level", check_auth(req_user_level))
+    auth_valid = check_auth(
+        req_user_level
+    )  # st.session_state.get("auth_level", check_auth(req_user_level))
     print(f"auth_valid: {auth_valid}")
-    #st.session_state["auth_level"] = auth_valid
+    # st.session_state["auth_level"] = auth_valid
     user_level: UserLevel = UserLevel.anonymous
     if auth_valid != AuthStatus.NO_LOGIN:
         user_level = check_auth_level()
-
-
 
     # st.markdown(
     #     """

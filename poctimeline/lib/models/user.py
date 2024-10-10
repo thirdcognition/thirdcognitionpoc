@@ -145,20 +145,23 @@ def init_org_db():
 
 def user_db_get_session() -> Session:
     init_system_db()
-    organization = get_user_org(st.session_state.get("username"))
-    return db_session(organization.db_name) if organization else None
+    if st.session_state.get("username"):
+        organization = get_user_org(st.session_state.get("username"))
+        return db_session(organization.db_name) if organization else None
 
 
 def get_user_chroma_path():
     init_system_db()
-    organization = get_user_org(st.session_state.get("username"))
-    return os.path.join(SETTINGS.db_path, organization.db_name, SETTINGS.chroma_path)
+    if st.session_state.get("username"):
+        organization = get_user_org(st.session_state.get("username"))
+        return os.path.join(SETTINGS.db_path, organization.db_name, SETTINGS.chroma_path)
 
 
 def user_db_commit():
     init_system_db()
-    organization = get_user_org(st.session_state.get("username"))
-    return db_commit(organization.db_name)
+    if st.session_state.get("username"):
+        organization = get_user_org(st.session_state.get("username"))
+        return db_commit(organization.db_name)
 
 
 def write_auth_config(auth_config: dict) -> bool:

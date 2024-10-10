@@ -1,6 +1,7 @@
 from datetime import datetime
 from enum import Enum
 from functools import cache
+import json
 from typing import Any, Dict, List, Optional, Union
 import uuid
 from pydantic import BaseModel, Field
@@ -27,6 +28,7 @@ def get_journey_data_from_db(id: str, session=None, reset=True) -> "JourneyDataT
 
     return db_journey_item
 
+
 @cache
 def get_all_journeys_from_db(session=None, reset=True) -> list["JourneyDataTable"]:
     if reset:
@@ -34,14 +36,19 @@ def get_all_journeys_from_db(session=None, reset=True) -> list["JourneyDataTable
     if session is None:
         session = user_db_get_session()
 
-    db_journey_items: JourneyDataTable = list((
-        session.query(JourneyDataTable).filter(JourneyDataTable.item_type == JourneyItemType.JOURNEY.value)
-    ).all())
+    db_journey_items: JourneyDataTable = list(
+        (
+            session.query(JourneyDataTable).filter(
+                JourneyDataTable.item_type == JourneyItemType.JOURNEY.value
+            )
+        ).all()
+    )
 
     if db_journey_items is None or len(db_journey_items) == 0:
         raise ValueError(f"Journey Items not found in the database.")
 
     return db_journey_items
+
 
 class JourneyDataTable(Base):
     __tablename__ = SETTINGS.journey_tablename
@@ -123,7 +130,11 @@ class JourneyDataTable(Base):
                 intro=journey_item.intro,
                 summary=journey_item.summary,
                 description=journey_item.description,
-                content_instructions=journey_item.content_instructions,
+                content_instructions=(
+                    journey_item.content_instructions.to_json()
+                    if journey_item.content_instructions is not None
+                    else None
+                ),
                 content=journey_item.content,
                 test=journey_item.test,
                 action=journey_item.action,
@@ -151,7 +162,11 @@ class JourneyDataTable(Base):
             db_journey_item.intro = journey_item.intro
             db_journey_item.summary = journey_item.summary
             db_journey_item.description = journey_item.description
-            db_journey_item.content_instructions = journey_item.content_instructions
+            db_journey_item.content_instructions = (
+                journey_item.content_instructions.to_json()
+                if journey_item.content_instructions is not None
+                else None
+            )
             db_journey_item.content = journey_item.content
             db_journey_item.test = journey_item.test
             db_journey_item.action = journey_item.action
@@ -186,7 +201,9 @@ class JourneyDataTable(Base):
             intro=self.intro,
             summary=self.summary,
             description=self.description,
-            content_instructions=self.content_instructions,
+            content_instructions=ContentInstructions.from_json(
+                self.content_instructions
+            ),
             content=self.content,
             test=self.test,
             action=self.action,
@@ -226,7 +243,7 @@ class JourneyDataTable(Base):
         self.intro = journey_item.intro
         self.summary = journey_item.summary
         self.description = journey_item.description
-        self.content_instructions = journey_item.content_instructions
+        self.content_instructions = journey_item.content_instructions.to_json()
         self.content = journey_item.content
         self.test = journey_item.test
         self.action = journey_item.action
@@ -294,6 +311,10 @@ class ContentInstructions(BaseModel):
 
     @classmethod
     def from_json(cls, data: Dict[str, Any]) -> "ContentInstructions":
+        if data is None:
+            return None
+        if isinstance(data, str):
+            data = json.loads(data)
         return cls(
             role=data.get("role"),
             topic=data.get("topic"),
@@ -425,8 +446,18 @@ class JourneyItem(BaseModel):
     def __str__(self):
         return self.title
 
+    def reset_cache(self):
+        self.cache = {}
+        if self.children and len(self.children) > 0:
+            for child in self.children:
+                child.reset_cache()
+
     @classmethod
     def from_json(cls, data: Dict[str, Any], from_template=False) -> "JourneyItem":
+        if data is None:
+            return None
+        if isinstance(data, str):
+            data = json.loads(data)
         children = None
         template_id = data.get("template_id")
 
@@ -515,13 +546,13 @@ class JourneyItem(BaseModel):
 
     def flatten(
         self, type_filter: Optional[JourneyItemType] = None, reset=False
-    ) -> List["JourneyItem"]:
+    ) -> List[str]:
         cache_key = "flattened" + ("_" + type_filter.value if type_filter else "")
         if self.cache.get(cache_key) and not reset:
             return self.cache.get(cache_key)
-        items: list[JourneyItem] = []
-        if self.item_type == type_filter or not type_filter:
-            items.append(self)
+        items: list[str] = []
+        if not type_filter or type_filter == self.item_type:
+            items.append(self.id)
         if self.children:
             for child in self.children:
                 items.extend(child.flatten(type_filter, reset))
@@ -551,21 +582,23 @@ class JourneyItem(BaseModel):
         if self.cache.get(cache_key) and not reset:
             return self.cache.get(cache_key)
 
-        all_children = self.flatten(reset=reset)
-
-        all_children_by_id = {child.id: child for child in all_children}
+        all_children_by_id = {}  # [child for child in self.children]
+        if self.children and len(self.children) > 0:
+            for child in self.children:
+                all_children_by_id[child.id] = child
+                all_children_by_id.update(child.all_children_by_id())
 
         self.cache[cache_key] = all_children_by_id
         return all_children_by_id
 
-    def get_relations(self, reset=False) -> Dict[str, "JourneyItem"]:
+    def get_relations(self, reset=False) -> Dict[str, str]:
         if self.cache.get("relations") and not reset:
             return self.cache["relations"]
 
         relations = {}
         if self.children is not None:
             for child in self.children:
-                relations[child.id] = self
+                relations[child.id] = self.id
 
             for child in self.children:
                 relations.update(child.get_relations(reset))
@@ -573,42 +606,48 @@ class JourneyItem(BaseModel):
         self.cache["relations"] = relations
         return relations
 
-    def get_ancestry(self, root: "JourneyItem", reset=False) -> List["JourneyItem"]:
+    def get_ancestry(self, root: "JourneyItem", reset=False) -> List[str]:
         if self.cache.get("ancestry") and not reset:
             return self.cache["ancestry"]
 
         journey_relations = root.get_relations(reset)
-        parent: JourneyItem = journey_relations[self.id]
-        ancestry: list[JourneyItem] = [parent]
-        while parent:
+        parent = journey_relations[self.id]
+        ancestry: list[str] = [parent]
+        while parent is not None:
             # add parent to the beginning of the list and check its parent
-            if parent.id and parent.id in journey_relations.keys():
-                parent = journey_relations[parent.id]
-            elif parent.id is not None:
+            if parent in journey_relations.keys():
+                parent = journey_relations[parent]
+            elif parent is not None:
                 parent = None
-            if parent and parent not in ancestry:
+            if parent is not None and parent not in ancestry:
                 ancestry.insert(0, parent)
 
-        ancestry.append(self)
+        ancestry.append(self.id)
         self.cache["ancestry"] = ancestry
         return ancestry
 
     def move(self, target: "JourneyItem", journey: "JourneyItem"):
-        print("Move to/after", target.title)
-        if self.item_type != target.item_type:
+        print(
+            "Move to/after", (target.title if target is not None else "first at parent")
+        )
+        all_children = journey.all_children_by_id()
+
+        if target is not None and self.item_type != target.item_type:
             while (
                 target.item_type != self.item_type
                 and target.children
                 and len(target.children) > 0
             ):
                 target = target.children[0]
+            target = all_children[target.parent_id]
 
-        print("Move to/after (children?)", target.title)
+            print("Move to/after (children?)", target.title)
 
         ancestry = self.get_ancestry(
             journey
         )  # get a list of all parents of self, 0 being the journey and last self being theself
-        target_ancestry = target.get_ancestry(journey)
+        if target is not None:
+            target_ancestry = target.get_ancestry(journey)
         # journey.get_child_by_id - get any child by id
         # journey.flatten - get list of all children in a list (also children of children and so on)
         # journey.get_relations return dict with self id as key and parent self as value
@@ -626,8 +665,12 @@ class JourneyItem(BaseModel):
         # set self parent_id to target parent_id
         # set self after_id to target id
 
-        # Get parent ofself
-        parent = ancestry[-2] if len(ancestry) > 1 else journey
+        # Get parent of self
+        parent = (
+            all_children[ancestry[-2]]
+            if len(ancestry) > 1 and ancestry[-2] in all_children
+            else journey
+        )
         target_parent = None
         # Get siblings ofself
         siblings = [child for child in parent.children if child != self]
@@ -637,9 +680,14 @@ class JourneyItem(BaseModel):
                 sibling.after_id = self.after_id
                 break
 
-        if self.item_type == target.item_type:
+        if target is not None and self.item_type == target.item_type:
             # Get parent of target
-            target_parent = target_ancestry[-2] if len(target_ancestry) > 1 else journey
+
+            target_parent = (
+                all_children[target_ancestry[-2]]
+                if len(target_ancestry) > 1 and target_ancestry[-2] in all_children
+                else journey
+            )
             # Get siblings of target
             target_siblings = [
                 child for child in target_parent.children if child != target
@@ -651,7 +699,7 @@ class JourneyItem(BaseModel):
                     break
 
             # If self's parent is not the same as target's parent, remove self from self's parent's children and add it to target's parent's children
-        if parent != target_parent:
+        if target is not None and parent != target_parent:
             if self in parent.children:
                 parent.children.remove(self)
             if target_parent is not None:
@@ -662,9 +710,9 @@ class JourneyItem(BaseModel):
             self.parent_id = target_parent.id
 
         # Set self's after_id to target's id
-        if self.item_type == target.item_type:
+        if target is not None and self.item_type == target.item_type:
             self.after_id = target.id
-        else:
+        elif target is not None:
             if target_parent is not None:
                 if self in target_parent.children:
                     target_parent.children.remove(self)
@@ -672,6 +720,13 @@ class JourneyItem(BaseModel):
                 target.children.append(self)
             self.after_id = None
             self.parent_id = target.id
+        else:
+            self.after_id = None
+            for sibling in siblings:
+                if sibling.after_id is None:
+                    sibling.after_id = self.id
+
+        journey.reset_cache()
         journey.sort_children()
 
     def sort_children(self):
@@ -704,8 +759,19 @@ class JourneyItem(BaseModel):
             for child in self.children:
                 child.sort_children()
 
+    def update_eod(self, new_eod=0):
+
+        if self.children and len(self.children) > 0:
+            new_eod = max(*[child.update_eod() for child in self.children], new_eod)
+
+        if new_eod != 0:
+            self.end_of_day = new_eod
+
+        return new_eod
+
     def save_to_db(self) -> JourneyDataTable:
         session = user_db_get_session()
+        self.reset_cache()
         return JourneyDataTable.create_from_journey_item(self, session)
 
     @classmethod

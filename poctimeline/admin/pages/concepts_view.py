@@ -239,6 +239,7 @@ async def main():
     st.title("Browse found concepts")
 
     if init_sidebar(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
+        st.switch_page("Admin_Home.py")
         return
 
     file_categories = get_all_categories()

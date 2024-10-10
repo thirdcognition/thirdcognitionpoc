@@ -45,22 +45,27 @@ async def main():
     st.title("List existing Journeys")
 
     if init_sidebar(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
+        st.switch_page("Admin_Home.py")
         return
 
     st.markdown(" ")
-    db_journey_items = get_all_journeys_from_db()
+    try:
+        db_journey_items = get_all_journeys_from_db()
 
-    journey_rows = [3 for _ in range(len(db_journey_items)//3 + 1)]
-    journey_grid = grid(*journey_rows, vertical_align="center")
+        journey_rows = [3 for _ in range(len(db_journey_items)//3 + 1)]
+        journey_grid = grid(*journey_rows, vertical_align="center")
 
-    for db_journey in db_journey_items:
-        with journey_grid.container(border=True):
-            with stylable_container(key=f"journey_{db_journey.id}_card", css_styles=""):
-                st.subheader(db_journey.title)
-                st.code(db_journey.id)
-                if st.button("Open", key=f"journey_{db_journey.id}_open"):
-                    st.session_state["journey_edit_id"] = db_journey.id
-                    st.switch_page("pages/journey_simple_edit.py")
+        for db_journey in db_journey_items:
+            with journey_grid.container(border=True):
+                with stylable_container(key=f"journey_{db_journey.id}_card", css_styles=""):
+                    st.subheader(db_journey.title)
+                    st.code(db_journey.id)
+                    if st.button("Open", key=f"journey_{db_journey.id}_open"):
+                        st.session_state["journey_edit_id"] = db_journey.id
+                        st.switch_page("pages/journey_edit.py")
+    except Exception as e:
+        print(e)
+        st.write("No journeys available")
 
 
 

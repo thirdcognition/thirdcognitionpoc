@@ -1,3 +1,3 @@
 [submodule "file_repository"]
 	path = file_repository
-	url = https://github.com/thirdcognition/file_repository
+	url = ../file_repository.git

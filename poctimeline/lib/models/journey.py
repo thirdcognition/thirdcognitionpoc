@@ -116,7 +116,7 @@ class JourneyDataTable(Base):
         )
 
         if db_journey_item is None:
-            print("Create new db item", journey_item.template_id, journey_item.id)
+            # print("Create new db item", journey_item.template_id, journey_item.id)
             db_journey_item = JourneyDataTable(
                 id=journey_item.id,
                 journey_name=journey_item.title,
@@ -150,7 +150,7 @@ class JourneyDataTable(Base):
             )
             session.add(db_journey_item)
         else:
-            print("Update existing db item", journey_item.id)
+            # print("Update existing db item", journey_item.id)
             db_journey_item.id = journey_item.id
             db_journey_item.journey_name = journey_item.title
             db_journey_item.journey_template_id = journey_item.template_id

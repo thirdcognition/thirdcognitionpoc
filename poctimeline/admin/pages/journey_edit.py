@@ -47,6 +47,8 @@ up_down_symbol = "&#8597;"
 below_symbol = "&#8615;"
 image_symbol = "&#9968;"
 edit_symbol = "&#9881;"
+open_symbol = "&#9660;"
+closed_symbol = "&#9654;"
 
 container_level = ["journey", "section", "module", "action"]
 
@@ -461,18 +463,15 @@ def write_item(
             JourneyItemType.SECTION == item.item_type
             or JourneyItemType.MODULE == item.item_type
         ):
-
-            col1, col3 = container.columns([0.9, 0.1], vertical_alignment="center")
-            with col1:
-                if st.button(
-                    ("&#9660;" if item_state["open"] else "&#9654;")
-                    + "\n\n"
-                    + item.title,
-                    key=f"open_button_{item_id}",
-                    type="primary",
-                ):
-                    item_state["open"] = not item_state["open"]
-                    st.rerun(scope="fragment")
+            if container.button(
+                (open_symbol if item_state["open"] else closed_symbol)
+                + "\n\n"
+                + item.title,
+                key=f"open_button_{item_id}",
+                type="primary",
+            ):
+                item_state["open"] = not item_state["open"]
+                st.rerun(scope="fragment")
         else:
             st.markdown(
                 "####"

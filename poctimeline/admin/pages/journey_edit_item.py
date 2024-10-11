@@ -129,6 +129,7 @@ def edit_item_ancestor(
                 )
                 ancestor.move(all_children[new_id], journey)
                 journey.save_to_db()
+                st.rerun(scope="fragment")
                 # st.rerun()
             # except Exception as e:
             #     st.error("Failed to set:" + e)
@@ -177,7 +178,7 @@ def edit_item_ancestor(
                         )
                         ancestor.move(None, journey)
                         journey.save_to_db()
-                        # st.rerun(scope="fragment")
+                        st.rerun(scope="fragment")
                 else:
                     # try:
                     new_id = items[titles.index(ancestor_after_title)].id
@@ -192,14 +193,13 @@ def edit_item_ancestor(
                         )
                         ancestor.move(all_children[new_id], journey)
                         journey.save_to_db()
+                        st.rerun(scope="fragment")
                         # st.rerun(scope="fragment")
                 # except Exception as e:
                 #     st.error("Failed to set:" + repr(e))
 
         new_title = st.text_input("Title", value=ancestor.title)
-        st.write(new_title, ancestor.title.strip())
         if new_title.strip() != ancestor.title.strip():
-            print("Changes")
             changes.append(
                 (
                     ancestor.title,
@@ -208,10 +208,8 @@ def edit_item_ancestor(
                     new_title,
                 )
             )
-            ancestor.title = ancestor.title.strip()
-            print("changes 2")
+            ancestor.title = new_title.strip()
             ancestor.save_to_db()
-            print("Changes 3")
 
         if JourneyItemType.ACTION == ancestor.item_type:
 
@@ -236,6 +234,7 @@ def edit_item_ancestor(
                 )
                 ancestor.description = description.strip()
                 ancestor.save_to_db()
+                st.rerun(scope="fragment")
             # ancestor.test = st.text_area("Test", value=ancestor.test, key = "test_"+id_str)
             action = st.text_input(
                 "Action", value=ancestor.action, key="action_" + id_str
@@ -251,6 +250,7 @@ def edit_item_ancestor(
                 )
                 ancestor.action = action
                 ancestor.save_to_db()
+                st.rerun(scope="fragment")
 
         if JourneyItemType.ACTION == ancestor.item_type:
             new_eod = st.number_input(
@@ -270,6 +270,7 @@ def edit_item_ancestor(
                 ancestor.end_of_day = new_eod
                 journey.update_eod()
                 journey.save_to_db()
+                st.rerun(scope="fragment")
 
         # ancestor.item_type = st.selectbox(
         #     "Item Type", options=[e.value for e in JourneyItemType]
@@ -303,6 +304,7 @@ def edit_item(item: JourneyItem, journey: JourneyItem):
     # Loop through ancestry and add fields for each item
 
     changes = []
+    # toasting = st.toast("...")
 
     for ancestor_id in ancestry:
         ancestor = all_children[ancestor_id] if ancestor_id in all_children else journey
@@ -321,9 +323,9 @@ def edit_item(item: JourneyItem, journey: JourneyItem):
 
     if len(changes) > 0:
         print("changes", changes)
-        toasting = st.toast("Update db...")
+
         for change in changes:
-            toasting.toast(f"For {change[0]} update: {change[1]}")
+            st.toast(f"For {change[0]} update: {change[1]}")
 
         # st.rerun()
 

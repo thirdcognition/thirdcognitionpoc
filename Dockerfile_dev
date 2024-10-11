@@ -1,0 +1,24 @@
+# FROM python:3.12.5-slim-bookworm
+
+# RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
+#     --mount=target=/var/cache/apt,type=cache,sharing=locked \
+#     rm -f /etc/apt/apt.conf.d/docker-clean && \
+#     apt-get update && apt-get install -y \
+#     build-essential \
+#     curl \
+#     software-properties-common \
+#     ffmpeg libsm6 libxext6 \
+#     && rm -rf /var/lib/apt/lists/*
+FROM markushaverinen/tc_poc_base_dev:latest
+
+COPY . .
+COPY poctimeline poctimeline
+COPY .streamlit .streamlit
+copy file_repository file_repository
+# RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
+RUN mkdir -p db
+
+EXPOSE 5500
+EXPOSE 5000
+HEALTHCHECK CMD curl --fail http://localhost:5500/_stcore/health
+ENTRYPOINT ["./start.sh"]

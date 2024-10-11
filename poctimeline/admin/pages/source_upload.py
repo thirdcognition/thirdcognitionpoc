@@ -309,11 +309,14 @@ async def main():
             elif filename in new_files_details:
                 det = new_files_details[filename]
 
-            tasks.append(process_source(
+            await process_source(
                 det["categories"], filename=filename, file=det["file"], overwrite=True
-            ))
+            )
+            # tasks.append(process_source(
+            #     det["categories"], filename=filename, file=det["file"], overwrite=True
+            # ))
 
-        await asyncio.gather(*tasks)
+        # await asyncio.gather(*tasks)
 
         get_db_sources(reset=True)
 

@@ -44,6 +44,8 @@ def get_all_journeys_from_db(session=None, reset=True) -> list["JourneyDataTable
         ).all()
     )
 
+    print(f"{db_journey_items=}")
+
     if db_journey_items is None or len(db_journey_items) == 0:
         raise ValueError(f"Journey Items not found in the database.")
 
@@ -320,10 +322,13 @@ class ContentInstructions(BaseModel):
             return None
         if isinstance(data, str):
             data = json.loads(data)
+        if isinstance(data, ContentInstructions) or type(data).__name__ == ContentInstructions.__name__:
+            data = data.to_json()
+
         return cls(
-            role=data.get("role"),
-            topic=data.get("topic"),
-            instructions=data.get("instructions"),
+            role=data.get("role") if data is not None else "",
+            topic=data.get("topic") if data is not None else "",
+            instructions=data.get("instructions") if data is not None else "",
         )
 
     def to_json(self) -> Dict[str, Any]:
@@ -458,6 +463,97 @@ class JourneyItem(BaseModel):
                 child.reset_cache()
 
     @classmethod
+    def create_new(cls, data: Dict[str, Any]) -> "JourneyItem":
+        id = data.get("id", str(uuid.uuid4()))
+        item_type = JourneyItemType(data.get("item_type", JourneyItemType.JOURNEY))
+        template_id = data.get("template_id", id)
+        parent_id = data.get("parent_id")
+        after_id = data.get("after_id")
+        children = data.get("children", [])
+        references = data.get("references", [])
+        use_guide = data.get("use_guide", "")
+        title = data.get("title", "New journey " + item_type.name.capitalize())
+        icon = data.get("icon", "icon-1")
+        intro = data.get("intro", "")
+        summary = data.get("summary", "")
+        description = data.get("description", "")
+        content_instructions = (
+            data.get("content_instructions")
+            if isinstance(data.get("content_instructions"), ContentInstructions)
+            else ContentInstructions.from_json(
+                data.get(
+                    "content_instructions",
+                    {"role": "instructor", "topic": "Overview of provided content."},
+                )
+            )
+        )
+        content = data.get("content", "")
+        test = data.get("test", "")
+        action = data.get("action", "")
+        end_of_day = data.get("end_of_day", 0)
+
+        children_items = []
+        if children:
+            for child_data in children:
+                child_item = cls.create_new(child_data)
+                children_items.append(child_item)
+
+        return cls(
+            id=id,
+            template_id=template_id,
+            parent_id=parent_id,
+            after_id=after_id,
+            children=children_items,
+            references=references,
+            use_guide=use_guide,
+            title=title,
+            icon=icon,
+            intro=intro,
+            summary=summary,
+            description=description,
+            content_instructions=content_instructions,
+            content=content,
+            test=test,
+            action=action,
+            end_of_day=end_of_day,
+            item_type=item_type,
+        )
+
+    def add_child(self, item:"JourneyItem", index=0):
+        if index < 0 or index > len(self.children):
+            raise IndexError("Index out of range")
+
+        if index == len(self.children):
+            # Adding item at the end of children list
+            if self.children:
+                self.children[-1].after_id = item.id
+        elif index > 0:
+            # Adding item in the middle of children list
+            next_item = self.children[index]
+            prev_item = self.children[index - 1]
+            item.after_id = prev_item.id
+            next_item.after_id = item.id
+
+        self.children.insert(index, item)
+        item.parent_id = self.id
+        self.reset_cache()
+
+    def remove_child(self, item: "JourneyItem"):
+        if item in self.children:
+            index = self.children.index(item)
+            self.children.remove(item)
+            item.parent_id = None
+            item.after_id = None
+
+            # Update after_id of next_child
+            if index < len(self.children):
+                next_child = self.children[index]
+                next_child.after_id = self.children[index - 1].id if index > 0 else None
+
+            self.reset_cache()
+            self.sort_children()
+
+    @classmethod
     def from_json(cls, data: Dict[str, Any], from_template=False) -> "JourneyItem":
         if data is None:
             return None
@@ -467,23 +563,26 @@ class JourneyItem(BaseModel):
         template_id = data.get("template_id", data.get("id") if from_template else None)
 
         if from_template and data.get("id") == template_id:
-            template_id = data.get("id")
+            # template_id = data.get("id")
             data["id"] = str(
-                uuid.uuid5(uuid.NAMESPACE_DNS, data.get("id", "journey_template"))
+                uuid.uuid4()  # uuid.NAMESPACE_DNS, data.get("id", "journey_template"))
             )
 
         if "children" in data:
             children = []
             prev_id = None
             for child in data.get("children", []):
-                child_template_id = child.get("template_id", child.get("id") if from_template else None)
+                child_template_id = child.get(
+                    "template_id", child.get("id") if from_template else None
+                )
                 if from_template and child.get("id") == child_template_id:
                     child_template_id = child.get("id")
                     child["id"] = str(
-                        uuid.uuid5(
-                            uuid.NAMESPACE_DNS,
-                            child.get("id", "journey_child_template"),
-                        )
+                        uuid.uuid4()
+                        # uuid.uuid5(
+                        #     uuid.NAMESPACE_DNS,
+                        #     child.get("id", "journey_child_template"),
+                        # )
                     )
                 after_id = prev_id
                 children.append(
@@ -613,6 +712,9 @@ class JourneyItem(BaseModel):
         return relations
 
     def get_ancestry(self, root: "JourneyItem", reset=False) -> List[str]:
+        if self == root:
+            return [self]
+
         if self.cache.get("ancestry") and not reset:
             return self.cache["ancestry"]
 
@@ -631,6 +733,33 @@ class JourneyItem(BaseModel):
         ancestry.append(self.id)
         self.cache["ancestry"] = ancestry
         return ancestry
+
+    def get_index(self, root: "JourneyItem", reset=False, as_str=True):
+        ancestry = self.get_ancestry(root, reset)
+        all_items = root.all_children_by_id(reset)
+
+        indexes = []
+
+        for i, ancestor in enumerate(ancestry):
+            if (i + 1) < len(ancestry):
+                if ancestor in all_items:
+                    indexes.append(
+                        str(
+                            all_items[ancestor].children.index(
+                                all_items[ancestry[i + 1]]
+                            )
+                            + 1
+                        )
+                    )
+                else:
+                    indexes.append(
+                        str(root.children.index(all_items[ancestry[i + 1]]) + 1)
+                    )
+
+        if as_str:
+            return ".".join(indexes)
+
+        return indexes
 
     def move(self, target: "JourneyItem", journey: "JourneyItem"):
         print(
@@ -707,9 +836,9 @@ class JourneyItem(BaseModel):
             # If self's parent is not the same as target's parent, remove self from self's parent's children and add it to target's parent's children
         if target is not None and parent != target_parent:
             if self in parent.children:
-                parent.children.remove(self)
+                parent.remove_child(self) #children.remove(self)
             if target_parent is not None:
-                target_parent.children.append(self)
+                target_parent.add_child(self) #.children.append(self)
 
         # Set self's parent_id to target's parent_id
         if target_parent is not None:
@@ -721,10 +850,10 @@ class JourneyItem(BaseModel):
         elif target is not None:
             if target_parent is not None:
                 if self in target_parent.children:
-                    target_parent.children.remove(self)
+                    target_parent.remove_child(self) #children.remove(self)
             if self not in target.children:
-                target.children.append(self)
-            self.after_id = None
+                target.add_child(self) #children.append(self)
+            # self.after_id = None
             self.parent_id = target.id
         else:
             self.after_id = None
@@ -758,9 +887,9 @@ class JourneyItem(BaseModel):
 
             # self.children.sort(key=lambda x: x.after_id)
             if original_order != sibling_order:
-                print("Sorting children of", self.title)
-                print("Original order:", original_order)
-                print("New order:", sibling_order)
+                # print("Sorting children of", self.title)
+                # print("Original order:", original_order)
+                # print("New order:", sibling_order)
                 self.children = [children_by_id[child_id] for child_id in sibling_order]
             for child in self.children:
                 child.sort_children()

@@ -124,14 +124,14 @@ async def journey_creation():
                             ],
                         ):
                             with st.spinner(""):
-                                # result = await get_chain(
-                                #     "journey_template_selector"
-                                # ).ainvoke(
-                                #     {
-                                #         "job_description": f"Title:\n{role_title.strip()}\n\nDescription:\n{role_description.strip()}"
-                                #     }
-                                # )
-                                result = "Software Engineer"
+                                result = await get_chain(
+                                    "journey_template_selector"
+                                ).ainvoke(
+                                    {
+                                        "job_description": f"Title:\n{role_title.strip()}\n\nDescription:\n{role_description.strip()}"
+                                    }
+                                )
+                                # result = "Software Engineer"
 
                                 print("Result", result)
                                 matching_ids = match_title_to_cat_and_id(result)

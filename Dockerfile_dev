@@ -21,4 +21,4 @@ RUN mkdir -p db
 EXPOSE 5500
 EXPOSE 5000
 HEALTHCHECK CMD curl --fail http://localhost:5500/_stcore/health
-ENTRYPOINT ["./start.sh"]
+ENTRYPOINT ["./start_dev.sh"]

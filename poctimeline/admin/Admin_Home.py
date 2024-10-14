@@ -111,8 +111,8 @@ def main():
     # with stylable_container(key=f"journey_{db_journey.id}_card", css_styles=""):
     build_journey_cards([all_children[module_id] for module_id in modules], journey)
 
-    st.markdown("")
-    st.markdown("**Time to complete module(s):** 5 Days - You are on track!")
+    # st.markdown("")
+    # st.markdown("**Time to complete module(s):** 5 Days - You are on track!")
 
     # except Exception as e:
     #     print(e)

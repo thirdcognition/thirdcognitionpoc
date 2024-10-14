@@ -3,6 +3,7 @@ import random
 import streamlit as st
 from streamlit_extras.stylable_container import stylable_container
 from streamlit_extras.grid import grid
+from admin.global_styles import get_theme
 from admin.sidebar import get_image
 from lib.models.journey import JourneyDataTable, JourneyItem, JourneyItemType
 
@@ -38,6 +39,7 @@ def get_journey(
 
 
 def build_journey_cards(items: list[JourneyItem], journey: JourneyItem, row_len=3):
+    theme = get_theme()
     styled_container = stylable_container(
         key="container_with_border",
         css_styles=[
@@ -46,13 +48,13 @@ def build_journey_cards(items: list[JourneyItem], journey: JourneyItem, row_len=
                 margin-top: 1rem;
             }
             """,
-            """
-            .stColumn > div[data-testid=stVerticalBlockBorderWrapper] > div > div[data-testid=stVerticalBlock] > div[data-testid=stVerticalBlockBorderWrapper] {
-                border: 2px solid rgba(256, 256, 256, 0.2);
+            f"""
+            .stColumn > div[data-testid=stVerticalBlockBorderWrapper] > div > div[data-testid=stVerticalBlock] > div[data-testid=stVerticalBlockBorderWrapper] {{
+                border: 2px solid {"rgba(256, 256, 256, 0.2)" if theme["base"] == "dark" else "rgba(0,0,0, 0.2)"};
                 border-radius: 3rem;
                 padding: 2rem;
-                background-color: #2e2e2e;
-            }
+                background-color: {"#2e2e2e" if theme["base"] == "dark" else "#eee"};
+            }}
             """,
             """
             .card-title {

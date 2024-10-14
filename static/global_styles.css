@@ -4,9 +4,13 @@ body * {
     font-family: "Plus Jakarta Sans", sans-serif !important;
 }
 
+.stApp > header {
+    background-color: transparent;
+}
+
 .block-container {
     max-width: 1000px;
-    padding-top: 0rem;
+    padding-top: 0;
     padding-bottom: 2rem;
     padding-left: 1rem;
     padding-right: 1rem;

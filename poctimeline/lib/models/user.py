@@ -337,10 +337,10 @@ def get_all_orgs(reset=False) -> List[OrganizationDataTable]:
     return orgs
 
 
-@cache
+# @cache
 def get_org_by_id(org_id: str, reset=False) -> OrganizationDataTable:
-    if reset:
-        get_org_by_id.cache_clear()
+    # if reset:
+    #     get_org_by_id.cache_clear()
 
     session = init_system_db()
     # Query OrganizationDataTable for the organization
@@ -378,10 +378,10 @@ def is_user() -> bool:
     return check_auth_level() == UserLevel.user
 
 
-@cache
+# @cache
 def get_db_user(db_user: str = None, email: str = None, reset: bool = False) -> UserDataTable:
-    if reset:
-        get_db_user.cache_clear()
+    # if reset:
+    #     get_db_user.cache_clear()
 
     if db_user is None and email is None:
         raise ValueError("Either db_user or email must be provided")
@@ -397,10 +397,10 @@ def get_db_user(db_user: str = None, email: str = None, reset: bool = False) -> 
     return user_data
 
 
-@cache
+# @cache
 def get_user_org(db_user: str = None, email: str = None, reset: bool = False) -> OrganizationDataTable:
-    if reset:
-        get_user_org.cache_clear()
+    # if reset:
+    #     get_user_org.cache_clear()
 
     if db_user is None and email is None:
         raise ValueError("Either db_user or email must be provided")

@@ -36,7 +36,6 @@ This is an *extremely* cool admin tool!
 )
 
 
-@st.fragment
 async def journey_creation():
     if (
         "journey_creation_state" not in st.session_state
@@ -133,9 +132,9 @@ async def journey_creation():
                                 )
                                 # result = "Software Engineer"
 
-                                print("Result", result)
+                                # print("Result", result)
                                 matching_ids = match_title_to_cat_and_id(result)
-                                print("Matching IDs", matching_ids)
+                                # print("Matching IDs", matching_ids)
                                 template = load_journey_template(matching_ids[1])
                                 # pretty_print(template, force=True)
                                 st.session_state["journey_creation_data"] = template
@@ -179,9 +178,9 @@ async def journey_creation():
         ):
             # pretty_print(get_journey_item_cache() , force=True)
             journey_id = st.session_state.get("journey_creation_id")
-            print("Journey id "+repr(journey_id))
+            # print("Journey id "+repr(journey_id))
             if journey_id == None or journey_id not in get_journey_item_cache().keys():
-                print("recreate journey")
+                # print("recreate journey")
                 journey = JourneyItem.from_json(
                     st.session_state["journey_creation_data"], from_template=True
                 )
@@ -212,15 +211,16 @@ async def journey_creation():
                     st.session_state["journey_creation_state"] = "init"
                     st.rerun()
             with col3:
-                print(f"journey_create_{journey.id}")
+                # print(f"journey_create_{journey.id}")
                 if st.button(
                     "Continue",
                     use_container_width=True,
                     key=f"journey_create_{journey.id}"
                 ):
-                    print("Create journey " + journey.id)
+                    # print("Create journey " + journey.id)
                     journey.title = journey_name
                     journey.save_to_db()
+                    del get_journey_item_cache()[journey.id]
                     st.session_state["journey_edit_id"] = journey.id
                     st.session_state["journey_creation_id"] = None
                     st.session_state["journey_creation_data"] = None

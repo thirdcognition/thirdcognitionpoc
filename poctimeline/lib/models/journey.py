@@ -15,10 +15,9 @@ from lib.prompts.journey import JourneyPrompts
 from lib.models.reference import Reference
 
 
-@cache
-def get_journey_data_from_db(id: str, session=None, reset=True) -> "JourneyDataTable":
-    if reset:
-        get_journey_data_from_db.cache_clear()
+def get_journey_data_from_db(id: str, session=None) -> "JourneyDataTable":
+    # if reset:
+    #     get_journey_data_from_db.cache_clear()
     if session is None:
         session = user_db_get_session()
 
@@ -29,10 +28,9 @@ def get_journey_data_from_db(id: str, session=None, reset=True) -> "JourneyDataT
     return db_journey_item
 
 
-@cache
-def get_all_journeys_from_db(session=None, reset=True) -> list["JourneyDataTable"]:
-    if reset:
-        get_journey_data_from_db.cache_clear()
+def get_all_journeys_from_db(session=None) -> list["JourneyDataTable"]:
+    # if reset:
+    #     get_journey_data_from_db.cache_clear()
     if session is None:
         session = user_db_get_session()
 
@@ -187,7 +185,7 @@ class JourneyDataTable(Base):
         # Add the new JourneyDataTable item to the session and commit the changes
         if commit:
             print("Save to db", journey_item.id)
-            get_journey_data_from_db.cache_clear()
+            # get_journey_data_from_db.cache_clear()
             session.commit()
 
         return db_journey_item
@@ -262,7 +260,7 @@ class JourneyDataTable(Base):
                 JourneyDataTable.create_from_journey_item(child, session, False)
 
         # Commit the changes to the database
-        get_journey_data_from_db.cache_clear()
+        # get_journey_data_from_db.cache_clear()
         session.commit()
 
 
@@ -341,19 +339,19 @@ class ContentInstructions(BaseModel):
 
 
 # Global journey cache
-journey_cache = {}
+# journey_cache = {}
 
 
-def get_journey_from_cache(id: str) -> Optional["JourneyItem"]:
-    return journey_cache.get(id)
+# def get_journey_from_cache(id: str) -> Optional["JourneyItem"]:
+#     return journey_cache.get(id)
 
 
-def add_journey_to_cache(journey: "JourneyItem"):
-    journey_cache[journey.id] = journey
+# def add_journey_to_cache(journey: "JourneyItem"):
+#     journey_cache[journey.id] = journey
 
 
-def get_available_journeys():
-    return journey_cache.keys()
+# def get_available_journeys():
+#     return journey_cache.keys()
 
 
 class JourneyItem(BaseModel):

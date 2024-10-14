@@ -9,12 +9,13 @@ from streamlit_extras.grid import grid
 import os
 import sys
 
-from admin.sidebar import get_image, get_theme, init_sidebar
+from admin.global_styles import get_theme
+from admin.sidebar import get_image, init_sidebar
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
-from lib.streamlit.journey import ChildPosition, get_journey_item_cache
+from lib.streamlit.journey import ChildPosition, get_journey, get_journey_item_cache
 from lib.models.journey import (
     JourneyItem,
     JourneyItemType,
@@ -611,11 +612,7 @@ def journey_edit():
     )
 
     if journey_id is not None:
-        if journey_id not in get_journey_item_cache().keys():
-            journey: JourneyItem = JourneyItem.load_from_db(journey_id)
-            get_journey_item_cache()[journey_id] = journey
-        else:
-            journey = get_journey_item_cache()[journey_id]
+        journey = get_journey(journey_id=journey_id)
 
         # print("Journey ID", journey_id)
         # print(f"Journey keys: {get_available_journeys()}")

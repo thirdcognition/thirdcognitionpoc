@@ -9,7 +9,8 @@ from streamlit_extras.grid import grid
 import os
 import sys
 
-from admin.sidebar import get_image, get_theme, init_sidebar
+from admin.global_styles import get_theme
+from admin.sidebar import init_sidebar
 from lib.streamlit.journey import get_journey_item_cache
 
 current_dir = os.path.dirname(os.path.abspath(__file__))

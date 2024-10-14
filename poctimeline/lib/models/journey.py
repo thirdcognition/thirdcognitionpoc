@@ -4,6 +4,7 @@ from functools import cache
 import json
 from typing import Any, Dict, List, Optional, Union
 import uuid
+from fuzzywuzzy import fuzz
 from pydantic import BaseModel, Field
 import sqlalchemy as sqla
 from sqlalchemy.ext.mutable import MutableList
@@ -665,6 +666,42 @@ class JourneyItem(BaseModel):
 
         self.cache[cache_key] = items
         return items
+
+    def search_children_with_token(self, search_token, item_type:JourneyItemType=None):
+        results = []
+
+        # Fuzzy match search_token against self title
+        if item_type is None or item_type == self.item_type:
+            # Check if the search token contains whitespace
+            if ' ' not in search_token:
+                # Split the search token into individual words
+                # search_words = search_token.lower().split()
+
+                # Split the title into individual words
+                lc_search_token = search_token.lower()
+                title_words = self.title.lower().split()
+
+                # Check if all search words are present in the title
+                for word in title_words:
+                        # Calculate the match ratio using the fuzz.ratio function
+                        match_ratio = fuzz.ratio(word.lower(), lc_search_token)
+                        print("Match ratio:", match_ratio, word)
+                        if match_ratio > 70:  # You can adjust this threshold as needed
+                            results.append(self.id)
+                            break  # Break the loop if a match is found
+            else:
+                # Calculate the match ratio using the fuzz.ratio function
+                match_ratio = fuzz.ratio(search_token.lower(), self.title.lower())
+                print("Match ratio:", match_ratio, self.title)
+                if match_ratio > 50:  # You can adjust this threshold as needed
+                    results.append(self.id)
+
+        # Iterate children with same arguments
+        for child in self.children:
+            results.extend(child.search_children_with_token(search_token, item_type))
+
+        return results
+
 
     def get_child_by_id(self, id: str) -> Optional["JourneyItem"]:
         if self.id == id:

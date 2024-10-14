@@ -1,19 +1,16 @@
 import os
 import sys
 import streamlit as st
-from streamlit_theme import st_theme
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
+from admin.global_styles import get_theme, init_css
 from lib.models.user import AuthStatus, UserLevel, check_auth_level
 from lib.streamlit.user import check_auth
 
-theme = None
-
-
 def get_image(id, path="") -> str:
-    global theme
+    theme = get_theme()
     # theme = st_theme()
     # print(theme)
 
@@ -29,11 +26,6 @@ def get_image(id, path="") -> str:
     return os.path.join(path, f"{id}.png")
 
 
-def get_theme():
-    global theme
-    return theme
-
-
 def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous) -> AuthStatus:
     # from streamlit_javascript import st_javascript
     # st_theme = st_javascript("""window.getComputedStyle(window.parent.document.getElementsByClassName("stApp")[0]).getPropertyValue("color-scheme")""")
@@ -41,8 +33,8 @@ def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous) -> AuthStatus:
     #     ...
     # else:
     #     ...
-    global theme
-    theme = st_theme()
+    theme = get_theme()
+    init_css()
     # print(theme)
 
     st.logo(get_image("logo"))
@@ -105,6 +97,7 @@ def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous) -> AuthStatus:
             st.page_link("pages/journey_simple_create.py", label="Create Journey")
             st.page_link("pages/journey_simple_manage.py", label="Manage Journeys")
             st.page_link("pages/organization_manage.py", label="Manage Organization")
+        if user_level >= UserLevel.super_admin:
             st.page_link("pages/source_upload.py", label="Upload files")
             st.page_link("pages/source_manage.py", label="Manage files")
             st.page_link("pages/concepts_view.py", label="Browse topics")

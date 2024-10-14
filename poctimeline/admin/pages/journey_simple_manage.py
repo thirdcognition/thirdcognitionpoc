@@ -9,7 +9,7 @@ from streamlit_extras.grid import grid
 import os
 import sys
 
-from admin.sidebar import get_image, get_theme, init_sidebar
+from admin.sidebar import get_image, init_sidebar
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))

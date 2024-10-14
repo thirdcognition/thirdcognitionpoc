@@ -515,7 +515,7 @@ def add_user(
         session.commit()
         # create_preauth_email(email)
     get_all_users(reset=True)
-    get_db_user.cache_clear()
+    # get_db_user.cache_clear()
 
 
 def set_user_org(email: str, org_id: str):
@@ -538,7 +538,7 @@ def set_user_org(email: str, org_id: str):
             user.organization_id = org_id
             session.commit()
             get_all_users(reset=True)
-            get_db_user.cache_clear()
+            # get_db_user.cache_clear()
         else:
             print(f"Organization with ID {org_id} does not exist.")
     else:
@@ -575,7 +575,7 @@ def set_user_level(email: str, level: UserLevel):
             user.level = level.value
             session.commit()
             get_all_users(reset=True)
-            get_db_user.cache_clear()
+            # get_db_user.cache_clear()
         else:
             print(f"Invalid level: {level}")
     else:
@@ -593,7 +593,7 @@ def set_user_journeys(email: str, journeys: list):
         user.journey_ids = journeys
         session.commit()
         get_all_users(reset=True)
-        get_db_user.cache_clear()
+        # get_db_user.cache_clear()
     else:
         print(f"User with email {email} does not exist.")
 
@@ -612,7 +612,7 @@ def set_disable_user(email: str, state: bool):
         user.disabled = state
         session.commit()
         get_all_users(reset=True)
-        get_db_user.cache_clear()
+        # get_db_user.cache_clear()
     else:
         print(f"User with email {email} does not exist.")
 
@@ -643,7 +643,7 @@ def add_org(org_id: str, name: str, db_name: str = None, disabled: bool = False)
 
         session.commit()
     get_all_orgs(reset=True)
-    get_org_by_id.cache_clear()
+    # get_org_by_id.cache_clear()
 
 
 def set_org_name(org_id: str, name: str):
@@ -657,7 +657,7 @@ def set_org_name(org_id: str, name: str):
         org.organization_name = name
         session.commit()
         get_all_orgs(reset=True)
-        get_org_by_id.cache_clear()
+        # get_org_by_id.cache_clear()
     else:
         print(f"Organization with ID {org_id} does not exist.")
 
@@ -673,7 +673,7 @@ def set_disable_org(org_id: str, state: bool):
         org.disabled = state
         session.commit()
         get_all_orgs(reset=True)
-        get_org_by_id.cache_clear()
+        # get_org_by_id.cache_clear()
     else:
         print(f"Organization with ID {org_id} does not exist.")
 

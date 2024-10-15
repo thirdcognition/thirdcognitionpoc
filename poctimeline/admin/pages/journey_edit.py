@@ -27,7 +27,7 @@ from lib.helpers.journey import (
     match_title_to_cat_and_id,
 )
 from lib.helpers.shared import pretty_print
-from lib.models.user import AuthStatus, UserLevel
+from lib.models.user import AuthStatus, UserLevel, get_all_users, get_user_org
 
 st.set_page_config(
     page_title="TC POC: Admin",
@@ -568,60 +568,85 @@ def edit_journey(journey: JourneyItem):
 
 
 def journey_edit():
-    journey_id = st.query_params.get("journey") or st.session_state.get(
-        "journey_edit_id"
-    )
+    tab1, tab2 = st.tabs(["Modify journey", "Assign to individual(s)"])
+    with tab1:
+        journey_id = st.query_params.get("journey") or st.session_state.get(
+            "journey_edit_id"
+        )
 
-    if journey_id is not None:
-        journey = JourneyItem.get(journey_id=journey_id)
+        if journey_id is not None:
+            journey = JourneyItem.get(journey_id=journey_id)
 
-        # print("Journey ID", journey_id)
-        # print(f"Journey keys: {get_available_journeys()}")
-        edit_journey(journey)
+            # print("Journey ID", journey_id)
+            # print(f"Journey keys: {get_available_journeys()}")
+            edit_journey(journey)
 
-    else:
-        st.error("No data to show. Please go back and recreate the journey.")
+        else:
+            st.error("No data to show. Redirecting to journey management.")
+            time.sleep(2)
+            st.session_state["journey_edit"] = None
+            st.switch_page("pages/journey_simple_manage.py")
 
-    # st.subheader("Assign Journey")
+        # st.subheader("Assign Journey")
 
-    # with st.container(border=True):
-    #     # st.write(
-    #     #     JourneyItem.from_json(st.session_state["journey_creation_data"])
-    #     #     if "journey_creation_data" in st.session_state
-    #     #     else "No data"
-    #     # )
-    #     assign_to = st.multiselect(
-    #         "Assign Journey to",
-    #         [
-    #             "Individual(s)",
-    #             "Team(s)",
-    #             "Department(s)",
-    #             "Location(s)",
-    #             "Subsidiary",
-    #         ],
-    #         ["Individual(s)"],
-    #     )
-    #     st.divider()
+    with tab2.container(border=True):
+        # st.write(
+        #     JourneyItem.from_json(st.session_state["journey_creation_data"])
+        #     if "journey_creation_data" in st.session_state
+        #     else "No data"
+        # )
+        # assign_to = st.multiselect(
+        #     "Assign Journey to",
+        #     [
+        #         "Individual(s)",
+        #         "Team(s)",
+        #         "Department(s)",
+        #         "Location(s)",
+        #         "Subsidiary",
+        #     ],
+        #     ["Individual(s)"],
+        # )
+        # st.divider()
 
-    #     st.subheader("Assign to Individual(s)")
-    #     emp_id = st.text_input(
-    #         "Employee Details (Name / ID)",
-    #         placeholder="eg. John Smith / XH12345",
-    #         key=1,
-    #     )
-    #     st.button("Add Employee", type="primary")
-    #     st.markdown(" ")
+        st.subheader("Connected users")
 
-    # col1, col2, col3 = st.columns([0.15, 0.7, 0.15])
+        st.divider()
+        st.subheader("Assign to Individual(s)")
+
+        org_id = get_user_org(st.session_state["username"]).organization_id
+        print("Organization id", org_id)
+        users = get_all_users(org_id, reset=True)
+        user_titles = [
+                f"{user.email if user.name is None else ''}{f'{user.name} ({user.email})' if user.name is not None else ''}" for user in users
+            ]
+        assign_to = st.multiselect(
+            "Assign Journey to",
+            user_titles,
+            None
+        )
+        st.button("Assign", type="primary")
+        st.divider()
+
+        st.subheader("Create new account and assign to journey")
+        emp_id = st.text_input(
+            "Employee email",
+            placeholder="john@acmeorg.com",
+            key="add_new_user",
+        )
+        st.button("Add Employee", type="primary")
+        st.markdown(" ")
+
+    col1, col2, col3 = st.columns([0.15, 0.7, 0.15])
     # with col1:
     #     # st.page_link("pages/create_journey_2.py", label="Back")
     #     if st.button("Back", use_container_width=True):
     #         st.session_state["journey_creation_state"] = "init"
     #         st.rerun()
-    # with col3:
-    #     if st.button("Continue", use_container_width=True):
-    #         print("donothing")
-    #     # st.page_link("main.py", label="Continue")
+    with col3:
+        if st.button("Done", use_container_width=True, type="primary"):
+            # print("donothing")
+            st.session_state["journey_edit"] = None
+            st.switch_page("pages/journey_simple_manage.py")
 
 
 async def main():

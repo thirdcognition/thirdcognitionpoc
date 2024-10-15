@@ -298,18 +298,18 @@ def load_auth_config(reset=False, reload=False):
 
 # super_admin can access all, org_admin can access all in their org
 def get_all_users(org_id: str = None, reset=False) -> List[UserDataTable]:
-    if reset or "db_users" not in st.session_state:
-        st.session_state["db_users"] = None
+    if reset or f"db_users_{org_id}" not in st.session_state:
+        st.session_state[f"db_users_{org_id}"] = None
 
-    if st.session_state["db_users"] is not None:
-        return st.session_state["db_users"]
+    if st.session_state[f"db_users_{org_id}"] is not None:
+        return st.session_state[f"db_users_{org_id}"]
 
     session = init_system_db()
-    if is_super_admin():
+    if is_super_admin() and org_id is None:
         # If the user is a super_admin, return all users
         users = session.query(UserDataTable).all()
-    elif is_org_admin():
-        org_id = get_user_org_id()
+    elif is_org_admin() or (is_super_admin() and org_id is not None):
+        org_id = org_id or get_user_org_id()
         if org_id is not None:
             # If the user is an org_admin, return all users in their org
             users = session.query(UserDataTable).filter_by(organization_id=org_id).all()
@@ -317,7 +317,7 @@ def get_all_users(org_id: str = None, reset=False) -> List[UserDataTable]:
         # If the user is not a super_admin or an org_admin, return an empty list
         users = []
 
-    st.session_state["db_users"] = users
+    st.session_state[f"db_users_{org_id}"] = users
 
     return users
 

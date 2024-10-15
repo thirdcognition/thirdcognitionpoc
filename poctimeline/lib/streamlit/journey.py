@@ -146,13 +146,13 @@ def build_journey_cards(items: list[JourneyItem], journey: JourneyItem=None, row
                 border-radius: 1.3rem;
             }
             """,
-            """
-            button[kind=secondary] {
+            f"""
+            button[kind=secondary] {{
                 background-color: transparent;
                 border-color: transparent;
-                color: white;
+                color: {"white" if theme["base"] == "dark" else "black"};
                 border-radius: 1.3rem;
-            }""",
+            }}""",
             """
             button[kind=secondary] * {
                 font-size: 2rem;

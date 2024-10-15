@@ -42,20 +42,20 @@ async def journey_creation():
         "journey_creation_state" not in st.session_state
         or st.session_state["journey_creation_state"] == "init"
     ):
-        st.subheader("Journey Details")
-        available_options = [
-            "New Hire Onboarding",
-            "Project Onboarding",
-            "Skill Development",
-            "Customer Onboarding",
-            "Other",
-        ]
-        with st.container(border=True):
-            target = st.selectbox(
-                "Journey Purpose",
-                available_options,
-                index=0,
-            )
+        # st.subheader("Journey Details")
+        # available_options = [
+        #     "New Hire Onboarding",
+        #     "Project Onboarding",
+        #     "Skill Development",
+        #     "Customer Onboarding",
+        #     "Other",
+        # ]
+        # with st.container(border=True):
+        #     target = st.selectbox(
+        #         "Journey Purpose",
+        #         available_options,
+        #         index=0,
+        #     )
 
             # location = st.selectbox(
             #     "Location",
@@ -65,7 +65,7 @@ async def journey_creation():
             # )
         st.markdown(" ")
 
-        if available_options.index(target) == 0:
+        if True: #available_options.index(target) == 0:
             st.subheader("Role Details")
             container = st.container(border=True)
             with container:
@@ -90,7 +90,7 @@ async def journey_creation():
                 button_placeholder = st.empty()
                 # st.page_link("pages/create_journey_2.py", label="Continue")
                 theme = get_theme()
-                if button_placeholder.button("Continue", use_container_width=True):
+                if button_placeholder.button("Continue", use_container_width=True, disabled=not (bool(role_title) and bool(role_description))):
                     st.session_state["journey_creation_state"] = "name"
                     # button_placeholder.empty()
                     with button_placeholder:

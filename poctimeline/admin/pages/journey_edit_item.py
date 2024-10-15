@@ -9,7 +9,7 @@ from streamlit_extras.grid import grid
 import os
 import sys
 
-from admin.sidebar import init_sidebar
+from admin.sidebar import get_image, init_sidebar
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
@@ -18,13 +18,14 @@ from lib.streamlit.journey import (
     ChildPosition,
     get_journey,
     get_journey_item_cache,
+    open_logo_dialog,
 )
 from lib.models.journey import (
     JourneyItem,
     JourneyItemType,
 )
 from lib.chains.init import get_chain
-from lib.helpers.journey import load_journey_template, match_title_to_cat_and_id
+from lib.helpers.journey import ActionSymbol, load_journey_template, match_title_to_cat_and_id
 from lib.helpers.shared import pretty_print
 from lib.models.user import AuthStatus, UserLevel
 
@@ -82,7 +83,25 @@ def edit_journey_item(
 
     with container:
         if not use_container:
-            st.write(journey_item.title)
+            st.write(journey_item.get_index(journey) + " - " + journey_item.title)
+
+        if (
+            JourneyItemType.JOURNEY == journey_item.item_type
+            or JourneyItemType.MODULE == journey_item.item_type
+        ):
+            _, image_col, _ = st.columns([0.3, 0.4, 0.3])
+
+            image_col.image(
+                get_image(journey_item.icon, "icon_files"),
+                use_column_width=True,
+            )
+            if image_col.button(
+                ActionSymbol.image.value,
+                use_container_width=True,
+                key=f"journey_process_change_item_image_{journey_item.id}",
+            ):
+                open_logo_dialog(journey_item, journey)
+
 
         if (
             JourneyItemType.JOURNEY != journey_item.item_type
@@ -102,7 +121,7 @@ def edit_journey_item(
             ]
             items = [all_children[id] for id in options]  # section_items
             titles = [
-                f"{all_children[id].title}{'' if len(all_children[id].children) > 0 else ' (empty)'}"
+                f"{all_children[id].get_index(journey)} - {all_children[id].title}{'' if len(all_children[id].children) > 0 else ' (empty)'}"
                 for id in options
             ]  # section_items
 
@@ -151,7 +170,7 @@ def edit_journey_item(
                 if id[1] == journey_item.parent_id and journey_item.id != id[0]
             ]
             items = [all_children[id] for id in options]  # section_items
-            titles = [all_children[id].title for id in options]  # section_items
+            titles = [f"{all_children[id].get_index(journey)} - {all_children[id].title}" for id in options]  # section_items
 
             if (
                 journey_item.id in relations.keys()

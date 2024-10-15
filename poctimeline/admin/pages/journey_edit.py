@@ -21,7 +21,11 @@ from lib.models.journey import (
     JourneyItemType,
 )
 from lib.chains.init import get_chain
-from lib.helpers.journey import load_journey_template, match_title_to_cat_and_id
+from lib.helpers.journey import (
+    ActionSymbol,
+    load_journey_template,
+    match_title_to_cat_and_id,
+)
 from lib.helpers.shared import pretty_print
 from lib.models.user import AuthStatus, UserLevel
 
@@ -37,16 +41,6 @@ This is an *extremely* cool admin tool!
     },
 )
 
-## Symbols from https://www.w3schools.com/charsets/
-
-selected_symbol = "&#9673;"
-unselected_symbol = "&#9678;"
-up_down_symbol = "&#8597;"
-below_symbol = "&#8615;"
-image_symbol = "&#9968;"
-edit_symbol = "&#9881;"
-open_symbol = "&#9660;"
-closed_symbol = "&#9654;"
 
 container_level = ["journey", "section", "module", "action"]
 
@@ -57,48 +51,7 @@ def get_stylable_container_selector(id):
     return f'div[data-testid="stVerticalBlock"]:has(> div.element-container > div.stMarkdown > div[data-testid="stMarkdownContainer"] > p > span.{id})'
 
 
-@st.dialog("Change logo to...", width="large")
-def open_logo_dialog(item: JourneyItem, journey: JourneyItem):
-    id_str = journey.id + "_" + item.id
 
-    container = stylable_container(
-        key=f"item_container_{id_str}",
-        css_styles=[
-            f"""
-            div {{
-                margin: 0;
-                padding: 0;
-                justify-content: center;
-            }}""",
-            """
-            label {{
-                margin: 0;
-                padding: 0;
-                justify-content: center;
-            }}
-            """,
-        ],
-    ).container()
-    logo_list = {}
-    with container:
-        image_grid = grid(10, 10, 10, 10, 10, vertical_align="center")
-        for i in range(1, 51):
-            with image_grid.container():
-                logo_id = "logo_" + str(i)
-                st.image(get_image(logo_id, path="icon_files"))
-                if st.button(
-                    selected_symbol if item.icon == logo_id else unselected_symbol,
-                    key="image_" + id_str + "_" + logo_id,
-                    disabled=item.icon == logo_id,
-                    use_container_width=True,
-                ):
-                    print("Change icon", item.icon, logo_id)
-                    if item.icon != logo_id:
-                        item.icon = logo_id
-                        item.save_to_db()
-                        st.rerun()
-                    else:
-                        item.icon = None
 
                 # st.checkbox(label=str(i), label_visibility="collapsed", value=(logo_id) == ancestor.icon, key="image_"+id_str+"_"+logo_id, on_change=change_icon)
 
@@ -175,22 +128,16 @@ def write_section_module(item: JourneyItem, journey: JourneyItem, item_id: str):
                         """,
                     ],
                 ):
-                    _, image_col, edit_col = st.columns([0.2, 0.6, 0.2])
+                    _, image_col, edit_col = st.columns([0.175, 0.3, 0.225])
 
                     image_col.image(
                         get_image(item.icon, "icon_files"),
                         use_column_width=True,
                     )
 
-                    if edit_col.button(
-                        image_symbol,
-                        use_container_width=True,
-                        key=f"journey_process_change_item_image_{item_id}",
-                    ):
-                        open_logo_dialog(item, journey)
 
                     if edit_col.button(
-                        edit_symbol,
+                        ActionSymbol.edit.value,
                         key=f"edit_button_{item_id}",
                         type="secondary",
                         use_container_width=True,
@@ -273,10 +220,15 @@ def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
                 {{
                     margin-top: 2.2rem;
                     gap: 0.5rem;
-                    width: 4rem;
                     display: flex;
                     justify-content: flex-end;
+                    text-align: right;
                 }}
+            """,
+             """
+                button {
+                    width: 4rem;
+                }
             """,
                 """
                 button p {
@@ -288,19 +240,17 @@ def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
         ):
             if in_move:
                 if move_item.id == item.id and st.button(
-                    selected_symbol,
+                    ActionSymbol.selected.value,
                     key=f"move_button_{item_id}",
                     type="secondary",
-                    use_container_width=True,
                 ):
                     move_item.move(item, journey)
                     st.session_state["journey_item_move"] = None
                     st.rerun()
                 elif move_item.id != item.id and st.button(
-                    below_symbol,
+                    ActionSymbol.below.value,
                     key=f"move_button_{item_id}",
                     type="secondary",
-                    use_container_width=True,
                     disabled=move_item.after_id == item.id,
                 ):
                     move_item.move(item, journey)
@@ -308,12 +258,12 @@ def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
                     st.rerun()
             else:
                 all_children = journey.all_children_by_id()
-                with st.popover("&plus;", use_container_width=True):
+                with st.popover(ActionSymbol.add.value, use_container_width=True):
                     if st.button(
                         "Add new before",
                         key=f"add_before_button_{item_id}",
                         type="secondary",
-                        use_container_width=True,
+                        use_container_width=True
                     ):
                         parent = all_children[item.parent_id]
                         new_item = JourneyItem.create_new(
@@ -339,7 +289,7 @@ def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
                         "Add new after",
                         key=f"add_after_button_{item_id}",
                         type="secondary",
-                        use_container_width=True,
+                        use_container_width=True
                     ):
                         parent = all_children[item.parent_id]
                         new_item = JourneyItem.create_new(
@@ -353,7 +303,7 @@ def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
                                 "content_instructions": item.content_instructions.model_copy(),
                             }
                         )
-                        parent.add_child(new_item, parent.children.index(item)+1)
+                        parent.add_child(new_item, parent.children.index(item) + 1)
                         # item_index = parent.children.index(item)
                         # if len(parent.children) > (item_index + 1):
                         #     parent.children[item_index + 1].after_id = new_item.id
@@ -364,15 +314,14 @@ def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
                         open_item(new_item, journey)
                         # print("add after")
                 if st.button(
-                    up_down_symbol,
+                    ActionSymbol.up_down.value,
                     key=f"move_button_{item_id}",
                     type="secondary",
-                    use_container_width=True,
                 ):
                     st.session_state["journey_item_move"] = item
                     st.rerun()
                 # if st.button(
-                #     edit_symbol,
+                #     ActionSymbol.edit.value,
                 #     key=f"edit_button_{item_id}",
                 #     type="secondary",
                 #     use_container_width=True,
@@ -381,7 +330,7 @@ def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
                 #     # item_state["edit"] = True
                 #     # st.rerun(scope="fragment")
                 #     open_item(item, journey)
-                with st.popover("&minus;", use_container_width=True):
+                with st.popover(ActionSymbol.remove.value):
                     if st.button(
                         f"Are you sure you want to remove:\n\n{item.title}?",
                         key=f"delete_button_{item_id}",
@@ -423,10 +372,14 @@ def write_item(
 
         if item.id in ancestry:
             select_column.button(
-                selected_symbol, key=f"move_item_{item_id}_parent", disabled=True
+                ActionSymbol.selected.value,
+                key=f"move_item_{item_id}_parent",
+                disabled=True,
             )
         else:
-            if select_column.button(unselected_symbol, key=f"move_item_{item_id}_in"):
+            if select_column.button(
+                ActionSymbol.unselected.value, key=f"move_item_{item_id}_in"
+            ):
                 move_item.move(item, journey)
                 st.session_state["journey_item_move"] = None
                 st.rerun()
@@ -510,7 +463,9 @@ def write_item(
             col1.subheader(item.title)
             with col3:
                 if st.button(
-                    edit_symbol, key="edit_parent_button_" + item_id, type="primary"
+                    ActionSymbol.edit.value,
+                    key="edit_parent_button_" + item_id,
+                    type="primary",
                 ):
                     open_item(item, journey)
         elif (
@@ -520,7 +475,11 @@ def write_item(
             col1, col3 = container.columns([0.9, 0.1], vertical_alignment="center")
             with col1:
                 if st.button(
-                    (open_symbol if item_state["open"] else closed_symbol)
+                    (
+                        ActionSymbol.open.value
+                        if item_state["open"]
+                        else ActionSymbol.closed.value
+                    )
                     + "\n\n"
                     + item.get_index(journey)
                     + "\n\n"
@@ -532,7 +491,9 @@ def write_item(
                     st.rerun(scope="fragment")
             with col3:
                 if st.button(
-                    edit_symbol, key="edit_parent_button_" + item_id, type="primary"
+                    ActionSymbol.edit.value,
+                    key="edit_parent_button_" + item_id,
+                    type="primary",
                 ):
                     open_item(item, journey)
         else:

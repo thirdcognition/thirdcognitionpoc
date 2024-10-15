@@ -90,7 +90,7 @@ class JourneyDataTable(Base):
     last_updated = sqla.Column(sqla.DateTime, default=None)
 
     @classmethod
-    def load_from_db(cls, id: str, session=None):
+    def load_from_db(cls, id: str, session=None) -> "JourneyDataTable":
         if session is None:
             session = user_db_get_session()
         db_journey_item: JourneyDataTable = (
@@ -103,8 +103,67 @@ class JourneyDataTable(Base):
         return db_journey_item
 
     @classmethod
+    def delete_item(
+        cls,
+        journey_item: "JourneyItem",
+        session=None,
+        commit=True,
+        include_children=True,
+    ):
+        if session is None:
+            session = user_db_get_session()
+
+        # Remove the item from the database
+        db_journey_item: JourneyDataTable = (
+            session.query(JourneyDataTable)
+            .filter(JourneyDataTable.id == journey_item.id)
+            .first()
+        )
+        if db_journey_item is None:
+            raise ValueError(
+                f"Journey Item {journey_item.id} not found in the database."
+            )
+
+        session.delete(db_journey_item)
+
+        # Delete children from the database
+        if (
+            include_children
+            and journey_item.children
+            and len(journey_item.children) > 0
+        ):
+            for child in journey_item.children:
+                JourneyDataTable.delete_item(
+                    child, session, commit=False, include_children=True
+                )
+
+        # Remove the item from its parent's children list
+        if journey_item.parent_id is not None:
+            parent_item = cls.load_from_db(journey_item.parent_id, session)
+            parent_item.children = [
+                child_id
+                for child_id in parent_item.children
+                if child_id != journey_item.id
+            ]
+
+            # Update after_id for siblings
+            for i, child_id in enumerate(parent_item.children):
+                child = cls.load_from_db(child_id, session)
+                if child.after_id == journey_item.id:
+                    child.after_id = parent_item.children[i - 1] if i > 0 else None
+
+        if commit:
+            session.commit()
+        # Remove the item from the cache
+        # journey_cache.pop(journey_item.id, None)
+
+    @classmethod
     def create_from_journey_item(
-        cls, journey_item: "JourneyItem", session: Session = None, commit=True
+        cls,
+        journey_item: "JourneyItem",
+        session: Session = None,
+        commit=True,
+        include_children=True,
     ) -> "JourneyDataTable":
         if session is None:
             session = user_db_get_session()
@@ -153,6 +212,7 @@ class JourneyDataTable(Base):
                 last_updated=datetime.now(),
             )
             session.add(db_journey_item)
+
         else:
             # print("Update existing db item", journey_item.id)
             db_journey_item.id = journey_item.id
@@ -182,7 +242,11 @@ class JourneyDataTable(Base):
             db_journey_item.complete = False
             db_journey_item.last_updated = datetime.now()
 
-        if journey_item.children and len(journey_item.children) > 0:
+        if (
+            include_children
+            and journey_item.children
+            and len(journey_item.children) > 0
+        ):
             for child in journey_item.children:
                 JourneyDataTable.create_from_journey_item(child, session, commit=False)
 
@@ -194,7 +258,7 @@ class JourneyDataTable(Base):
 
         return db_journey_item
 
-    def to_journey_item(self) -> "JourneyItem":
+    def to_journey_item(self, include_children=True) -> "JourneyItem":
         # Create a new JourneyItem object from the data in the JourneyDataTable
         journey_item = JourneyItem(
             id=self.id,
@@ -219,7 +283,7 @@ class JourneyDataTable(Base):
             item_type=JourneyItemType(self.item_type),
         )
 
-        if self.children and len(self.children) > 0:
+        if include_children and self.children and len(self.children) > 0:
             db_children: list[JourneyDataTable] = []
             children: list[JourneyItem] = []
             for child_id in self.children:
@@ -231,7 +295,9 @@ class JourneyDataTable(Base):
 
         return journey_item
 
-    def update_from_journey_item(self, session: Session, journey_item: "JourneyItem"):
+    def update_from_journey_item(
+        self, session: Session, journey_item: "JourneyItem", include_children=True
+    ):
         if session is None:
             session = user_db_get_session()
 
@@ -259,7 +325,11 @@ class JourneyDataTable(Base):
         self.item_type = journey_item.item_type.value
         self.last_updated = datetime.now()
 
-        if journey_item.children and len(journey_item.children) > 0:
+        if (
+            include_children
+            and journey_item.children
+            and len(journey_item.children) > 0
+        ):
             for child in journey_item.children:
                 JourneyDataTable.create_from_journey_item(child, session, False)
 
@@ -324,7 +394,10 @@ class ContentInstructions(BaseModel):
             return None
         if isinstance(data, str):
             data = json.loads(data)
-        if isinstance(data, ContentInstructions) or type(data).__name__ == ContentInstructions.__name__:
+        if (
+            isinstance(data, ContentInstructions)
+            or type(data).__name__ == ContentInstructions.__name__
+        ):
             data = data.to_json()
 
         return cls(
@@ -521,7 +594,7 @@ class JourneyItem(BaseModel):
             item_type=item_type,
         )
 
-    def add_child(self, item:"JourneyItem", index=0):
+    def add_child(self, item: "JourneyItem", index=0):
         if index < 0 or index > len(self.children):
             raise IndexError("Index out of range")
 
@@ -670,13 +743,15 @@ class JourneyItem(BaseModel):
         self.cache[cache_key] = items
         return items
 
-    def search_children_with_token(self, search_token, item_type:JourneyItemType=None):
+    def search_children_with_token(
+        self, search_token, item_type: JourneyItemType = None
+    ):
         results = []
 
         # Fuzzy match search_token against self title
         if item_type is None or item_type == self.item_type:
             # Check if the search token contains whitespace
-            if ' ' not in search_token:
+            if " " not in search_token:
                 # Split the search token into individual words
                 # search_words = search_token.lower().split()
 
@@ -686,12 +761,12 @@ class JourneyItem(BaseModel):
 
                 # Check if all search words are present in the title
                 for word in title_words:
-                        # Calculate the match ratio using the fuzz.ratio function
-                        match_ratio = fuzz.ratio(word.lower(), lc_search_token)
-                        print("Match ratio:", match_ratio, word)
-                        if match_ratio > 70:  # You can adjust this threshold as needed
-                            results.append(self.id)
-                            break  # Break the loop if a match is found
+                    # Calculate the match ratio using the fuzz.ratio function
+                    match_ratio = fuzz.ratio(word.lower(), lc_search_token)
+                    print("Match ratio:", match_ratio, word)
+                    if match_ratio > 70:  # You can adjust this threshold as needed
+                        results.append(self.id)
+                        break  # Break the loop if a match is found
             else:
                 # Calculate the match ratio using the fuzz.ratio function
                 match_ratio = fuzz.ratio(search_token.lower(), self.title.lower())
@@ -704,7 +779,6 @@ class JourneyItem(BaseModel):
             results.extend(child.search_children_with_token(search_token, item_type))
 
         return results
-
 
     def get_child_by_id(self, id: str) -> Optional["JourneyItem"]:
         if self.id == id:
@@ -799,6 +873,24 @@ class JourneyItem(BaseModel):
 
         return indexes
 
+    # Remove item from journey and from database, resort journey afterwards.
+    def remove(self, journey: "JourneyItem" = None):
+        if journey is not None:
+            # Remove item from journey
+            if self.parent_id is not None:
+                parent = journey.get_child_by_id(self.parent_id)
+                if parent:
+                    parent.remove_child(self)
+
+        # Remove item from database
+        session = user_db_get_session()
+        JourneyDataTable.delete_item(self, session)
+
+        # Resort journey
+        if journey is not None:
+            journey.reset_cache()
+            journey.sort_children()
+
     def move(self, target: "JourneyItem", journey: "JourneyItem"):
         print(
             "Move to/after", (target.title if target is not None else "first at parent")
@@ -874,9 +966,9 @@ class JourneyItem(BaseModel):
             # If self's parent is not the same as target's parent, remove self from self's parent's children and add it to target's parent's children
         if target is not None and parent != target_parent:
             if self in parent.children:
-                parent.remove_child(self) #children.remove(self)
+                parent.remove_child(self)  # children.remove(self)
             if target_parent is not None:
-                target_parent.add_child(self) #.children.append(self)
+                target_parent.add_child(self)  # .children.append(self)
 
         # Set self's parent_id to target's parent_id
         if target_parent is not None:
@@ -888,9 +980,9 @@ class JourneyItem(BaseModel):
         elif target is not None:
             if target_parent is not None:
                 if self in target_parent.children:
-                    target_parent.remove_child(self) #children.remove(self)
+                    target_parent.remove_child(self)  # children.remove(self)
             if self not in target.children:
-                target.add_child(self) #children.append(self)
+                target.add_child(self)  # children.append(self)
             # self.after_id = None
             self.parent_id = target.id
         else:
@@ -941,6 +1033,34 @@ class JourneyItem(BaseModel):
             self.end_of_day = new_eod
 
         return new_eod
+
+    # Refresh item by reloading it and children from db, reset caches and resort afterwards
+    def refresh_from_db(self):
+        # Load the item from the database
+        refreshed_item = JourneyItem.load_from_db(self.id)
+
+        # Update the current item with the refreshed data, but convert item_type
+        self.id = refreshed_item.id
+        self.template_id = refreshed_item.template_id
+        self.parent_id = refreshed_item.parent_id
+        self.after_id = refreshed_item.after_id
+        self.references = refreshed_item.references
+        self.use_guide = refreshed_item.use_guide
+        self.title = refreshed_item.title
+        self.icon = refreshed_item.icon
+        self.intro = refreshed_item.intro
+        self.summary = refreshed_item.summary
+        self.description = refreshed_item.description
+        self.content_instructions = refreshed_item.content_instructions
+        self.content = refreshed_item.content
+        self.test = refreshed_item.test
+        self.action = refreshed_item.action
+        self.end_of_day = refreshed_item.end_of_day
+        self.item_type = JourneyItemType(refreshed_item.item_type)
+
+        # Reset caches and resort the children
+        self.reset_cache()
+        self.sort_children()
 
     def save_to_db(self) -> JourneyDataTable:
         session = user_db_get_session()

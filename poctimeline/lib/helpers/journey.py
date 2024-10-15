@@ -1,6 +1,7 @@
 from functools import cache
 import json
 import os
+from enum import Enum
 
 
 from lib.load_env import SETTINGS
@@ -9,6 +10,21 @@ journey_template_dir = os.path.join(
     SETTINGS.file_repository_path, "journey_structures_json"
 )
 
+
+## Symbols from https://www.w3schools.com/charsets/
+class ActionSymbol(Enum):
+    selected = "&#9673;"
+    unselected = "&#9678;"
+    up_down = "&#8597;"
+    below = "&#8615;"
+    image = "&#9968;"
+    edit = "&#9881;"
+    open = "&#9660;"
+    closed = "&#9654;"
+    add = "&plus;"
+    remove = "&minus;"
+    delete = "&#9747;"
+    duplicate = "&#x2398;"
 
 @cache
 def get_available_journey_template_roles(as_str:bool=False) -> dict[list] | str:

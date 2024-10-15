@@ -15,9 +15,6 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
 from lib.streamlit.journey import (
-    ChildPosition,
-    get_journey,
-    get_journey_item_cache,
     open_logo_dialog,
 )
 from lib.models.journey import (
@@ -383,7 +380,7 @@ def journey_edit():
     )
 
     if journey_item_id is not None:
-        journey = get_journey(journey_id=journey_id)
+        journey = JourneyItem.get(journey_id=journey_id)
         item = journey.get_child_by_id(journey_item_id)
 
         st.title(f"Modify {item.item_type.name.capitalize()} {item.get_index(journey)}")

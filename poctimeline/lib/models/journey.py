@@ -5,6 +5,7 @@ import json
 from typing import Any, Dict, List, Optional, Union
 import uuid
 from fuzzywuzzy import fuzz
+import streamlit as st
 from pydantic import BaseModel, Field
 import sqlalchemy as sqla
 from sqlalchemy.ext.mutable import MutableList
@@ -14,6 +15,11 @@ from lib.load_env import SETTINGS
 from lib.models.user import user_db_get_session
 from lib.prompts.journey import JourneyPrompts
 from lib.models.reference import Reference
+
+
+@st.cache_resource
+def get_journey_item_cache() -> dict[str, "JourneyItem"]:
+    return {}
 
 
 def get_journey_data_from_db(id: str, session=None) -> "JourneyDataTable":
@@ -823,12 +829,31 @@ class JourneyItem(BaseModel):
         self.cache["relations"] = relations
         return relations
 
-    def get_ancestry(self, root: "JourneyItem", reset=False) -> List[str]:
+    def get_journey(self, reset=False) -> Optional["JourneyItem"]:
+        if self.parent_id is None:
+            return self
+
+        if "journey" in self.cache and not reset:
+            return self.cache["journey"]
+
+        parent = self.get(journey_id=self.parent_id)
+        while (
+            parent.parent_id is not None and JourneyItemType.JOURNEY != parent.item_type
+        ):
+            parent = self.get(journey_id=parent.parent_id)
+
+        self.cache["journey"] = parent
+        return parent
+
+    def get_ancestry(self, root: "JourneyItem" = None, reset=False) -> List[str]:
         if self == root:
             return [self]
 
         if self.cache.get("ancestry") and not reset:
             return self.cache["ancestry"]
+
+        if root is None:
+            root = self.get_journey()
 
         journey_relations = root.get_relations(reset)
         parent = journey_relations[self.id]
@@ -1074,6 +1099,27 @@ class JourneyItem(BaseModel):
     def load_from_db(cls, id: str, session=None) -> "JourneyItem":
         db_journey_item = get_journey_data_from_db(id, session)
         return db_journey_item.to_journey_item()
+
+    @classmethod
+    def get(
+        cls, journey_item: JourneyDataTable = None, journey_id: str = None, reset=False
+    ) -> "JourneyItem":
+        if reset:
+            del get_journey_item_cache()[journey_id]
+
+        if journey_item is not None:
+            if journey_item.id not in get_journey_item_cache().keys():
+                get_journey_item_cache()[
+                    journey_item.id
+                ] = journey_item.to_journey_item()
+            return get_journey_item_cache()[journey_item.id]
+        elif journey_id is not None:
+            if journey_id not in get_journey_item_cache().keys():
+                journey: JourneyItem = JourneyItem.load_from_db(journey_id)
+                get_journey_item_cache()[journey_id] = journey
+            return get_journey_item_cache()[journey_id]
+
+        raise ValueError("Either journey_item or journey_id must be defined")
 
 
 # The rest of the code remains the same as it is not part of the requested edit.

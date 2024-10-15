@@ -15,28 +15,6 @@ class ChildPosition(Enum):
     LAST = 3
 
 
-@st.cache_resource
-def get_journey_item_cache() -> dict[str, JourneyItem]:
-    return {}
-
-
-def get_journey(
-    journey_item: JourneyDataTable = None, journey_id: str = None, reset=False
-) -> JourneyItem:
-    if reset:
-        del get_journey_item_cache()[journey_id]
-
-    if journey_item is not None:
-        if journey_item.id not in get_journey_item_cache().keys():
-            get_journey_item_cache()[journey_item.id] = journey_item.to_journey_item()
-        return get_journey_item_cache()[journey_item.id]
-    elif journey_id is not None:
-        if journey_id not in get_journey_item_cache().keys():
-            journey: JourneyItem = JourneyItem.load_from_db(journey_id)
-            get_journey_item_cache()[journey_id] = journey
-        return get_journey_item_cache()[journey_id]
-
-    raise ValueError("Either journey_item or journey_id must be defined")
 
 @st.dialog("Change logo to...", width="large")
 def open_logo_dialog(item: JourneyItem, journey: JourneyItem):

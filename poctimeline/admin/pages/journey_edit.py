@@ -15,7 +15,7 @@ from admin.sidebar import get_image, init_sidebar
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
-from lib.streamlit.journey import ChildPosition, get_journey, get_journey_item_cache
+from lib.streamlit.journey import ChildPosition
 from lib.models.journey import (
     JourneyItem,
     JourneyItemType,
@@ -573,7 +573,7 @@ def journey_edit():
     )
 
     if journey_id is not None:
-        journey = get_journey(journey_id=journey_id)
+        journey = JourneyItem.get(journey_id=journey_id)
 
         # print("Journey ID", journey_id)
         # print(f"Journey keys: {get_available_journeys()}")

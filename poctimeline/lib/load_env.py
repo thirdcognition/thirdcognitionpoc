@@ -171,6 +171,7 @@ class Settings(BaseModel):
     source_tablename: str
     topics_tablename: str
     journey_tablename: str
+    journey_progress_tablename: str
     concepts_tablename: str
     concept_taxonomys_tablename: str
     users_tablename: str
@@ -196,6 +197,7 @@ SETTINGS = Settings(
     source_tablename="sources",
     topics_tablename="topics",
     journey_tablename="journey",
+    journey_progress_tablename="journey_progress",
     concepts_tablename="concepts",
     concept_taxonomys_tablename="concept_taxonomys",
     users_tablename="users",

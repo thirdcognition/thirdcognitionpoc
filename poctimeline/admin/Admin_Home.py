@@ -6,7 +6,7 @@ from streamlit_extras.grid import grid
 from streamlit_extras.stylable_container import stylable_container
 
 from admin.global_styles import get_theme
-from lib.streamlit.journey import build_journey_cards, get_journey
+from lib.streamlit.journey import build_journey_cards
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
@@ -71,7 +71,7 @@ def main():
         return
 
     # db_journey = db_journey_items[0]
-    journeys = [get_journey(journey_item=db_journey) for db_journey in db_journey_items]
+    journeys = [JourneyItem.get(journey_item=db_journey) for db_journey in db_journey_items]
 
     ##---- Search Bar ----
     search_journey = st.text_input(
@@ -96,12 +96,25 @@ def main():
         else:
             st.write("No matches found")
 
-    st.markdown("")
+    st.divider()
+
+    st.subheader("Active modules")
+
+    st.divider()
+
+    st.subheader("Next modules")
 
     # Number of cards on page
     # try:
 
-    journey = journeys[0]
+    # journey = st.session_state.get("active_journey", journeys[0])
+    if len(journeys) > 1:
+        journey_titles = [journey.title for journey in journeys]
+        journey_title = st.selectbox("Choose journey", options=journey_titles)
+        journey = journeys[journey_titles.index(journey_title)]
+    else:
+        journey = journeys[0]
+
     all_children = journey.all_children_by_id()
     row_len = 3
 

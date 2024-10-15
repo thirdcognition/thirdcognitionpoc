@@ -10,7 +10,7 @@ import os
 import sys
 
 from admin.sidebar import get_image, init_sidebar
-from lib.streamlit.journey import build_journey_cards, get_journey
+from lib.streamlit.journey import build_journey_cards
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
@@ -50,7 +50,7 @@ async def main():
     try:
         db_journey_items = get_all_journeys_from_db()
 
-        journeys = [get_journey(journey_item=db_journey) for db_journey in db_journey_items]
+        journeys = [JourneyItem.get(journey_item=db_journey) for db_journey in db_journey_items]
 
         journey: JourneyItem
         build_journey_cards(

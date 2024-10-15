@@ -11,13 +11,13 @@ import sys
 
 from admin.global_styles import get_theme
 from admin.sidebar import init_sidebar
-from lib.streamlit.journey import get_journey_item_cache
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
 from lib.models.journey import (
     JourneyItem,
+    get_journey_item_cache,
 )
 from lib.chains.init import get_chain
 from lib.helpers.journey import load_journey_template, match_title_to_cat_and_id
@@ -226,6 +226,7 @@ async def journey_creation():
                     st.session_state["journey_creation_id"] = None
                     st.session_state["journey_creation_data"] = None
                     st.session_state["journey_creation_state"] = None
+                    st.session_state["journey_creation_state"] = "init"
                     st.switch_page("pages/journey_edit.py")
                 # st.page_link("main.py", label="Continue")
 

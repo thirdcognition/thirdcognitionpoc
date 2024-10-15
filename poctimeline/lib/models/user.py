@@ -237,15 +237,19 @@ def write_auth_config(auth_config: dict) -> bool:
     return changes_made
 
 
-def load_auth_config():
-    if st.session_state.get("auth_config") is not None:
+def load_auth_config(reset=False, reload=False):
+    if st.session_state.get("auth_config") is not None and not reset and not reload:
         return st.session_state["auth_config"]
+    if reset and st.session_state.get("auth_config") is not None:
+        del st.session_state["auth_config"]
+        if st.session_state.get("st_auth"):
+            del st.session_state["st_auth"]
 
-    auth_config: dict = None
+    auth_config: dict = st.session_state.get("auth_config") if reload else None
 
     session = init_system_db()
     users = session.query(UserDataTable).all()
-    auth_config = {
+    new_auth_config = {
         "credentials": {"usernames": {}},
         "cookie": {
             "expiry_days": SETTINGS.auth_cookie_expiry,
@@ -254,6 +258,10 @@ def load_auth_config():
         },
         "pre-authorized": {"emails": []},
     }
+    if auth_config is not None:
+        auth_config.update(new_auth_config)
+    else:
+        auth_config = new_auth_config
 
     for user in users:
         if user.username:
@@ -279,16 +287,13 @@ def load_auth_config():
 # authenticator: stauth.Authenticate = None
 
 
-def get_authenticator():
-    # global authenticator
-    authenticator = st.session_state.get("st_auth")
-    return authenticator
+# def get_authenticator():
+#     authenticator = st.session_state.get("st_auth")
+#     return authenticator
 
 
-def set_authenticator(auth: stauth.Authenticate):
-    # global authenticator
-
-    st.session_state["st_auth"] = auth
+# def set_authenticator(auth: stauth.Authenticate):
+#     st.session_state["st_auth"] = auth
 
 
 # super_admin can access all, org_admin can access all in their org
@@ -456,6 +461,7 @@ def add_user(
     journeys: list = None,
     level: UserLevel = None,
     disabled: bool = False,
+    password: str = False,
 ):
     session = init_system_db()
     # Check if the user is already in the UserDataTable
@@ -495,6 +501,9 @@ def add_user(
         if disabled is not None and user.disabled != disabled:
             user.disabled = disabled
             updated = True
+        if password is not None and user.password != password:
+            user.password = password
+            updated = True
         if updated:
             session.commit()
     else:
@@ -517,6 +526,30 @@ def add_user(
     get_all_users(reset=True)
     # get_db_user.cache_clear()
 
+def delete_user(email: str, org_id: str, username: str):
+    session = init_system_db()
+
+    # Query UserDataTable for the user
+    user = get_db_user(email=email)
+    has_access(email, org_id, UserLevel.org_admin)
+
+    if user:
+        # If the user exists, delete them from the UserDataTable
+        session.delete(user)
+        session.commit()
+
+        # Remove the user's preauthorized email
+        remove_preauth_email(email)
+
+        # Remove the user's username from the auth_config
+        auth_config = load_auth_config()
+        if username in auth_config["credentials"]["usernames"]:
+            del auth_config["credentials"]["usernames"][username]
+            write_auth_config(auth_config)
+
+        get_all_users(reset=True)
+    else:
+        print(f"User with email {email} does not exist.")
 
 def set_user_org(email: str, org_id: str):
     session = init_system_db()
@@ -680,7 +713,7 @@ def set_disable_org(org_id: str, state: bool):
 
 def create_preauth_email(preauthorized_email):
     # Check if the file exists
-    auth_config = load_auth_config()
+    auth_config = load_auth_config(reset=True)
     # Add a preauthorized email for admin access
     # Check if the email is already in the preauthorized list
 
@@ -694,7 +727,7 @@ def create_preauth_email(preauthorized_email):
 
 def remove_preauth_email(preauthorized_email):
     # Load the auth configuration
-    auth_config = load_auth_config()
+    auth_config = load_auth_config(reset=True)
 
     # Check if the email is in the preauthorized list
     if preauthorized_email in auth_config["pre-authorized"]["emails"]:

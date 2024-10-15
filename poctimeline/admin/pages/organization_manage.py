@@ -15,6 +15,7 @@ from lib.models.user import (
     UserLevel,
     add_org,
     add_user,
+    delete_user,
     get_all_orgs,
     get_all_users,
     get_org_by_id,
@@ -51,7 +52,7 @@ def manage_organizations():
     if is_super_admin():
         st.subheader("Manage Organizations")
 
-        orgs = get_all_orgs()
+        orgs = get_all_orgs(reset=True)
 
         org_data = []
         for org in orgs:
@@ -132,7 +133,7 @@ def manage_organizations():
 
 def manage_users():
     st.subheader("Manage Users")
-    users = get_all_users()
+    users = get_all_users(reset=True)
     user_data = []
     for user in users:
         user_data.append(
@@ -180,6 +181,27 @@ def manage_users():
         ),
     }
     edited_df = st.data_editor(df, column_config=column_config, use_container_width=True, hide_index=True)
+
+
+    # Filter out users own account and org_admin accounts
+    filtered_df = edited_df[~(edited_df["Username"] == st.session_state["username"]) & (edited_df["Level"] != UserLevel.super_admin.name)]
+
+    col1, col2 = st.columns([10, 1], vertical_alignment="bottom")
+    user_titles = [f"{item['Organization ID']}: {item['Email']} - {item['Name']}" for item in filtered_df.to_dict('records')]
+    delete_user_title = col1.selectbox(
+        "Select a user to delete",
+        options=user_titles, #filtered_df["Email"].tolist(),
+        key="delete_user_email",
+    )
+    delete_user_email = filtered_df["Email"].tolist()[user_titles.index(delete_user_title)]
+    # match index for email
+
+    # Add a confirmation button for deleting users
+    with col2.popover(":x:"):
+        if st.button(f"Are you sure you want to remove {delete_user_email}?", key="delete_user_"+delete_user_email):
+            delete_user(delete_user_email, filtered_df.loc[filtered_df["Email"] == delete_user_email, "Organization ID"].values[0], filtered_df.loc[filtered_df["Email"] == delete_user_email, "Username"].values[0])
+            st.success(f"User {delete_user_email} deleted successfully!")
+            st.rerun()
 
     with st.container(border=True):
         st.write("#### Add New User")

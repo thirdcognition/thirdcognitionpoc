@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import streamlit as st
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -26,15 +27,16 @@ def get_image(id, path="") -> str:
     return os.path.join(path, f"{id}.png")
 
 
-def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous) -> AuthStatus:
+def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous, login_container=None) -> AuthStatus:
     # from streamlit_javascript import st_javascript
     # st_theme = st_javascript("""window.getComputedStyle(window.parent.document.getElementsByClassName("stApp")[0]).getPropertyValue("color-scheme")""")
     # if st_theme == "dark":
     #     ...
     # else:
     #     ...
-    theme = get_theme()
     init_css()
+    get_theme(reset=True)
+
     # print(theme)
 
     st.logo(get_image("logo"))
@@ -71,7 +73,8 @@ def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous) -> AuthStatus:
         menu_items = st.empty()
 
     auth_valid = check_auth(
-        req_user_level
+        req_user_level,
+        container=login_container
     )  # st.session_state.get("auth_level", check_auth(req_user_level))
     print(f"auth_valid: {auth_valid}")
     # st.session_state["auth_level"] = auth_valid

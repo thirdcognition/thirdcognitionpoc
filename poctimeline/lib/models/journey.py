@@ -35,6 +35,9 @@ def get_all_journeys_from_db(session=None) -> list["JourneyDataTable"]:
     if session is None:
         session = user_db_get_session()
 
+    if session is None:
+        return
+
     db_journey_items: JourneyDataTable = list(
         (
             session.query(JourneyDataTable).filter(

@@ -1,9 +1,11 @@
+import time
 import streamlit as st
 import os
 import sys
 from streamlit_extras.grid import grid
 from streamlit_extras.stylable_container import stylable_container
 
+from admin.global_styles import get_theme
 from lib.streamlit.journey import build_journey_cards, get_journey
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -27,8 +29,20 @@ This is an *extremely* cool admin tool!
 
 
 def main():
+    theme = get_theme()
+    # if theme is None:
+    #     st.write("Couldn't load theme")
+    #     return
 
-    auth_valid = init_sidebar()
+    hello = st.empty()
+    login = st.empty()
+
+    auth_valid = init_sidebar(login_container=login)
+    # if auth_valid is None:
+    #     st.write("Loading...")
+    #     time.sleep(1)
+    #     st.rerun()
+
 
     #     st.write("# Welcome! 👋")
 
@@ -38,19 +52,26 @@ def main():
     #     """
     #     )
 
-    if auth_valid == AuthStatus.NO_LOGIN:
-        st.write("# Welcome! 👋")
-        st.write("Please log in for more functionality.")
-        return
-
-    db_journey_items = get_all_journeys_from_db()
-    # db_journey = db_journey_items[0]
-    journeys = [get_journey(journey_item=db_journey) for db_journey in db_journey_items]
+    if auth_valid == AuthStatus.NO_LOGIN or auth_valid is None or st.session_state["username"] is None:
+        with hello.container():
+            st.write("# Welcome! 👋")
+            st.write("Please log in for more functionality.")
+            return
 
     user = get_db_user(st.session_state["username"])
     # org = get_user_org(st.session_state["username"])
     st.header(f"Hello {user.name.split(" ")[0]}")
-    st.subheader("Here’s what we are learning today!")
+
+
+    try:
+        db_journey_items = get_all_journeys_from_db()
+        st.subheader("Here’s what we are learning today!")
+    except ValueError as e:
+        st.write("No journeys have been assigned to you yet")
+        return
+
+    # db_journey = db_journey_items[0]
+    journeys = [get_journey(journey_item=db_journey) for db_journey in db_journey_items]
 
     ##---- Search Bar ----
     search_journey = st.text_input(

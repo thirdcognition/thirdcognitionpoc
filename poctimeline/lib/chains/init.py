@@ -396,7 +396,7 @@ CHAIN_CONFIG: Dict[str, tuple[str, PromptFormatter, bool]] = {
         module_actions,
         True,
     ),
-    "journey_template_selector": ("instruct", journey_template_selector, False),
+    "journey_template_selector": ("instruct", journey_template_selector, True),
     "action_details": ("instruct_warm", action_details, True),
     "question": ("chat", question, True),
     "helper": ("chat", helper, False),

@@ -2,7 +2,6 @@ import time
 from typing import List
 
 import streamlit as st
-import streamlit_shadcn_ui as ui
 from streamlit_extras.stylable_container import stylable_container
 from streamlit_extras.grid import grid
 

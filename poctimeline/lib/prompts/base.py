@@ -211,14 +211,14 @@ def parse_html(html, allowed_tags):
 class TagsParser(BaseOutputParser[Union[str, Dict]]):
     """Custom parser to clean specified tag from results."""
 
-    min_len: int = 10
-    tags = ["thinking", "reflection"]
-    content_tags = ["root", "output"]
-    optional_tags: List[str] = None
-    return_tag: bool = False
-    all_tags_required: bool = False
-    required_output_tag: str = "output"
-    required_output_values: Optional[list] = None
+    min_len: int = Field(default=10)
+    tags: List[str] = Field(default_factory=lambda: ["thinking", "reflection"])
+    content_tags: List[str] = Field(default_factory=lambda: ["root", "output"])
+    optional_tags: Optional[List[str]] = Field(default=None)
+    return_tag: bool = Field(default=False)
+    all_tags_required: bool = Field(default=False)
+    required_output_tag: str = Field(default="output")
+    required_output_values: Optional[List[str]] = Field(default=None)
 
     def get_child_content(self, node, tags=None) -> tuple[int, str]:
         if tags is None:

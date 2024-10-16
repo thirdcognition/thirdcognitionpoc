@@ -214,6 +214,7 @@ def build_journey_cards(items: list[JourneyItem], journey: JourneyItem=None, row
                     if but1.button(ActionSymbol.duplicate.value, key=f"journey_{item.id}_duplicate", type="secondary", use_container_width=True):
                         print("no-op")
                     with but2.popover(ActionSymbol.delete.value, use_container_width=True):
+                        st.write("Warning: This is permanent and cannot be undone.")
                         if st.button(f"Are you sure you want to remove {item.title}", key=f"journey_{item.id}_delete", use_container_width=True):
                             item.remove()
                             st.rerun()

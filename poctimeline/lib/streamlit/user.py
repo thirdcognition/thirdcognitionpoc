@@ -9,24 +9,15 @@ from streamlit_extras.stylable_container import stylable_container
 import yaml
 
 from admin.global_styles import get_theme
-from lib.helpers.shared import pretty_print
-from lib.load_env import SETTINGS
 from lib.models.user import (
     AuthStatus,
     UserLevel,
     add_user,
     check_auth_level,
-    get_all_orgs,
-    get_all_users,
     get_db_user,
     get_user_org,
     init_org_db,
-    is_org_admin,
-    is_super_admin,
     load_auth_config,
-    remove_preauth_email,
-    set_disable_user,
-    set_user_org,
     set_user_name,
     write_auth_config,
 )
@@ -38,120 +29,6 @@ class MyValidator(Validator):
 
     def validate_password(self, password: str = None) -> bool:
         return True
-
-
-def add_preregistered_email_ui():
-    # Check if the user is a super_admin or an org_admin
-    if is_super_admin() or is_org_admin():
-        # If the user is a super_admin, show a select box for organizations
-        if is_super_admin():
-            orgs = get_all_orgs()
-            org_ids = [org.organization_id for org in orgs]
-            selected_org_id = st.selectbox("Select an organization", org_ids)
-        # If the user is an org_admin, use their organization
-        else:
-            selected_org_id = get_user_org().organization_id
-
-        # Show a text input for the email and username
-        email = st.text_input("Email")
-        username = st.text_input("Username")
-
-        # Show a select box for the user level
-        user_levels = [UserLevel.user, UserLevel.org_admin]
-        selected_user_level = st.selectbox("User Level", user_levels)
-
-        # Show a button to add the user
-        if st.button("Add User"):
-            # Add the user to the UserDataTable
-            add_user(
-                email,
-                username,
-                selected_org_id,
-                level=selected_user_level,
-                disabled=False,
-            )
-            st.success("User added successfully!")
-    else:
-        st.error("Not enough access: Only super_admin and org_admin can add users.")
-
-
-def list_all_preregistered_emails(org_id=None):
-    # Check if the user is a super_admin or an org_admin
-    if is_super_admin() or is_org_admin():
-        # If the user is a super_admin and no org_id is provided, show a select box for organizations
-        if is_super_admin() and org_id is None:
-            orgs = get_all_orgs()
-            org_ids = [org.organization_id for org in orgs]
-            selected_org_id = st.selectbox("Select an organization", org_ids)
-        # If the user is an org_admin or an org_id is provided, use that organization
-        else:
-            selected_org_id = org_id if org_id else get_user_org().organization_id
-
-        # Load the auth configuration
-        auth_config = load_auth_config()
-
-        # Get the pre-authorized emails for the selected organization
-        preauthorized_emails = auth_config["pre-authorized"]["emails"]
-
-        # Get all users for the selected organization
-        users = get_all_users(selected_org_id)
-
-        # Filter the users to only include those with pre-authorized emails
-        filtered_emails = [
-            user.email for user in users if user.email in preauthorized_emails
-        ]
-        # Show the filtered emails in a table
-        st.write("Pre-authorized emails:")
-        for email in filtered_emails:
-            st.write(email)
-
-            # Show a button to remove the email
-            if st.button(f"Remove {email}"):
-                # Remove the email from the pre-authorized list
-                remove_preauth_email(email)
-
-                st.success("Email removed successfully!")
-    else:
-        st.error(
-            "Not enough access: Only super_admin and org_admin can view pre-registered emails."
-        )
-
-
-def list_all_users(org_id=None):
-    # Check if the user is a super_admin or an org_admin
-    if is_super_admin() or is_org_admin():
-        # If the user is a super_admin and no org_id is provided, show a select box for organizations
-        if is_super_admin() and org_id is None:
-            orgs = get_all_orgs()
-            org_ids = [org.organization_id for org in orgs]
-            selected_org_id = st.selectbox("Select an organization", org_ids)
-        # If the user is an org_admin or an org_id is provided, use that organization
-        else:
-            selected_org_id = org_id if org_id else get_user_org().organization_id
-
-        # Get all users for the selected organization
-        users = get_all_users(selected_org_id)
-
-        # Show the users in a table
-        st.write("Users:")
-        for user in users:
-            st.write(
-                f"{user.email} - {user.username} - {user.level} - {user.organization_id} - {user.disabled}"
-            )
-
-            # Show a button to edit the user
-            if st.button(f"Edit {user.email}"):
-                update_user_details(user.email)
-
-            # Show a button to disable/enable the user
-            if user.disabled:
-                if st.button(f"Enable {user.email}"):
-                    set_disable_user(user.email, False)
-            else:
-                if st.button(f"Disable {user.email}"):
-                    set_disable_user(user.email, True)
-    else:
-        st.error("Not enough access: Only super_admin and org_admin can view users.")
 
 
 @st.fragment
@@ -251,8 +128,8 @@ def check_auth(
         and authenticator
     ):
         # print(f"check_auth: {st.session_state.get('username', 'username none')} - {cur_user_level} - {user_level}")
-        user = get_db_user(st.session_state["username"])
-        org = get_user_org(st.session_state["username"])
+        user = get_db_user(email=st.session_state["username"])
+        org = get_user_org(user=user)
         if user is not None and org is not None:
             with st.sidebar:
                 message = st.columns([2, 1], vertical_alignment="bottom")
@@ -314,7 +191,7 @@ def check_auth(
             if st.session_state.get("authentication_status"):
                 login_container.empty()
                 user = get_db_user(st.session_state["username"], reset=True)
-                org = get_user_org(st.session_state["username"], reset=True)
+                org = get_user_org(user=user, reset=True)
                 if user.disabled or org.disabled:
                     print("Logout")
                     manual_logout(authenticator)
@@ -335,7 +212,7 @@ def check_auth(
                 )
             else:
                 if st.session_state.get("authentication_status") is False:
-                    message.error("Username/password is incorrect")
+                    message.error("Email/password is incorrect")
                     auth_status = AuthStatus.NO_LOGIN
                 if st.session_state.get("authentication_status") is None:
                     message.info(
@@ -354,48 +231,48 @@ def check_auth(
         return auth_status
 
 
-def user_details():
-    # print(f"{('authentication_status' not in st.session_state)=}")
-    authenticator = get_authenticator("authentication_status" not in st.session_state)
-    auth_config = load_auth_config()
-    logged_in = False
+# def user_details():
+#     # print(f"{('authentication_status' not in st.session_state)=}")
+#     authenticator = get_authenticator("authentication_status" not in st.session_state)
+#     auth_config = load_auth_config()
+#     logged_in = False
 
-    message = st.empty()
-    if st.session_state.get("prev_login") is None:
-        tab1 = st.empty()
-        tab2 = st.empty()
-        tab3 = st.empty()
-    if st.session_state.get("authentication_status") is not True:
-        tab1, tab2 = st.tabs(["Login", "Register"])
-        tab3 = st.empty()
-    else:
-        tab1, tab2, tab3 = st.tabs(["Logout", "My details", "Reset Password"])
+#     message = st.empty()
+#     if st.session_state.get("prev_login") is None:
+#         tab1 = st.empty()
+#         tab2 = st.empty()
+#         tab3 = st.empty()
+#     if st.session_state.get("authentication_status") is not True:
+#         tab1, tab2 = st.tabs(["Login", "Register"])
+#         tab3 = st.empty()
+#     else:
+#         tab1, tab2, tab3 = st.tabs(["Logout", "My details", "Reset Password"])
 
-    with tab1:
-        authenticator.login()
+#     with tab1:
+#         authenticator.login()
 
-    if st.session_state.get("authentication_status"):
-        tab1.write(f'Welcome *{st.session_state["name"]}*')
-        with tab2:
-            update_user_details(st.session_state["username"])
-        with tab3:
-            reset_password()
-        with tab1:
-            authenticator.logout("Logout")
-        logged_in = True
-    else:
-        if st.session_state.get("authentication_status") is False:
-            message.error("Username/password is incorrect")
-        # if st.session_state.get("authentication_status") is None:
-        #     message.warning("Please enter your username and password")
+#     if st.session_state.get("authentication_status"):
+#         tab1.write(f'Welcome *{st.session_state["name"]}*')
+#         with tab2:
+#             update_user_details(st.session_state["username"])
+#         with tab3:
+#             reset_password()
+#         with tab1:
+#             authenticator.logout("Logout")
+#         logged_in = True
+#     else:
+#         if st.session_state.get("authentication_status") is False:
+#             message.error("Username/password is incorrect")
+#         # if st.session_state.get("authentication_status") is None:
+#         #     message.warning("Please enter your username and password")
 
-        with tab2:
-            register_user()
+#         with tab2:
+#             register_user()
 
-        logged_in = False
+#         logged_in = False
 
-    write_auth_config(auth_config)
-    return logged_in
+#     write_auth_config(auth_config)
+#     return logged_in
 
 
 def get_manual_login(authenticator: stauth.Authenticate):
@@ -452,7 +329,7 @@ def manual_login(
         {
             "username": username_of_registered_user,
             "exp_date": (
-                datetime.datetime.utcnow() + datetime.timedelta(days=30)
+                datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)
             ).timestamp(),
         },
         auth_config["cookie"]["key"],
@@ -466,7 +343,7 @@ def manual_login(
             key="manual_login_" + username_of_registered_user,
         )
         st.session_state["authentication_status"] = True
-        st.session_state["auth_state"] = 'login'
+        st.session_state["auth_state"] = "login"
     except Exception as e:
         print("cookie set error", e)
 
@@ -481,7 +358,12 @@ def manual_logout(authenticator: stauth.Authenticate):
     except Exception as e:
         print(e)
 
-    authenticator.authentication_controller.authentication_model.credentials["usernames"][st.session_state["username"]]["logged_in"] = False
+    try:
+        authenticator.authentication_controller.authentication_model.credentials[
+            "usernames"
+        ][st.session_state["username"]]["logged_in"] = False
+    except:
+        print("Failed to reset logged_in")
     st.session_state["logout"] = True
     st.session_state["name"] = None
     st.session_state["username"] = None
@@ -489,24 +371,18 @@ def manual_logout(authenticator: stauth.Authenticate):
 
 
 def complete_registration(data):
-    # print("Complete registration", data)
-    # callback({'widget': 'Register user', 'new_name': new_first_name,
-    #           'new_last_name': new_last_name, 'new_email': new_email,
-    #           'new_username': new_username})
     auth_config = load_auth_config(reload=True)
     authenticator = get_authenticator()
     name_of_registered_user = data["new_name"] + " " + data["new_last_name"]
     username_of_registered_user = data["new_username"]
     email_of_registered_user = data["new_email"]
-    manual_login(
-        authenticator, username_of_registered_user, name_of_registered_user
-    )
-    password = authenticator.authentication_controller.authentication_model.credentials["usernames"][username_of_registered_user]["password"]
+    manual_login(authenticator, username_of_registered_user, name_of_registered_user)
+    password = authenticator.authentication_controller.authentication_model.credentials[
+        "usernames"
+    ][username_of_registered_user]["password"]
     # hashed_password = stauth.Hasher([password]).generate()
     add_user(
-        email_of_registered_user,
-        username_of_registered_user,
-        name_of_registered_user
+        email=email_of_registered_user, name=name_of_registered_user, password=password, register=True
     )
     write_auth_config(auth_config)
 
@@ -533,7 +409,8 @@ def register_user():
             fields={
                 "Form name": "Register",
             },
-            callback=complete_registration
+            merge_username_email=True,
+            callback=complete_registration,
         )
     except stauth.RegisterError as e:
         print(e)
@@ -544,12 +421,14 @@ def register_user():
 
     if no_error and email_of_registered_user:
         write_auth_config(auth_config)
-        complete_registration({
-            "new_name": name_of_registered_user.split(" ")[0],
-            "new_last_name": " ".join(name_of_registered_user.split(" ")[1:]),
-            "new_username": username_of_registered_user,
-            "new_email": email_of_registered_user
-        })
+        complete_registration(
+            {
+                "new_name": name_of_registered_user.split(" ")[0],
+                "new_last_name": " ".join(name_of_registered_user.split(" ")[1:]),
+                "new_username": username_of_registered_user,
+                "new_email": email_of_registered_user,
+            }
+        )
 
         # auth_config["credentials"]["usernames"][username_of_registered_user] = {
         #     "email": email_of_registered_user,
@@ -572,14 +451,14 @@ def update_user_details(user_id):
     container = st.container()
 
     with container:
-        new_username = st.text_input("Username", value=user.username)
+        # new_username = st.text_input("Username", value=user.email)
         new_name = st.text_input("Real Name", value=user.name)
         if st.button("Update"):
             # set_user_org(user.email, new_org_id)
             auth_config = load_auth_config()
-            auth_config["credentials"]["usernames"][new_username] = auth_config[
+            auth_config["credentials"]["usernames"][user.email] = auth_config[
                 "credentials"
-            ]["usernames"].pop(user.username)
+            ]["usernames"].pop(user.email)
             set_user_name(user.email, new_name)
             if write_auth_config(auth_config):
                 st.success("User details updated successfully!")
@@ -601,7 +480,7 @@ def reset_password():
 
             hashed_password = stauth.Hasher([new_password]).generate()
             auth_config = load_auth_config()
-            auth_config["credentials"]["usernames"][user.username]["password"] = (
+            auth_config["credentials"]["usernames"][user.email]["password"] = (
                 hashed_password[0]
             )
             if write_auth_config(auth_config):

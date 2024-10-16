@@ -6,6 +6,8 @@ from streamlit_extras.grid import grid
 from streamlit_extras.stylable_container import stylable_container
 
 from admin.global_styles import get_theme
+from lib.helpers.shared import pretty_print
+from lib.models.journey_progress import JourneyItemProgress, JourneyProgressDataTable
 from lib.streamlit.journey import build_journey_cards
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -43,7 +45,6 @@ def main():
     #     time.sleep(1)
     #     st.rerun()
 
-
     #     st.write("# Welcome! 👋")
 
     #     st.markdown(
@@ -52,26 +53,44 @@ def main():
     #     """
     #     )
 
-    if auth_valid == AuthStatus.NO_LOGIN or auth_valid is None or st.session_state["username"] is None:
+    if (
+        auth_valid == AuthStatus.NO_LOGIN
+        or auth_valid is None
+        or st.session_state["username"] is None
+    ):
         with hello.container():
             st.write("# Welcome! 👋")
             st.write("Please log in for more functionality.")
             return
 
     user = get_db_user(st.session_state["username"])
+
+    my_journey_progress = JourneyProgressDataTable.load_all_from_db(
+        user_id=user.id, item_type=JourneyItemType.JOURNEY
+    )
+    my_active_modules = JourneyProgressDataTable.load_all_from_db(
+        user_id=user.id, item_type=JourneyItemType.MODULE, started=True
+    )
+    my_journeys = []
+
+    # pretty_print([journey.__dict__ for journey in my_journeys], force=True)
+
     # org = get_user_org(st.session_state["username"])
     st.header(f"Hello {user.name.split(" ")[0]}")
 
-
     try:
-        db_journey_items = get_all_journeys_from_db()
+        db_journey_items = get_all_journeys_from_db(
+            ids=[journey_progress.item_id for journey_progress in my_journey_progress]
+        )
         st.subheader("Here’s what we are learning today!")
     except ValueError as e:
         st.write("No journeys have been assigned to you yet")
         return
 
     # db_journey = db_journey_items[0]
-    journeys = [JourneyItem.get(journey_item=db_journey) for db_journey in db_journey_items]
+    journeys = [
+        JourneyItem.get(journey_item=db_journey) for db_journey in db_journey_items
+    ]
 
     ##---- Search Bar ----
     search_journey = st.text_input(
@@ -81,7 +100,7 @@ def main():
         matches = []
         for journey in journeys:
             journey_matches = journey.search_children_with_token(
-                    search_journey, item_type=JourneyItemType.MODULE
+                search_journey, item_type=JourneyItemType.MODULE
             )
             if len(journey_matches) > 0:
                 matches.append((journey, journey_matches))
@@ -91,16 +110,18 @@ def main():
             for journey, matches in matches:
                 st.write(journey.title)
                 build_journey_cards(
-                    [journey.get_child_by_id(module_id) for module_id in matches], journey
+                    [journey.get_child_by_id(module_id) for module_id in matches],
+                    journey,
                 )
         else:
             st.write("No matches found")
 
     st.divider()
 
-    st.subheader("Active modules")
+    if len(my_active_modules) > 0:
+        st.subheader("Active modules")
 
-    st.divider()
+        st.divider()
 
     st.subheader("Next modules")
 
@@ -121,8 +142,19 @@ def main():
     # Create two rows
     # for db_journey in db_journey_items:
 
-
     sections: list = journey.flatten(type_filter=JourneyItemType.SECTION)
+    # pretty_print(my_journey_progress, force=True)
+    journey_progress_data = next(
+        (
+            progress_item
+            for progress_item in my_journey_progress
+            if progress_item.item_id == journey.id
+        ),
+        None,
+    )
+
+    journey_progress = JourneyItemProgress.from_db(journey_progress_data)
+    # pretty_print(journey_progress, force=True)
 
     # for section_id in sections:
     # section_id = sections[0]
@@ -131,12 +163,18 @@ def main():
     section_titles = [
         section.get_index(journey) + " - " + section.title for section in sections
     ]
+    section_titles.insert(0, "Next modules in queue")
     section_title = st.selectbox("Choose section", options=section_titles)
 
-    section = sections[section_titles.index(section_title)]
+    chosen_index = section_titles.index(section_title)
+    if chosen_index > 0:
+        section = sections[chosen_index-1]
+        modules = section.flatten(type_filter=JourneyItemType.MODULE)
+    else:
+        next_modules = journey_progress.get_next()
+        modules = [all_children[progress.item_id].id for progress in next_modules]
 
     # st.subheader(section.get_index(journey) + " - " + section.title)
-    modules = section.flatten(type_filter=JourneyItemType.MODULE)
     # journey_rows = [row_len for _ in range(len(modules)//row_len + 1)]
     # journey_grid = grid(*journey_rows, vertical_align="center")
     # for module_id in modules:

@@ -2,7 +2,6 @@ import time
 from typing import List
 
 import streamlit as st
-import streamlit_shadcn_ui as ui
 from streamlit_extras.stylable_container import stylable_container
 from streamlit_extras.grid import grid
 
@@ -15,7 +14,7 @@ from admin.sidebar import get_image, init_sidebar
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
-from lib.models.journey_progress import JourneyItemProgress, JourneyProgressDataTable
+from lib.models.journey_progress import JourneyItemProgress, JourneyItemProgressState, JourneyProgressDataTable
 from lib.streamlit.journey import ChildPosition
 from lib.models.journey import (
     JourneyItem,
@@ -33,9 +32,8 @@ from lib.models.user import (
     UserLevel,
     add_user,
     get_all_users,
+    get_db_user,
     get_user_org,
-    set_disable_user,
-    set_user_journeys,
 )
 
 st.set_page_config(
@@ -577,14 +575,14 @@ def journey_edit():
     journey_id = st.query_params.get("journey") or st.session_state.get(
         "journey_edit_id"
     )
+    journey: JourneyItem = None
+    if journey_id is not None:
+        journey = JourneyItem.get(journey_id=journey_id)
     with tab1:
-        if journey_id is not None:
-            journey = JourneyItem.get(journey_id=journey_id)
-
+        if journey:
             # print("Journey ID", journey_id)
             # print(f"Journey keys: {get_available_journeys()}")
             edit_journey(journey)
-
         else:
             st.error("No data to show. Redirecting to journey management.")
             time.sleep(2)
@@ -594,76 +592,93 @@ def journey_edit():
         # st.subheader("Assign Journey")
 
     with tab2:
-        st.subheader("Connected Users")
-        org_id = get_user_org(st.session_state["username"]).organization_id
-        users = get_all_users(org_id, reset=True)
+        if journey:
+            org_id = get_user_org(st.session_state["username"]).id
+            users = get_all_users(org_id, reset=True)
 
-        # Display current assignments and user progress
+            # Display current assignments and user progress
 
-        for user in users:
-            try:
-                # Load progress for the current journey and user
-                progress_item = JourneyProgressDataTable.load_from_db(
-                    journey_id=journey_id, username=user.email
-                )
+            # Load all progress items for the current journey
+            progress_items = JourneyProgressDataTable.load_all_from_db(item_id=journey_id)
 
-                if progress_item:
-                    st.markdown(f"**{user.name or user.email}**")
+            if len(progress_items) > 0:
+                st.subheader("Connected Users")
+                # Display current assignments and user progress
+                count = 0
+                for progress_item in progress_items:
+                    # pretty_print(progress_item.__dict__, force=True)
+                    # try:
+                    # Get the user for the current progress item
+                    user = get_db_user(id=progress_item.user_id)
 
-                    journey_progress = JourneyItemProgress.from_db(progress_item)
-                    journey_item = JourneyItem.get(journey_progress.item_id)
-                    st.write(f"Journey: {journey_item.title}")
-                    st.progress(journey_progress.get_progress())
+                    container = st.container(border=True)
+                    col1, col2, col3 = container.columns([0.2, 0.7, 0.15], vertical_alignment="center")
 
-                    with st.expander("Manage Assignments"):
-                        if st.button(
-                            f"Remove Journey", key=f"remove_{journey_progress.id}"
-                        ):
-                            journey_progress.removed = True
-                            journey_progress.save_to_db()
-                            st.rerun()
+                    if user:
+                        col1.markdown(f"**{user.name or user.email}**")
+                        count += 1
 
-            except Exception as e:
-                st.error(f"Error loading user progress: {str(e)}")
+                        journey_progress = JourneyItemProgress.from_db(progress_item)
+                        if JourneyItemProgressState.NOT_STARTED > journey_progress.get_state():
+                            next_modules_progress = journey_progress.get_next(reset=True)
+                            # pretty_print(next_modules_progress, force=True)
+                            all_children = journey.all_children_by_id()
+                            next_module = all_children[next_modules_progress[0].item_id]
+                            # journey_item = JourneyItem.get(journey_id = journey_progress.item_id)
+                            # st.write(f"Journey: {journey_item.title}")
+                            col2.progress(journey_progress.get_progress(), f"Next module: {next_module}")
+                        else:
+                            col2.write("Not yet started")
 
-        st.divider()
+                        with col3.popover("Manage"):
+                            if st.button(f"Remove", key=f"remove_{journey_progress.id}"):
+                                journey_progress.removed = True
+                                journey_progress.save_to_db()
+                                st.rerun()
 
-        st.subheader("Assign to Users")
-        assign_users = st.multiselect(
-            "Select users to assign journeys",
-            [f"{u.username} ({u.email})" if u.username else u.email for u in users],
-        )
 
-        if assign_users:
-            journey_id = st.session_state.get("journey_edit_id")
-            for user in assign_users:
-                user_info = user.split(" ")
-                username = user_info[0]
-                # email = user_info[-1].strip("()")
+                    # except Exception as e:
+                    #     st.error(f"Error loading user progress: {str(e)}")
 
+                if count == 0:
+                    st.write("No assigned users have yet signed up and started the journey")
+
+                st.divider()
+
+            st.subheader("Assign to Users")
+            assign_users = st.multiselect(
+                "Select users to assign journeys",
+                users,
+                format_func=lambda u: f"{u.name} ({u.email})" if u.name else u.email,
+            )
+
+            if assign_users and st.button("Assign to User(s)", key="assing_journey_users_"+journey_id):
+                journey_id = st.session_state.get("journey_edit_id")
+                for user in assign_users:
+                    user_id = user.id
+                    journey_item = JourneyItem.load_from_db(journey_id)
+                    JourneyProgressDataTable.from_journey_item(
+                        journey_item, user_id=user_id
+                    )
+                st.success("Journeys assigned successfully.")
+                st.rerun()
+
+            st.divider()
+
+            st.subheader("Assign to New User")
+            new_user_email = st.text_input(
+                "New User Email", placeholder="e.g., newuser@example.com"
+            )
+
+            if new_user_email and st.button("Assign to New User", key="assing_journey_new_user_"+journey_id):
+                journey_id = st.session_state.get("journey_edit_id")
+                new_user = add_user(email=new_user_email, journeys=[journey_id], org_id=org_id)
                 journey_item = JourneyItem.load_from_db(journey_id)
                 JourneyProgressDataTable.from_journey_item(
-                    journey_item, username=username
+                    journey_item, user_id=new_user.id
                 )
-            st.success("Journeys assigned successfully.")
-            st.rerun()
-
-        st.divider()
-
-        st.subheader("Assign to New User")
-        new_user_email = st.text_input(
-            "New User Email", placeholder="e.g., newuser@example.com"
-        )
-
-        if new_user_email and st.button("Assign to New User"):
-            journey_id = st.session_state.get("journey_edit_id")
-            add_user(email=new_user_email, journeys=[journey_id], org_id=org_id)
-            journey_item = JourneyItem.load_from_db(journey_id)
-            JourneyProgressDataTable.from_journey_item(
-                journey_item, username=new_user_email
-            )
-            st.success("New user created and journey assigned.")
-            st.rerun()
+                st.success("New user created and journey assigned.")
+                st.rerun()
 
     col1, col2, col3 = st.columns([0.15, 0.7, 0.15])
     # with col1:

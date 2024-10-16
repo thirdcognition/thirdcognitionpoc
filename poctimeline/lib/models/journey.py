@@ -35,27 +35,26 @@ def get_journey_data_from_db(id: str, session=None) -> "JourneyDataTable":
     return db_journey_item
 
 
-def get_all_journeys_from_db(session=None) -> list["JourneyDataTable"]:
-    # if reset:
-    #     get_journey_data_from_db.cache_clear()
+def get_all_journeys_from_db(session=None, ids: Optional[List[str]] = None) -> List["JourneyDataTable"]:
     if session is None:
         session = user_db_get_session()
 
     if session is None:
         return
 
-    db_journey_items: JourneyDataTable = list(
-        (
-            session.query(JourneyDataTable).filter(
+    query = session.query(JourneyDataTable).filter(
                 JourneyDataTable.item_type == JourneyItemType.JOURNEY.value
             )
-        ).all()
-    )
+
+    db_journey_items = query.all()
+
+    if ids:
+        db_journey_items = [item for item in db_journey_items if item.id in ids]
 
     print(f"{db_journey_items=}")
 
-    if db_journey_items is None or len(db_journey_items) == 0:
-        raise ValueError(f"Journey Items not found in the database.")
+    if not db_journey_items:
+        raise ValueError("Journey Items not found in the database.")
 
     return db_journey_items
 
@@ -772,7 +771,7 @@ class JourneyItem(BaseModel):
         if self.children and len(self.children) > 0:
             for child in self.children:
                 all_children_by_id[child.id] = child
-                all_children_by_id.update(child.all_children_by_id())
+                all_children_by_id.update(child.all_children_by_id(reset=reset))
 
         self.cache[cache_key] = all_children_by_id
         return all_children_by_id

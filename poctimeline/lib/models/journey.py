@@ -109,7 +109,7 @@ class JourneyDataTable(Base):
         return db_journey_item
 
     @classmethod
-    def delete_item(
+    def delete_journey_item(
         cls,
         journey_item: "JourneyItem",
         session=None,
@@ -139,7 +139,7 @@ class JourneyDataTable(Base):
             and len(journey_item.children) > 0
         ):
             for child in journey_item.children:
-                JourneyDataTable.delete_item(
+                JourneyDataTable.delete_journey_item(
                     child, session, commit=False, include_children=True
                 )
 
@@ -164,7 +164,7 @@ class JourneyDataTable(Base):
         # journey_cache.pop(journey_item.id, None)
 
     @classmethod
-    def create_from_journey_item(
+    def from_journey_item(
         cls,
         journey_item: "JourneyItem",
         session: Session = None,
@@ -254,7 +254,7 @@ class JourneyDataTable(Base):
             and len(journey_item.children) > 0
         ):
             for child in journey_item.children:
-                JourneyDataTable.create_from_journey_item(child, session, commit=False)
+                JourneyDataTable.from_journey_item(child, session, commit=False)
 
         # Add the new JourneyDataTable item to the session and commit the changes
         if commit:
@@ -263,43 +263,6 @@ class JourneyDataTable(Base):
             session.commit()
 
         return db_journey_item
-
-    def to_journey_item(self, include_children=True) -> "JourneyItem":
-        # Create a new JourneyItem object from the data in the JourneyDataTable
-        journey_item = JourneyItem(
-            id=self.id,
-            template_id=self.journey_template_id,
-            parent_id=self.parent_id,
-            after_id=self.after_id,
-            references=self.references,
-            children=[],  # self.children,
-            use_guide=self.use_guide,
-            title=self.title,
-            icon=self.icon,
-            intro=self.intro,
-            summary=self.summary,
-            description=self.description,
-            content_instructions=ContentInstructions.from_json(
-                self.content_instructions
-            ),
-            content=self.content,
-            test=self.test,
-            action=self.action,
-            end_of_day=self.end_of_day,
-            item_type=JourneyItemType(self.item_type),
-        )
-
-        if include_children and self.children and len(self.children) > 0:
-            db_children: list[JourneyDataTable] = []
-            children: list[JourneyItem] = []
-            for child_id in self.children:
-                db_children.append(JourneyDataTable.load_from_db(child_id))
-            for db_child in db_children:
-                children.append(db_child.to_journey_item())
-            journey_item.children = children
-            journey_item.sort_children()
-
-        return journey_item
 
     def update_from_journey_item(
         self, session: Session, journey_item: "JourneyItem", include_children=True
@@ -337,7 +300,7 @@ class JourneyDataTable(Base):
             and len(journey_item.children) > 0
         ):
             for child in journey_item.children:
-                JourneyDataTable.create_from_journey_item(child, session, False)
+                JourneyDataTable.from_journey_item(child, session, False)
 
         # Commit the changes to the database
         # get_journey_data_from_db.cache_clear()
@@ -909,7 +872,7 @@ class JourneyItem(BaseModel):
 
         # Remove item from database
         session = user_db_get_session()
-        JourneyDataTable.delete_item(self, session)
+        JourneyDataTable.delete_journey_item(self, session)
 
         # Resort journey
         if journey is not None:
@@ -1059,6 +1022,44 @@ class JourneyItem(BaseModel):
 
         return new_eod
 
+    @classmethod
+    def from_db(cls, db_item: JourneyDataTable, include_children=True) -> "JourneyItem":
+        # Create a new JourneyItem object from the data in the JourneyDataTable
+        journey_item = cls(
+            id=db_item.id,
+            template_id=db_item.journey_template_id,
+            parent_id=db_item.parent_id,
+            after_id=db_item.after_id,
+            references=db_item.references,
+            children=[],  # db_item.children,
+            use_guide=db_item.use_guide,
+            title=db_item.title,
+            icon=db_item.icon,
+            intro=db_item.intro,
+            summary=db_item.summary,
+            description=db_item.description,
+            content_instructions=ContentInstructions.from_json(
+                db_item.content_instructions
+            ),
+            content=db_item.content,
+            test=db_item.test,
+            action=db_item.action,
+            end_of_day=db_item.end_of_day,
+            item_type=JourneyItemType(db_item.item_type),
+        )
+
+        if include_children and db_item.children and len(db_item.children) > 0:
+            db_children: list[JourneyDataTable] = []
+            children: list[JourneyItem] = []
+            for child_id in db_item.children:
+                db_children.append(JourneyDataTable.load_from_db(child_id))
+            for db_child in db_children:
+                children.append(cls.from_db(db_child))
+            journey_item.children = children
+            journey_item.sort_children()
+
+        return journey_item
+
     # Refresh item by reloading it and children from db, reset caches and resort afterwards
     def refresh_from_db(self):
         # Load the item from the database
@@ -1093,12 +1094,12 @@ class JourneyItem(BaseModel):
 
         print("Save to db", self.id)
 
-        return JourneyDataTable.create_from_journey_item(self, session)
+        return JourneyDataTable.from_journey_item(self, session)
 
     @classmethod
     def load_from_db(cls, id: str, session=None) -> "JourneyItem":
         db_journey_item = get_journey_data_from_db(id, session)
-        return db_journey_item.to_journey_item()
+        return cls.from_db(db_journey_item)
 
     @classmethod
     def get(
@@ -1109,13 +1110,11 @@ class JourneyItem(BaseModel):
 
         if journey_item is not None:
             if journey_item.id not in get_journey_item_cache().keys():
-                get_journey_item_cache()[
-                    journey_item.id
-                ] = journey_item.to_journey_item()
+                get_journey_item_cache()[journey_item.id] = cls.from_db(journey_item)
             return get_journey_item_cache()[journey_item.id]
         elif journey_id is not None:
             if journey_id not in get_journey_item_cache().keys():
-                journey: JourneyItem = JourneyItem.load_from_db(journey_id)
+                journey: cls = cls.load_from_db(journey_id)
                 get_journey_item_cache()[journey_id] = journey
             return get_journey_item_cache()[journey_id]
 

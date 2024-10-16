@@ -15,6 +15,7 @@ from admin.sidebar import get_image, init_sidebar
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
+from lib.models.journey_progress import JourneyItemProgress, JourneyProgressDataTable
 from lib.streamlit.journey import ChildPosition
 from lib.models.journey import (
     JourneyItem,
@@ -27,7 +28,15 @@ from lib.helpers.journey import (
     match_title_to_cat_and_id,
 )
 from lib.helpers.shared import pretty_print
-from lib.models.user import AuthStatus, UserLevel, get_all_users, get_user_org
+from lib.models.user import (
+    AuthStatus,
+    UserLevel,
+    add_user,
+    get_all_users,
+    get_user_org,
+    set_disable_user,
+    set_user_journeys,
+)
 
 st.set_page_config(
     page_title="TC POC: Admin",
@@ -50,10 +59,7 @@ level_step = 1
 def get_stylable_container_selector(id):
     return f'div[data-testid="stVerticalBlock"]:has(> div.element-container > div.stMarkdown > div[data-testid="stMarkdownContainer"] > p > span.{id})'
 
-
-
-
-                # st.checkbox(label=str(i), label_visibility="collapsed", value=(logo_id) == ancestor.icon, key="image_"+id_str+"_"+logo_id, on_change=change_icon)
+    # st.checkbox(label=str(i), label_visibility="collapsed", value=(logo_id) == ancestor.icon, key="image_"+id_str+"_"+logo_id, on_change=change_icon)
 
     # Selector with 1-50 images that when selected updates ancestor.icon to the id
     # Image id's are logo_1 to logo_50 and the image url can be fetched via get_image(image_id)
@@ -134,7 +140,6 @@ def write_section_module(item: JourneyItem, journey: JourneyItem, item_id: str):
                         get_image(item.icon, "icon_files"),
                         use_column_width=True,
                     )
-
 
                     if edit_col.button(
                         ActionSymbol.edit.value,
@@ -225,7 +230,7 @@ def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
                     text-align: right;
                 }}
             """,
-             """
+                """
                 button {
                     width: 4rem;
                 }
@@ -263,7 +268,7 @@ def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
                         "Add new before",
                         key=f"add_before_button_{item_id}",
                         type="secondary",
-                        use_container_width=True
+                        use_container_width=True,
                     ):
                         parent = all_children[item.parent_id]
                         new_item = JourneyItem.create_new(
@@ -289,7 +294,7 @@ def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
                         "Add new after",
                         key=f"add_after_button_{item_id}",
                         type="secondary",
-                        use_container_width=True
+                        use_container_width=True,
                     ):
                         parent = all_children[item.parent_id]
                         new_item = JourneyItem.create_new(
@@ -569,11 +574,10 @@ def edit_journey(journey: JourneyItem):
 
 def journey_edit():
     tab1, tab2 = st.tabs(["Modify journey", "Assign to individual(s)"])
+    journey_id = st.query_params.get("journey") or st.session_state.get(
+        "journey_edit_id"
+    )
     with tab1:
-        journey_id = st.query_params.get("journey") or st.session_state.get(
-            "journey_edit_id"
-        )
-
         if journey_id is not None:
             journey = JourneyItem.get(journey_id=journey_id)
 
@@ -589,52 +593,77 @@ def journey_edit():
 
         # st.subheader("Assign Journey")
 
-    with tab2.container(border=True):
-        # st.write(
-        #     JourneyItem.from_json(st.session_state["journey_creation_data"])
-        #     if "journey_creation_data" in st.session_state
-        #     else "No data"
-        # )
-        # assign_to = st.multiselect(
-        #     "Assign Journey to",
-        #     [
-        #         "Individual(s)",
-        #         "Team(s)",
-        #         "Department(s)",
-        #         "Location(s)",
-        #         "Subsidiary",
-        #     ],
-        #     ["Individual(s)"],
-        # )
-        # st.divider()
-
-        st.subheader("Connected users")
-
-        st.divider()
-        st.subheader("Assign to Individual(s)")
-
+    with tab2:
+        st.subheader("Connected Users")
         org_id = get_user_org(st.session_state["username"]).organization_id
-        print("Organization id", org_id)
         users = get_all_users(org_id, reset=True)
-        user_titles = [
-                f"{user.email if user.name is None else ''}{f'{user.name} ({user.email})' if user.name is not None else ''}" for user in users
-            ]
-        assign_to = st.multiselect(
-            "Assign Journey to",
-            user_titles,
-            None
-        )
-        st.button("Assign", type="primary")
+
+        # Display current assignments and user progress
+
+        for user in users:
+            try:
+                # Load progress for the current journey and user
+                progress_item = JourneyProgressDataTable.load_from_db(
+                    journey_id=journey_id, username=user.email
+                )
+
+                if progress_item:
+                    st.markdown(f"**{user.name or user.email}**")
+
+                    journey_progress = JourneyItemProgress.from_db(progress_item)
+                    journey_item = JourneyItem.get(journey_progress.item_id)
+                    st.write(f"Journey: {journey_item.title}")
+                    st.progress(journey_progress.get_progress())
+
+                    with st.expander("Manage Assignments"):
+                        if st.button(
+                            f"Remove Journey", key=f"remove_{journey_progress.id}"
+                        ):
+                            journey_progress.removed = True
+                            journey_progress.save_to_db()
+                            st.rerun()
+
+            except Exception as e:
+                st.error(f"Error loading user progress: {str(e)}")
+
         st.divider()
 
-        st.subheader("Create new account and assign to journey")
-        emp_id = st.text_input(
-            "Employee email",
-            placeholder="john@acmeorg.com",
-            key="add_new_user",
+        st.subheader("Assign to Users")
+        assign_users = st.multiselect(
+            "Select users to assign journeys",
+            [f"{u.username} ({u.email})" if u.username else u.email for u in users],
         )
-        st.button("Add Employee", type="primary")
-        st.markdown(" ")
+
+        if assign_users:
+            journey_id = st.session_state.get("journey_edit_id")
+            for user in assign_users:
+                user_info = user.split(" ")
+                username = user_info[0]
+                # email = user_info[-1].strip("()")
+
+                journey_item = JourneyItem.load_from_db(journey_id)
+                JourneyProgressDataTable.from_journey_item(
+                    journey_item, username=username
+                )
+            st.success("Journeys assigned successfully.")
+            st.rerun()
+
+        st.divider()
+
+        st.subheader("Assign to New User")
+        new_user_email = st.text_input(
+            "New User Email", placeholder="e.g., newuser@example.com"
+        )
+
+        if new_user_email and st.button("Assign to New User"):
+            journey_id = st.session_state.get("journey_edit_id")
+            add_user(email=new_user_email, journeys=[journey_id], org_id=org_id)
+            journey_item = JourneyItem.load_from_db(journey_id)
+            JourneyProgressDataTable.from_journey_item(
+                journey_item, username=new_user_email
+            )
+            st.success("New user created and journey assigned.")
+            st.rerun()
 
     col1, col2, col3 = st.columns([0.15, 0.7, 0.15])
     # with col1:

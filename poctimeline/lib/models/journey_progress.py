@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from enum import Enum
 from functools import cache
 from typing import Any, Dict, List, Optional, Union
 import uuid
@@ -20,6 +21,8 @@ class JourneyProgressDataTable(Base):
     item_id = sqla.Column(sqla.String)
     item_type = sqla.Column(sqla.String)
     username = sqla.Column(sqla.String)
+    disabled = sqla.Column(sqla.Boolean)
+    removed = sqla.Column(sqla.Boolean)
     assigned_at = sqla.Column(sqla.DateTime)
     started_at = sqla.Column(sqla.DateTime, default=None)
     completed_at = sqla.Column(sqla.DateTime, default=None)
@@ -51,13 +54,36 @@ class JourneyProgressDataTable(Base):
         if username is not None:
             query = query.filter(JourneyProgressDataTable.username == username)
 
-        db_journey_progress_item = query.first()
-        if db_journey_progress_item is None:
+        db_journey_item_progress = query.first()
+        if db_journey_item_progress is None:
             raise ValueError(
                 f"Journey Progress Item with provided parameters not found in the database."
             )
 
-        return db_journey_progress_item
+        return db_journey_item_progress
+
+    @classmethod
+    def load_all_children(cls, parent_id: str, username: str = None, session=None) -> dict[str, list["JourneyProgressDataTable"]]:
+        if session is None:
+            session = user_db_get_session()
+
+        # Query for direct children
+        query = session.query(JourneyProgressDataTable).filter(JourneyProgressDataTable.parent_id == parent_id)
+
+        # If username is provided, filter the results
+        if username is not None:
+            query = query.filter(JourneyProgressDataTable.username == username)
+
+        direct_children = query.all()
+
+        # Initialize the result dictionary with direct children
+        result = {parent_id: direct_children}
+
+        # Recursively load children's children
+        for child in direct_children:
+            result.update(cls.load_all_children(child.item_id, username, session))
+
+        return result
 
     @classmethod
     def load_all_items(
@@ -68,7 +94,7 @@ class JourneyProgressDataTable(Base):
         started: Union[datetime, bool, None] = None,
         completed: Union[datetime, bool, None] = None,
         session=None,
-    ):
+    ) -> list["JourneyProgressDataTable"]:
         if session is None:
             session = user_db_get_session()
 
@@ -106,12 +132,12 @@ class JourneyProgressDataTable(Base):
             elif isinstance(completed, datetime):
                 query = query.filter(JourneyProgressDataTable.completed_at <= completed)
 
-        db_journey_progress_items = query.all()
+        db_journey_item_progresss = query.all()
 
-        return db_journey_progress_items
+        return db_journey_item_progresss
 
     @classmethod
-    def create_from_journey_item(
+    def from_journey_item(
         cls,
         journey_item: "JourneyItem",
         username: str,
@@ -131,7 +157,7 @@ class JourneyProgressDataTable(Base):
             parent_id = None
 
         # Create a new JourneyProgressDataTable item from the JourneyItem
-        db_journey_progress_item: JourneyProgressDataTable = cls.load_from_db(
+        db_journey_item_progress: JourneyProgressDataTable = cls.load_from_db(
             item_id=journey_item.id,
             journey_id=journey_id,
             username=username,
@@ -142,8 +168,8 @@ class JourneyProgressDataTable(Base):
 
         parent_id = journey_item.parent_id
         if parent_id is not None and (
-            db_journey_progress_item is None
-            or db_journey_progress_item.end_of_day != journey_item.end_of_day
+            db_journey_item_progress is None
+            or db_journey_item_progress.end_of_day != journey_item.end_of_day
         ):
             parent: JourneyItem = all_children[parent_id]
             grand_parent_id = parent.parent_id
@@ -183,8 +209,8 @@ class JourneyProgressDataTable(Base):
         else:
             length_in_days = journey_item.end_of_day
 
-        if db_journey_progress_item is None:
-            db_journey_progress_item = JourneyProgressDataTable(
+        if db_journey_item_progress is None:
+            db_journey_item_progress = JourneyProgressDataTable(
                 id=str(uuid.uuid4()),
                 journey_id=journey_id if journey_id != journey_item.id else None,
                 item_id=journey_item.id,
@@ -194,69 +220,138 @@ class JourneyProgressDataTable(Base):
                 length_in_days=length_in_days,
                 parent_id=parent_id,
             )
-            session.add(db_journey_progress_item)
+            session.add(db_journey_item_progress)
             changes = True
         else:
-            if db_journey_progress_item.journey_id != (
+            if db_journey_item_progress.journey_id != (
                 journey_id if journey_id != journey_item.id else None
             ):
-                db_journey_progress_item.journey_id = (
+                db_journey_item_progress.journey_id = (
                     journey_id if journey_id != journey_item.id else None
                 )
                 changes = True
-            if db_journey_progress_item.item_type != journey_item.item_type.value:
-                db_journey_progress_item.item_type = journey_item.item_type.value
+            if db_journey_item_progress.item_type != journey_item.item_type.value:
+                db_journey_item_progress.item_type = journey_item.item_type.value
                 changes = True
-            if db_journey_progress_item.username != username:
-                db_journey_progress_item.username = username
-                changes = True
-
-            if db_journey_progress_item.length_in_days != length_in_days:
-                db_journey_progress_item.length_in_days = length_in_days
+            if db_journey_item_progress.username != username:
+                db_journey_item_progress.username = username
                 changes = True
 
-            if db_journey_progress_item.parent_id != parent_id:
-                db_journey_progress_item.parent_id = parent_id
+            if db_journey_item_progress.length_in_days != length_in_days:
+                db_journey_item_progress.length_in_days = length_in_days
+                changes = True
+
+            if db_journey_item_progress.parent_id != parent_id:
+                db_journey_item_progress.parent_id = parent_id
                 changes = True
 
         if commit and changes:
             session.commit()
 
-        return db_journey_progress_item
+        return db_journey_item_progress
 
-    def to_journey_progress_item(self) -> "JourneyItemProgress":
-        return JourneyItemProgress(
-            id=self.id,
-            journey_id=self.journey_id,
-            item_id=self.item_id,
-            item_type=self.item_type,
-            username=self.username,
-            assigned_at=self.assigned_at,
-            started_at=self.started_at,
-            completed_at=self.completed_at,
-            due_at=self.due_at,
-            length_in_days=self.length_in_days,
-            test_results=self.test_results,
-            chat_id=self.chat_id,
+    @classmethod
+    def from_journey_item_progress(
+        cls,
+        item: "JourneyItemProgress",
+        session: Session = None,
+        commit=True,
+        include_children=True,
+    ) -> tuple[bool, "JourneyProgressDataTable"]:
+        if session is None:
+            session = user_db_get_session()
+
+        db_journey_item_progress = cls.load_from_db(
+            id=item.id,
+            item_id=item.item_id,
+            journey_id=item.journey_id,
+            username=item.username,
+            session=session,
         )
 
+        changes = False
+        if db_journey_item_progress is None:
+            db_journey_item_progress = cls(
+                id=item.id,
+                journey_id=item.journey_id,
+                item_id=item.item_id,
+                item_type=item.item_type.value,
+                username=item.username,
+                assigned_at=item.assigned_at,
+                started_at=item.started_at,
+                completed_at=item.completed_at,
+                due_at=item.due_at,
+                length_in_days=item.length_in_days,
+                test_results=item.test_results,
+                chat_id=item.chat_id,
+                disabled=item.disabled,
+                removed=item.removed,
+            )
+            session.add(db_journey_item_progress)
+            changes = True
+        else:
+            if db_journey_item_progress.journey_id != item.journey_id:
+                db_journey_item_progress.journey_id = item.journey_id
+                changes = True
+            if db_journey_item_progress.item_type != item.item_type.value:
+                db_journey_item_progress.item_type = item.item_type.value
+                changes = True
+            if db_journey_item_progress.username != item.username:
+                db_journey_item_progress.username = item.username
+                changes = True
+            if db_journey_item_progress.assigned_at != item.assigned_at:
+                db_journey_item_progress.assigned_at = item.assigned_at
+                changes = True
+            if db_journey_item_progress.started_at != item.started_at:
+                db_journey_item_progress.started_at = item.started_at
+                changes = True
+            if db_journey_item_progress.completed_at != item.completed_at:
+                db_journey_item_progress.completed_at = item.completed_at
+                changes = True
+            if db_journey_item_progress.due_at != item.due_at:
+                db_journey_item_progress.due_at = item.due_at
+                changes = True
+            if db_journey_item_progress.length_in_days != item.length_in_days:
+                db_journey_item_progress.length_in_days = item.length_in_days
+                changes = True
+            if db_journey_item_progress.test_results != item.test_results:
+                db_journey_item_progress.test_results = item.test_results
+                changes = True
+            if db_journey_item_progress.chat_id != item.chat_id:
+                db_journey_item_progress.chat_id = item.chat_id
+                changes = True
+            if db_journey_item_progress.disabled != item.disabled:
+                db_journey_item_progress.disabled = item.disabled
+                changes = True
+            if db_journey_item_progress.removed != item.removed:
+                db_journey_item_progress.removed = item.removed
+                changes = True
 
-# JourneyProgressDatatable
-# Has class method to load journey datatable item from item id
-# Has class method to create from journey item and assign to username
-# Has length in days calculated from start of parent journey to eod of linked journeyItem
-# Has due date, which is calculated from parent started_at or this item started at (if JOURNEY) with EOD from JourneyItem
-# # When calculating due date, weekends should not count as days
+        if include_children:
+            for child in item.children:
+                child_changes, _ = cls.from_journey_item_progress(
+                    child, session=session, commit=False, include_children=True
+                )
+                changes = changes or child_changes
 
-from enum import Enum
+        if changes and commit:
+            session.commit()
+
+        return changes, db_journey_item_progress
+
+    def to_journey_item_progress(self) -> "JourneyItemProgress":
+        return JourneyItemProgress.from_db(self)
+
+
+
+# Has statistics based on assigned_at, length of completion (via started_at to completed_at and expected length in days)
+
 
 class JourneyItemProgressState(Enum):
     NOT_STARTED = "not_started"
     STARTED = "started"
     OVERDUE = "overdue"
     COMPLETED = "completed"
-
-
 
 
 class JourneyItemProgress(BaseModel):
@@ -325,6 +420,17 @@ class JourneyItemProgress(BaseModel):
         title="Children",
         description="List of child journey item progresses for this item.",
     )
+    disabled: bool = Field(
+        default=False,
+        title="Disabled",
+        description="Indicates whether the journey item progress is disabled.",
+    )
+    removed: bool = Field(
+        default=False,
+        title="Removed",
+        description="Indicates whether the journey item progress has been removed.",
+    )
+
 
     def get_state(self) -> JourneyItemProgressState:
         if self.completed_at is not None:
@@ -349,27 +455,33 @@ class JourneyItemProgress(BaseModel):
 
     @classmethod
     def calculate_due_date(cls, journey_item_progress: "JourneyItemProgress"):
-        start_date = journey_item_progress.started_at if journey_item_progress.started_at else journey_item_progress.assigned_at
+        start_date = (
+            journey_item_progress.started_at
+            if journey_item_progress.started_at
+            else journey_item_progress.assigned_at
+        )
         due_date = start_date
         days_to_add = journey_item_progress.length_in_days
 
         while days_to_add > 0:
             due_date += timedelta(days=1)
-            if due_date.weekday() < 5:  # Monday is 0 and Sunday is 6. If it's less than 5, it's a weekday.
+            if (
+                due_date.weekday() < 5
+            ):  # Monday is 0 and Sunday is 6. If it's less than 5, it's a weekday.
                 days_to_add -= 1
 
         return due_date
 
     @classmethod
-    def to_journey_item_progress(
+    def from_db(
         cls, item: JourneyProgressDataTable
     ) -> "JourneyItemProgress":
         # get corresponding journey item and use its children to define JourneyItemProgress children
         journey_item = JourneyItem.get(item.item_id)
         session = user_db_get_session()
         children = [
-            JourneyItemProgress.to_journey_item_progress(
-                JourneyProgressDataTable.create_from_journey_item(
+            cls.from_db(
+                JourneyProgressDataTable.from_journey_item(
                     child, item.username, session=session
                 )
             )
@@ -390,32 +502,61 @@ class JourneyItemProgress(BaseModel):
             test_results=item.test_results,
             chat_id=item.chat_id,
             children=children,
+            disabled=item.disabled,
+            removed=item.removed
         )
 
-    def save_to_db(self, session=None) -> "JourneyProgressDataTable":
+    def save_to_db(self) -> tuple[bool, "JourneyProgressDataTable"]:
+        session = user_db_get_session()
+        return JourneyProgressDataTable.from_journey_item_progress(self, session=session)
+
+    def get_progress(self) -> float:
+        if not self.children:
+            if self.get_state() == JourneyItemProgressState.COMPLETED:
+                return 1.0
+            else:
+                return 0.0
+        else:
+            total_progress = 0.0
+            total_length = 0.0
+            for child in self.children:
+                child_progress = child.get_progress()
+                total_progress += child_progress * child.length_in_days
+                total_length += child.length_in_days
+            return total_progress / total_length if total_length > 0 else 0.0
+
+    @classmethod
+    def get_overall_progress(
+        cls,
+        username: str,
+        journey_id: str = None,
+        item_id: str = None,
+        session=None,
+    ) -> Dict[str, Union[float, int]]:
         if session is None:
             session = user_db_get_session()
 
-        db_journey_progress_item = JourneyProgressDataTable.load_from_db(
-            self.id, session=session
+        db_journey_item_progresss = JourneyProgressDataTable.load_all_items(
+            username=username,
+            journey_id=journey_id,
+            item_id=item_id,
+            session=session,
         )
 
-        db_journey_progress_item.journey_id = self.journey_id
-        db_journey_progress_item.item_id = self.item_id
-        db_journey_progress_item.item_type = self.item_type.value
-        db_journey_progress_item.username = self.username
-        db_journey_progress_item.assigned_at = self.assigned_at
-        db_journey_progress_item.started_at = self.started_at
-        db_journey_progress_item.completed_at = self.completed_at
-        db_journey_progress_item.due_at = self.due_at
-        db_journey_progress_item.length_in_days = self.length_in_days
-        db_journey_progress_item.test_results = self.test_results
-        db_journey_progress_item.chat_id = self.chat_id
+        journey_item_progresses = [
+            JourneyItemProgress.from_db(item)
+            for item in db_journey_item_progresss
+        ]
 
-        session.commit()
+        total_progress = 0.0
+        state_counts = {state.value: 0 for state in JourneyItemProgressState}
+        for item_progress in journey_item_progresses:
+            total_progress += item_progress.get_progress()
+            state_counts[item_progress.get_state().value] += 1
 
-        return db_journey_progress_item
+        overall_progress = total_progress / len(journey_item_progresses) if journey_item_progresses else 0.0
 
-
-# Has progress which checks all children for completion and returns float
-# Has statistics based on assigned_at, length of completion (via started_at to completed_at and expected length in days)
+        return {
+            "overall_progress": overall_progress,
+            "state_counts": state_counts,
+        }

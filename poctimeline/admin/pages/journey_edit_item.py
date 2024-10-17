@@ -64,8 +64,6 @@ def edit_journey_item(
     use_container = False,
     as_children = False
 ):
-    print(f"step {id_str}")
-
     if use_container:
         container = st.expander(
             f"{journey_item.get_index(journey)}: {journey_item.title}"
@@ -228,46 +226,46 @@ def edit_journey_item(
             journey_item.title = new_title.strip()
             journey_item.save_to_db()
 
-        if JourneyItemType.ACTION == journey_item.item_type:
 
-            # # journey_item.icon = st.text_input("Icon", value=journey_item.icon, key = "icon_"+id_str)
-            # # journey_item.intro = st.text_area("Introduction", value=journey_item.intro, key = "intro_"+id_str)
-            # # journey_item.summary = st.text_area("Summary", value=journey_item.summary, key = "summary_"+id_str)
 
-            description = st.text_area(
-                "Description",
-                value=journey_item.description,
-                key="description_" + id_str,
-                height=300,
-            )
-            if description.strip() != journey_item.description.strip():
-                changes.append(
-                    (
-                        journey_item.title,
-                        "Change description to: " + description,
-                        journey_item.description,
-                        description,
-                    )
+        # # journey_item.icon = st.text_input("Icon", value=journey_item.icon, key = "icon_"+id_str)
+        # # journey_item.intro = st.text_area("Introduction", value=journey_item.intro, key = "intro_"+id_str)
+        # # journey_item.summary = st.text_area("Summary", value=journey_item.summary, key = "summary_"+id_str)
+
+        description = st.text_area(
+            "Description",
+            value=journey_item.description,
+            key="description_" + id_str,
+            height=300 if JourneyItemType.ACTION == journey_item.item_type else 30,
+        )
+        if (description or "").strip() != (journey_item.description or "").strip():
+            changes.append(
+                (
+                    journey_item.title,
+                    "Change description to: " + description,
+                    journey_item.description,
+                    description,
                 )
-                journey_item.description = description.strip()
-                journey_item.save_to_db()
-                st.rerun(scope="fragment")
-            # journey_item.test = st.text_area("Test", value=journey_item.test, key = "test_"+id_str)
-            action = st.text_input(
-                "Action", value=journey_item.action, key="action_" + id_str
             )
-            if action.strip() != journey_item.action.strip():
-                changes.append(
-                    (
-                        journey_item.title,
-                        "Change action to: " + action,
-                        journey_item.action,
-                        action,
-                    )
+            journey_item.description = description.strip()
+            journey_item.save_to_db()
+            st.rerun(scope="fragment")
+        # journey_item.test = st.text_area("Test", value=journey_item.test, key = "test_"+id_str)
+        action = st.text_input(
+            "Action", value=journey_item.action, key="action_" + id_str
+        )
+        if (action or "").strip() != (journey_item.action or "").strip():
+            changes.append(
+                (
+                    journey_item.title,
+                    "Change action to: " + action,
+                    journey_item.action,
+                    action,
                 )
-                journey_item.action = action
-                journey_item.save_to_db()
-                st.rerun(scope="fragment")
+            )
+            journey_item.action = action
+            journey_item.save_to_db()
+            st.rerun(scope="fragment")
 
         if JourneyItemType.ACTION == journey_item.item_type:
             new_eod = st.number_input(

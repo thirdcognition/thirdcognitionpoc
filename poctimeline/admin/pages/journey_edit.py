@@ -139,16 +139,16 @@ def write_section_module(item: JourneyItem, journey: JourneyItem, item_id: str):
                         use_column_width=True,
                     )
 
-                    if edit_col.button(
-                        ActionSymbol.edit.value,
-                        key=f"edit_button_{item_id}",
-                        type="secondary",
-                        use_container_width=True,
-                        disabled=item_state.get("edit", False),
-                    ):
-                        # item_state["edit"] = True
-                        # st.rerun(scope="fragment")
-                        open_item(item, journey, True)
+                    # if edit_col.button(
+                    #     ActionSymbol.edit.value,
+                    #     key=f"edit_button_{item_id}",
+                    #     type="secondary",
+                    #     use_container_width=True,
+                    #     disabled=item_state.get("edit", False),
+                    # ):
+                    #     # item_state["edit"] = True
+                    #     # st.rerun(scope="fragment")
+                    #     open_item(item, journey, True)
 
             # if item_state.get("edit"):
             #     with st.container(border=True):
@@ -285,7 +285,7 @@ def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
                         # item.after_id = new_item.id
                         # item.move(new_item, journey)
                         journey.save_to_db()
-                        open_item(new_item, journey)
+                        open_item(new_item, journey, JourneyItemType.MODULE == new_item.item_type)
                         # st.rerun()
                         # print("add before")
                     if st.button(
@@ -314,7 +314,7 @@ def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
                         # parent.children.insert(item_index + 1, new_item)
                         # item.move(new_item, journey)
                         journey.save_to_db()
-                        open_item(new_item, journey)
+                        open_item(new_item, journey, JourneyItemType.MODULE == new_item.item_type)
                         # print("add after")
                 if st.button(
                     ActionSymbol.up_down.value,
@@ -389,11 +389,19 @@ def write_item(
     else:
         main_container = st.empty()
 
+    theme = get_theme()
+    if theme is not None:
+        if theme["base"] == "light":
+            color = theme["borderColorLight"]
+        else:
+            color = theme["borderColor"]
+    else:
+        color = "gray"
+
     if (
         item.item_type.value != container_level[-1]
         and item.item_type.value in container_level
     ):
-
         button_styles = [
             """
             .stButton > button[kind=primary] {
@@ -417,12 +425,31 @@ def write_item(
                 font-size: 1rem;
                 width: 1.5rem;
             }""",
-            """"
-            .stButton > button[kind=primary] p:last-child {
-                font-size: 1.1rem;
-                max-width: 100%;
-                text-overflow: ellipsis;
+            """
+            .stColumn:last-child {
+                max-width: 3.5rem;
             }
+            """,
+            """
+            .stColumn:last-child .stButton > button[kind=primary] p {
+                font-size: 1.5rem;
+                text-align: center;
+            }
+            """,
+            """
+            .stColumn:last-child .stButton > button[kind=primary] p {
+                border: 1px solid rgba(255, 255, 255, 0);
+                border-radius: 0.5rem;
+                width: 2rem;
+                display: inline-block;
+                line-height: 2.2rem;
+                padding-bottom: 0.2rem;
+            }
+            """,
+            f"""
+            .stColumn:last-child .stButton > button[kind=primary]:hover p {{
+                border: 1px solid {color};
+            }}
             """,
         ]
 
@@ -433,14 +460,7 @@ def write_item(
                 key=f"item_container_{item_id}", css_styles=button_styles
             )
         else:
-            theme = get_theme()
-            if theme is not None:
-                if theme["base"] == "light":
-                    color = theme["borderColorLight"]
-                else:
-                    color = theme["borderColor"]
-            else:
-                color = "gray"
+
 
             with main_container:
                 container = stylable_container(
@@ -470,7 +490,7 @@ def write_item(
                     key="edit_parent_button_" + item_id,
                     type="primary",
                 ):
-                    open_item(item, journey)
+                    open_item(item, journey, JourneyItemType.MODULE == item.item_type)
         elif (
             JourneyItemType.SECTION == item.item_type
             or JourneyItemType.MODULE == item.item_type
@@ -498,7 +518,7 @@ def write_item(
                     key="edit_parent_button_" + item_id,
                     type="primary",
                 ):
-                    open_item(item, journey)
+                    open_item(item, journey, JourneyItemType.MODULE == item.item_type)
         else:
             st.markdown(
                 "####"

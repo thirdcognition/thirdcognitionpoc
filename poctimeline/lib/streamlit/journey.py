@@ -6,7 +6,9 @@ from streamlit_extras.grid import grid
 from admin.global_styles import get_theme
 from admin.sidebar import get_image
 from lib.helpers.journey import ActionSymbol
+from lib.helpers.shared import pretty_print
 from lib.models.journey import JourneyDataTable, JourneyItem, JourneyItemType
+from lib.models.journey_progress import JourneyItemProgress, JourneyItemProgressState
 
 
 class ChildPosition(Enum):
@@ -62,7 +64,7 @@ def open_logo_dialog(item: JourneyItem, journey: JourneyItem):
                     else:
                         item.icon = None
 
-def build_journey_cards(items: list[JourneyItem], journey: JourneyItem=None, row_len=3):
+def build_journey_cards(items: list[JourneyItem], journey: JourneyItem=None, journey_progress: JourneyItemProgress=None, row_len=3):
     theme = get_theme()
     styled_container = stylable_container(
         key="container_with_border",
@@ -118,6 +120,19 @@ def build_journey_cards(items: list[JourneyItem], journey: JourneyItem=None, row
                 width: 100%;
                 text-align: center;
                 padding: 0px;
+            }
+            """,
+            """
+            .description {
+                border: 0;
+                padding-left: 0.6rem;
+                padding-right: 0.6rem;
+                margin-bottom: 1rem;
+                font-size: 0.8rem;
+                font-weight: 100;
+                border-radius: 0;
+                text-align: left;
+                height: 3.5rem;
             }
             """,
             """
@@ -183,18 +198,37 @@ def build_journey_cards(items: list[JourneyItem], journey: JourneyItem=None, row
 
                     st.markdown(
                         f"""
-                    <div style="border: 0px solid #fff; padding-left: 10px; padding-right: 10px; font-size: 14px; font-weight: 100; border-radius: 0px; text-align: left; height: 90px;">
-                        {journey.title}.
+                    <div class="description">
+                        {item.description:.90}{"..." if len(item.description) > 90 else ""}
                     </div>
                     """,
                         unsafe_allow_html=True,
                     )
-                    st.button(
-                        "Start" if item.item_type == JourneyItemType.MODULE else "Open",
-                        key="open_journey_" + journey.id + "_" + item.id + "_" + str(random.randint(1, 100)),
-                        type="primary",
-                        use_container_width=True,
-                    )
+                    cur_item = None
+                    if journey_progress is not None:
+                        cur_item = journey_progress.get_by_journey_item(item)
+
+                    if cur_item is None or JourneyItemProgressState.NOT_STARTED == cur_item.get_state():
+                        if st.button(
+                            "Start" if item.item_type == JourneyItemType.MODULE else "Open",
+                            key=("start" if cur_item else "open")+"_journey_" + journey.id + "_" + item.id + ("_" + cur_item.id if cur_item else ""),
+                            type="primary",
+                            use_container_width=True,
+                        ):
+                            cur_item.start(journey_progress)
+                            st.rerun()
+                    else:
+                        if st.button(
+                           "Open",
+                            key="continue_journey_" + journey.id + "_" + item.id + "_" + cur_item.id,
+                            type="primary",
+                            use_container_width=True,
+                        ):
+                            st.session_state["journey_view_id"] = journey.id
+                            st.session_state["journey_view_item_id"] = item.id
+                            st.session_state["journey_item_show_children"] = True
+                            st.switch_page("pages/journey_view_item.py")
+
                 else:
                     st.markdown(
                         f"""

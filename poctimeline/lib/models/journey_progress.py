@@ -10,7 +10,7 @@ import streamlit as st
 from lib.db.sqlite import Base
 from lib.helpers.shared import pretty_print
 from lib.load_env import SETTINGS
-from lib.models.journey import JourneyItem, JourneyItemType
+from lib.models.journey import JourneyItem, JourneyItemType, get_journey_cache
 from lib.models.user import user_db_get_session
 
 
@@ -101,6 +101,8 @@ class JourneyProgressDataTable(Base):
         started: Union[datetime, bool, None] = None,
         completed: Union[datetime, bool, None] = None,
         item_type: JourneyItemType = None,
+        removed=False,
+        disabled=False,
         session=None,
     ) -> list["JourneyProgressDataTable"]:
         if session is None:
@@ -121,6 +123,23 @@ class JourneyProgressDataTable(Base):
 
         if item_type is not None:
             query = query.filter(JourneyProgressDataTable.item_type == item_type.value)
+
+        query = query.filter(
+            sqla.or_(
+                JourneyProgressDataTable.removed == False,
+                JourneyProgressDataTable.removed == None,
+            )
+            if removed == False
+            else (JourneyProgressDataTable.removed == removed)
+        )
+        query = query.filter(
+            sqla.or_(
+                JourneyProgressDataTable.disabled == False,
+                JourneyProgressDataTable.disabled == None,
+            )
+            if disabled == False
+            else (JourneyProgressDataTable.disabled == disabled)
+        )
 
         if started is not None:
             if isinstance(started, bool):
@@ -157,10 +176,29 @@ class JourneyProgressDataTable(Base):
         user_id: str,
         session: Session = None,
         commit=True,
+        reset=False,
     ) -> "JourneyProgressDataTable":
+        if user_id is None or journey_item is None:
+            raise ValueError(
+                f"Both Journey Item and User_id must be provided when creating JourneyItemProgress"
+            )
+
+        journey = journey_item.get_root()
+
+        cache_key = (
+            "create_from_journey_item_"
+            + journey.id
+            + "_"
+            + journey_item.id
+            + "_"
+            + user_id
+        )
+
+        if not reset and cache_key in get_journey_cache():
+            return get_journey_cache()[cache_key]
+
         if session is None:
             session = user_db_get_session()
-        journey = journey_item.get_journey()
         all_children: dict[str, JourneyItem] = journey.all_children_by_id()
 
         if journey is not None and journey != journey_item:
@@ -285,6 +323,8 @@ class JourneyProgressDataTable(Base):
 
         if commit and changes:
             session.commit()
+
+        get_journey_cache()[cache_key] = db_journey_item_progress
 
         return db_journey_item_progress
 
@@ -519,6 +559,12 @@ class JourneyItemProgress(BaseModel):
         exclude=True,
     )
 
+    def reset_cache(self):
+        self.cache = {}
+        if self.children and len(self.children) > 0:
+            for child in self.children:
+                child.reset_cache()
+
     def get_state(self) -> JourneyItemProgressState:
         if self.completed_at is not None:
             return JourneyItemProgressState.COMPLETED
@@ -530,15 +576,54 @@ class JourneyItemProgress(BaseModel):
         else:
             return JourneyItemProgressState.NOT_STARTED
 
-    def start(self):
+    def get_journey_progress(self, reset=False) -> Optional["JourneyItem"]:
+        if self.parent_id is None:
+            return self
+
+        if "root" in self.cache and not reset:
+            return self.cache["root"]
+
+        parent = self.get(journey_id=self.parent_id)
+        while (
+            parent.parent_id is not None and JourneyItemType.JOURNEY != parent.item_type
+        ):
+            parent = self.get(journey_id=parent.parent_id)
+
+        self.cache["root"] = parent
+        return parent
+
+    def start(self, session=None, commit=True, solo=False):
+        session = session or user_db_get_session()
         self.started_at = datetime.now()
         self.due_at = JourneyItemProgress.calculate_due_date(self)
+        root = None
 
-        self.save_to_db()
+        if not solo:
+            root = self.get_root()
+            ancestry = self.get_ancestry(root)
+            all_children = root.all_children_by_id()
+            for ancestor in ancestry:
+                if all_children[ancestor].started_at is None:
+                    all_children[ancestor].start(
+                        session=session, commit=False, solo=True
+                    )
 
-    def complete(self):
+            for child in self.children:
+                if child.started_at is None:
+                    child.start(session=session, commit=False, solo=True)
+
+        self.save_to_db(session=session, commit=commit)
+
+        if not solo:
+            root.reset_cache()
+
+    def complete(self, session, commit=True):
+        session = session or user_db_get_session()
         self.completed_at = datetime.now()
-        self.save_to_db()
+        for child in self.children:
+            if child.started_at is None:
+                child.start(session=session, commit=False)
+        self.save_to_db(session=session, commit=commit)
 
     @classmethod
     def calculate_due_date(cls, journey_item_progress: "JourneyItemProgress"):
@@ -561,17 +646,28 @@ class JourneyItemProgress(BaseModel):
 
     @classmethod
     def from_db(
-        cls, item: JourneyProgressDataTable, reset=False
+        cls, item: JourneyProgressDataTable = None, id=None, reset=False
     ) -> "JourneyItemProgress":
 
+        if item is None and id is None:
+            raise ValueError("Either item or id must be defined")
+
+        if id is not None or item is not None:
+            id = item.id
+
         # Use Streamlit's session_state for caching
-        cache_key = f"journey_item_progress_{item.id}"
-        if cache_key in st.session_state and not reset:
-            return st.session_state[cache_key]
+        cache_key = f"journey_item_progress_{id}"
+        if cache_key in get_journey_cache() and not reset:
+            return get_journey_cache()[cache_key]
+
+        if item is None and id is not None:
+            item = JourneyProgressDataTable.load_from_db(id=id)
 
         # Fetch corresponding journey item and its children
         journey_item = JourneyItem.get(journey_id=item.item_id)
+
         session = user_db_get_session()
+
         children = [
             cls.from_db(
                 JourneyProgressDataTable.from_journey_item(
@@ -603,15 +699,102 @@ class JourneyItemProgress(BaseModel):
         )
 
         # Store in session_state
-        st.session_state[cache_key] = journey_item_progress
+        get_journey_cache()[cache_key] = journey_item_progress
 
         return journey_item_progress
 
-    def save_to_db(self) -> tuple[bool, "JourneyProgressDataTable"]:
-        session = user_db_get_session()
-        return JourneyProgressDataTable.from_journey_item_progress(
-            self, session=session
+    @classmethod
+    def get(
+        cls,
+        progress_item: JourneyProgressDataTable = None,
+        progress_id: str = None,
+        reset=False,
+    ) -> "JourneyItemProgress":
+        if reset:
+            del get_journey_cache()[progress_id]
+
+        if progress_item is not None:
+            if progress_item.id not in get_journey_cache().keys():
+                get_journey_cache()[progress_item.id] = cls.from_db(progress_item)
+            return get_journey_cache()[progress_item.id]
+        elif progress_id is not None:
+            if progress_id not in get_journey_cache().keys():
+                journey: cls = cls.from_db(progress_id)
+                get_journey_cache()[progress_id] = journey
+            return get_journey_cache()[progress_id]
+
+        raise ValueError("Either progress_item or progress_id must be defined")
+
+    def get_relations(self, reset=False) -> Dict[str, str]:
+        if self.cache.get("relations") and not reset:
+            return self.cache["relations"]
+
+        relations = {}
+        if self.children is not None:
+            for child in self.children:
+                relations[child.id] = self.id
+
+            for child in self.children:
+                relations.update(child.get_relations(reset))
+
+        self.cache["relations"] = relations
+        return relations
+
+    def get_root(self, reset=False) -> Optional["JourneyItemProgress"]:
+        if self.parent_id is None:
+            return self
+
+        if "root" in self.cache and not reset:
+            return self.cache["root"]
+
+        parent = self.get(progress_id=self.parent_id)
+        while (
+            parent.parent_id is not None and JourneyItemType.JOURNEY != parent.item_type
+        ):
+            parent = self.get(progress_id=parent.parent_id)
+
+        self.cache["root"] = parent
+        return parent
+
+    def get_ancestry(
+        self, root: "JourneyItemProgress" = None, reset=False
+    ) -> List[str]:
+        if self == root:
+            return [self.id]
+
+        if self.cache.get("ancestry") and not reset:
+            return self.cache["ancestry"]
+
+        if root is None:
+            root = self.get_root()
+
+        journey_relations = root.get_relations(reset)
+        parent = journey_relations[self.id]
+        ancestry: list[str] = [parent]
+        while parent is not None:
+            # add parent to the beginning of the list and check its parent
+            if parent in journey_relations.keys():
+                parent = journey_relations[parent]
+            elif parent is not None:
+                parent = None
+            if parent is not None and parent not in ancestry:
+                ancestry.insert(0, parent)
+
+        ancestry.append(self.id)
+        self.cache["ancestry"] = ancestry
+        return ancestry
+
+    def save_to_db(
+        self, session=None, commit=True
+    ) -> tuple[bool, "JourneyProgressDataTable"]:
+        session = session or user_db_get_session()
+        changes, result = JourneyProgressDataTable.from_journey_item_progress(
+            self, session=session, commit=commit
         )
+        if changes:
+            self.reset_cache()
+
+        return changes, result
 
     def get_progress(self) -> float:
         if not self.children:
@@ -634,7 +817,7 @@ class JourneyItemProgress(BaseModel):
         state_filter: Optional[JourneyItemProgressState] = None,
         reset=False,
     ) -> List[str]:
-        cache_key = "flattened" + ("_" + type_filter.value if type_filter else "")
+        cache_key = "flattened" + ("_" + type_filter.value if type_filter else "") + ("_" + state_filter.value if state_filter else "")
         if self.cache.get(cache_key) and not reset:
             return self.cache.get(cache_key)
         items: list[str] = []
@@ -642,6 +825,12 @@ class JourneyItemProgress(BaseModel):
             not state_filter or state_filter <= self.get_state()
         ):
             items.append(self.id)
+        elif state_filter and state_filter > self.get_state():
+            pretty_print(
+                self,
+                f"Filtered out by {state_filter}, is: {self.get_state()}, type {self.item_type=}",
+                force=True,
+            )
         if self.children:
             for child in self.children:
                 items.extend(child.flatten(type_filter, state_filter, reset))
@@ -686,7 +875,6 @@ class JourneyItemProgress(BaseModel):
     def get_next(self, amount=3, stick_with_one_parent=True, reset=False):
         all_children = self.all_children_by_id()
         if not self.cache.get("incomplete_modules") or reset:
-            print("foof")
             all_incomplete_modules = sorted(
                 self.flatten(
                     type_filter=JourneyItemType.MODULE,
@@ -715,6 +903,18 @@ class JourneyItemProgress(BaseModel):
 
         return incomplete_modules[:amount]
 
+    def get_by_journey_item(self, journey_item: JourneyItem) -> "JourneyItemProgress":
+        item_type = journey_item.item_type
+        all_items = self.all_children_by_id()
+        filtered_items = self.flatten(type_filter=item_type)
+        items = [
+            all_items[item]
+            for item in filtered_items
+            if all_items[item].item_id == journey_item.id
+        ]
+
+        return items[0] if len(items) > 0 else None
+
     @classmethod
     def get_overall_progress(
         cls,
@@ -726,7 +926,7 @@ class JourneyItemProgress(BaseModel):
     ) -> Dict[str, Union[float, int]]:
         cache_key = f"overall_progress_{user_id}_{journey_id}_{item_id}"
 
-        if cache_key not in st.session_state or reset:
+        if cache_key not in get_journey_cache() or reset:
             if session is None:
                 session = user_db_get_session()
 
@@ -753,9 +953,9 @@ class JourneyItemProgress(BaseModel):
                 else 0.0
             )
 
-            st.session_state[cache_key] = {
+            get_journey_cache()[cache_key] = {
                 "overall_progress": overall_progress,
                 "state_counts": state_counts,
             }
 
-        return st.session_state[cache_key]
+        return get_journey_cache()[cache_key]

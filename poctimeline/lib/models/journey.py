@@ -18,7 +18,7 @@ from lib.models.reference import Reference
 
 
 @st.cache_resource
-def get_journey_item_cache() -> dict[str, "JourneyItem"]:
+def get_journey_cache() -> dict[str, "JourneyItem"]:
     return {}
 
 
@@ -791,7 +791,7 @@ class JourneyItem(BaseModel):
         self.cache["relations"] = relations
         return relations
 
-    def get_journey(self, reset=False) -> Optional["JourneyItem"]:
+    def get_root(self, reset=False) -> Optional["JourneyItem"]:
         if self.parent_id is None:
             return self
 
@@ -815,7 +815,7 @@ class JourneyItem(BaseModel):
             return self.cache["ancestry"]
 
         if root is None:
-            root = self.get_journey()
+            root = self.get_root()
 
         journey_relations = root.get_relations(reset)
         parent = journey_relations[self.id]
@@ -1105,17 +1105,17 @@ class JourneyItem(BaseModel):
         cls, journey_item: JourneyDataTable = None, journey_id: str = None, reset=False
     ) -> "JourneyItem":
         if reset:
-            del get_journey_item_cache()[journey_id]
+            del get_journey_cache()[journey_id]
 
         if journey_item is not None:
-            if journey_item.id not in get_journey_item_cache().keys():
-                get_journey_item_cache()[journey_item.id] = cls.from_db(journey_item)
-            return get_journey_item_cache()[journey_item.id]
+            if journey_item.id not in get_journey_cache().keys():
+                get_journey_cache()[journey_item.id] = cls.from_db(journey_item)
+            return get_journey_cache()[journey_item.id]
         elif journey_id is not None:
-            if journey_id not in get_journey_item_cache().keys():
+            if journey_id not in get_journey_cache().keys():
                 journey: cls = cls.load_from_db(journey_id)
-                get_journey_item_cache()[journey_id] = journey
-            return get_journey_item_cache()[journey_id]
+                get_journey_cache()[journey_id] = journey
+            return get_journey_cache()[journey_id]
 
         raise ValueError("Either journey_item or journey_id must be defined")
 

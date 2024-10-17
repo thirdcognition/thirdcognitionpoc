@@ -16,7 +16,7 @@ sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
 from lib.models.journey import (
     JourneyItem,
-    get_journey_item_cache,
+    get_journey_cache,
 )
 from lib.chains.init import get_chain
 from lib.helpers.journey import load_journey_template, match_title_to_cat_and_id
@@ -176,17 +176,17 @@ async def journey_creation():
             "journey_creation_data" in st.session_state
             and st.session_state["journey_creation_data"] is not None
         ):
-            # pretty_print(get_journey_item_cache() , force=True)
+            # pretty_print(get_journey_cache() , force=True)
             journey_id = st.session_state.get("journey_creation_id")
             # print("Journey id "+repr(journey_id))
-            if journey_id == None or journey_id not in get_journey_item_cache().keys():
+            if journey_id == None or journey_id not in get_journey_cache().keys():
                 # print("recreate journey")
                 journey = JourneyItem.from_json(
                     st.session_state["journey_creation_data"], from_template=True
                 )
-                get_journey_item_cache()[journey.id] = journey
+                get_journey_cache()[journey.id] = journey
             else:
-                journey = get_journey_item_cache()[journey_id]
+                journey = get_journey_cache()[journey_id]
 
             st.session_state["journey_creation_id"] = journey.id
             journey_name = journey.title
@@ -208,6 +208,8 @@ async def journey_creation():
                     use_container_width=True,
                     key="journey_create_cancel",
                 ):
+                    st.session_state["journey_creation_id"] = None
+                    st.session_state["journey_creation_data"] = None
                     st.session_state["journey_creation_state"] = "init"
                     st.rerun()
             with col3:
@@ -220,11 +222,10 @@ async def journey_creation():
                     # print("Create journey " + journey.id)
                     journey.title = journey_name
                     journey.save_to_db()
-                    del get_journey_item_cache()[journey.id]
+                    del get_journey_cache()[journey.id]
                     st.session_state["journey_edit_id"] = journey.id
                     st.session_state["journey_creation_id"] = None
                     st.session_state["journey_creation_data"] = None
-                    st.session_state["journey_creation_state"] = None
                     st.session_state["journey_creation_state"] = "init"
                     st.switch_page("pages/journey_edit.py")
                 # st.page_link("main.py", label="Continue")

@@ -101,10 +101,10 @@ def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous, login_containe
             st.page_link("pages/journey_simple_create.py", label="Create Journey")
             st.page_link("pages/journey_simple_manage.py", label="Manage Journeys")
             st.page_link("pages/organization_manage.py", label="Manage Organization")
-        if user_level >= UserLevel.super_admin:
-            st.page_link("pages/source_upload.py", label="Upload files")
-            st.page_link("pages/source_manage.py", label="Manage files")
-            st.page_link("pages/concepts_view.py", label="Browse topics")
+        # if user_level >= UserLevel.super_admin:
+        #     st.page_link("pages/source_upload.py", label="Upload files")
+        #     st.page_link("pages/source_manage.py", label="Manage files")
+        #     st.page_link("pages/concepts_view.py", label="Browse topics")
         if user_level >= UserLevel.user:
             st.divider()
 

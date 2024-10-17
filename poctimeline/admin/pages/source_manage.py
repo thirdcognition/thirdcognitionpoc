@@ -390,7 +390,7 @@ async def main():
     st.title("Manage Uploads")
 
     if init_sidebar(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
-        st.switch_page("Admin_Home.py")
+        st.switch_page("login.py")
         return
 
     file_categories = get_all_categories()

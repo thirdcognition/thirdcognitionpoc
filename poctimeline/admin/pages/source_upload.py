@@ -157,7 +157,7 @@ async def main():
     st.title("Upload Files")
 
     if init_sidebar(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
-        st.switch_page("Admin_Home.py")
+        st.switch_page("login.py")
         return
 
     new_categories = write_categories()

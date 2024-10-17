@@ -422,7 +422,7 @@ def main():
     st.title("Organization and User Management")
 
     if init_sidebar(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
-        st.switch_page("Admin_Home.py")
+        st.switch_page("login.py")
         return
 
     if is_super_admin():

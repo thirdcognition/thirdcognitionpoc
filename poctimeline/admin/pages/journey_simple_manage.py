@@ -42,7 +42,7 @@ async def main():
     st.title("List of existing Journeys")
 
     if init_sidebar(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
-        st.switch_page("Admin_Home.py")
+        st.switch_page("login.py")
         return
 
     st.markdown(" ")

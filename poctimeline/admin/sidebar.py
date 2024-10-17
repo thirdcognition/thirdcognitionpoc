@@ -95,7 +95,8 @@ def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous, login_containe
     # st.logo("logo.png")
     menu_container = menu_items.container()
     with menu_container:
-        st.page_link("Admin_Home.py", label="Home")
+        if user_level >= UserLevel.user:
+            st.page_link("pages/my_journeys.py", label="My Journeys")
         if user_level >= UserLevel.org_admin:
             st.page_link("pages/journey_simple_create.py", label="Create Journey")
             st.page_link("pages/journey_simple_manage.py", label="Manage Journeys")
@@ -104,6 +105,7 @@ def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous, login_containe
             st.page_link("pages/source_upload.py", label="Upload files")
             st.page_link("pages/source_manage.py", label="Manage files")
             st.page_link("pages/concepts_view.py", label="Browse topics")
-        st.divider()
+        if user_level >= UserLevel.user:
+            st.divider()
 
     return auth_valid

@@ -71,7 +71,7 @@ def match_title_to_cat_and_id(title: str) -> tuple[str, str]:
     for cat in get_journey_template_index():
         for item in cat["children"]:
             if item["title"] == title:
-                return cat["id"], item["id"]
+                return cat["key"], item["key"]
     return None, None
 
 

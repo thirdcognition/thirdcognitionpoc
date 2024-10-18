@@ -204,23 +204,27 @@ def build_journey_cards(items: list[JourneyItem], journey: JourneyItem=None, jou
                     """,
                         unsafe_allow_html=True,
                     )
-                    cur_item = None
+                    progress_item = None
                     if journey_progress is not None:
-                        cur_item = journey_progress.get_by_journey_item(item)
+                        progress_item = journey_progress.get_by_journey_item(item)
 
-                    if cur_item is None or JourneyItemProgressState.NOT_STARTED == cur_item.get_state():
+                    if progress_item is None or JourneyItemProgressState.NOT_STARTED == progress_item.get_state():
                         if st.button(
                             "Start" if item.item_type == JourneyItemType.MODULE else "Open",
-                            key=("start" if cur_item else "open")+"_journey_" + journey.id + "_" + item.id + ("_" + cur_item.id if cur_item else ""),
+                            key=("start" if progress_item else "open")+"_journey_" + journey.id + "_" + item.id + ("_" + progress_item.id if progress_item else ""),
                             type="primary",
                             use_container_width=True,
                         ):
-                            cur_item.start(journey_progress)
-                            st.rerun()
+                            print(f"{progress_item.item_type=} {progress_item.id=} {journey_progress.item_type=} {journey_progress.id=}")
+                            progress_item.start()
+                            st.session_state["journey_view_id"] = journey.id
+                            st.session_state["journey_view_item_id"] = item.id
+                            st.session_state["journey_item_show_children"] = True
+                            st.switch_page("pages/journey_view_item.py")
                     else:
                         if st.button(
                            "Open",
-                            key="continue_journey_" + journey.id + "_" + item.id + "_" + cur_item.id,
+                            key="continue_journey_" + journey.id + "_" + item.id + "_" + progress_item.id,
                             type="primary",
                             use_container_width=True,
                         ):

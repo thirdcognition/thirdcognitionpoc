@@ -619,7 +619,7 @@ def journey_edit():
             # Display current assignments and user progress
 
             # Load all progress items for the current journey
-            progress_items = JourneyProgressDataTable.load_all_from_db(item_id=journey_id)
+            progress_items = JourneyProgressDataTable.load_all_from_db(journey_item_id=journey_id)
 
             if len(progress_items) > 0:
                 st.subheader("Connected Users")
@@ -643,7 +643,7 @@ def journey_edit():
                             next_modules_progress = journey_progress.get_next(reset=True)
                             # pretty_print(next_modules_progress, force=True)
                             all_children = journey.all_children_by_id()
-                            next_module = all_children[next_modules_progress[0].item_id]
+                            next_module = all_children[next_modules_progress[0].journey_item_id]
                             # journey_item = JourneyItem.get(journey_id = journey_progress.item_id)
                             # st.write(f"Journey: {journey_item.title}")
                             col2.progress(journey_progress.get_progress(), f"Next module: {next_module}")

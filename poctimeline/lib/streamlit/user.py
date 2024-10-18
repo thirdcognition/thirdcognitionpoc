@@ -291,16 +291,17 @@ def get_manual_login(authenticator: stauth.Authenticate):
         algorithms=["HS256"],
     )
     # print(f"{cookie=}")
-    if cookie["exp_date"] < datetime.datetime.utcnow().timestamp():
+    if cookie["exp_date"] < datetime.datetime.now(datetime.timezone.utc).timestamp():
         # print("Cookie expired")
         authenticator.cookie_controller.cookie_model.cookie_manager.delete(
             auth_config["cookie"]["name"]
         )
         return False
     else:
+        db_user = get_db_user(cookie["username"])
         # print("Cookie valid")
         st.session_state["username"] = cookie["username"]
-        st.session_state["name"] = get_db_user(cookie["username"]).name
+        st.session_state["name"] = db_user.name if db_user else ""
         st.session_state["authentication_status"] = True
         return True
     # except Exception as e:
@@ -319,7 +320,10 @@ def manual_login(
 
     if token is not None:
         # print("Cookie already set")
-        authenticator.cookie_controller.delete_cookie()
+        try:
+            authenticator.cookie_controller.delete_cookie()
+        except Exception as e:
+            print(e)
         # authenticator.cookie_controller.cookie_model.cookie_manager.delete(auth_config["cookie"]["name"])
 
     st.session_state["username"] = username_of_registered_user

@@ -13,10 +13,10 @@ fi
 # streamlit run poctimeline/timeline/timeline.py --server.port 5500 --server.headless true --server.address=0.0.0.0 --client.showErrorDetails=False --client.toolbarMode=minimal --server.fileWatcherType=none &
 
 # Start the second process
-streamlit run poctimeline/admin/login.py --server.port 5000 --server.headless true --server.address=0.0.0.0 --client.showErrorDetails=False --client.toolbarMode=minimal --server.fileWatcherType=none &
+streamlit run poctimeline/admin/login.py --server.port 5000 --server.headless true --server.address=0.0.0.0 --client.showErrorDetails=False --client.toolbarMode=minimal --server.fileWatcherType=none
 
 # Wait for any process to exit
-wait -n
+# wait -n
 
 # Exit with status of process that exited first
-exit $?
+# exit $?

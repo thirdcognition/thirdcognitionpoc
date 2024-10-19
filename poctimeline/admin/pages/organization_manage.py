@@ -116,7 +116,8 @@ def manage_organizations():
                 set_org_name(row["ID"], row["Name"])
     else:
         user_org = get_user_org(st.session_state["username"])
-        with st.container(border=True):
+        with st.container(border=False):
+            st.divider()
             st.subheader("Modify Organization")
             # st.write(f"Organization ID: {user_org.organization_id}")
             new_org_name = st.text_input(
@@ -135,6 +136,7 @@ def manage_users():
     st.subheader("Manage Users")
     users = get_all_users(reset=True)
     orgs = get_all_orgs(reset=True)
+    cur_user_org = get_user_org(email = st.session_state["username"])
 
     user_data = []
     for user in users:
@@ -156,7 +158,8 @@ def manage_users():
 
     df = pd.DataFrame(user_data)
     df['Email'] = df['Email'].astype(str)
-    df['Organization'] = df['Organization'].astype(str)
+    if "Organization" in df:
+        df['Organization'] = df['Organization'].astype(str)
 
     org_options = {org.organization_name: org.id for org in orgs}
 
@@ -202,7 +205,7 @@ def manage_users():
 
 
     user_id_title_map = {
-        record['ID']: f"{record['Organization']}: {record['Email']}" + (f" - {record['Name']}" if record['Name'] else "")
+        record['ID']: f"{record['Organization'] + ': ' if 'Organization' in record else ''}{record['Email']}" + (f" - {record['Name']}" if record['Name'] else "")
         for record in filtered_df.to_dict('records')
     }
 
@@ -218,7 +221,7 @@ def manage_users():
         )
 
         selected_user_record = filtered_df.set_index('ID').loc[delete_user_id].to_dict()
-        organization_id = org_options[selected_user_record['Organization']]
+        organization_id = org_options[selected_user_record['Organization']] if "Organization" in selected_user_record else cur_user_org.id
 
         with col2.popover(":x:"):
             st.write("Warning: This is permanent and cannot be undone.")
@@ -271,7 +274,7 @@ def manage_users():
             set_user_name(row["ID"], row["Name"])
         if row["Level"] != df.at[index, "Level"]:
             set_user_level(row["ID"], UserLevel[row["Level"]])
-        if row["Organization"] != df.at[index, "Organization"]:
+        if "Organization" in row and row["Organization"] != df.at[index, "Organization"]:
             set_user_org(row["ID"], org_options[row["Organization"]])
 
 # def manage_users():

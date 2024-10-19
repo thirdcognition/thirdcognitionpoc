@@ -68,10 +68,10 @@ def main():
 
     # my_journeys = []
 
-    pretty_print([module.__dict__ for module in my_active_modules], "Active modules", force=True)
+    # pretty_print([module.__dict__ for module in my_active_modules], "Active modules", force=True)
 
     # org = get_user_org(st.session_state["username"])
-    st.header(f"Hello {user.name.split(" ")[0]}")
+    st.header(f"Hello {user.name.split(" ")[0] if user.name else "user"}")
 
     try:
         db_journey_items = get_all_journeys_from_db(

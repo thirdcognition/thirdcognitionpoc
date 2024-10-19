@@ -401,7 +401,8 @@ def get_db_user(
     # Query UserDataTable for the user
     if id is not None:
         user_data = session.query(UserDataTable).filter_by(id=id).first()
-    elif email is not None:
+
+    if email is not None and user_data is None:
         user_data = session.query(UserDataTable).filter_by(email=email).first()
 
     return user_data

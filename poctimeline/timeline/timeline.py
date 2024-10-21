@@ -26,6 +26,7 @@ def main():
         page_title="TC POC",
         page_icon="static/icon.png",
         layout="wide",
+        initial_sidebar_state="expanded",
         menu_items={
             # 'Get Help': 'https://www.extremelycoolapp.com/help',
             # 'Report a bug': "https://www.extremelycoolapp.com/bug",

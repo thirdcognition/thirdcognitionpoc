@@ -24,7 +24,7 @@ def get_image(id, path="") -> str:
         else os.path.join(current_dir, "static")
     )
     # print(os.path.join(path, f"{id}.png"))
-    return os.path.join(path, f"{id}.png")
+    return str(os.path.join(path, f"{id}.png"))
 
 
 def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous, login_container=None) -> AuthStatus:
@@ -99,6 +99,7 @@ def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous, login_containe
             st.page_link("pages/my_journeys.py", label="My Journeys")
         if user_level >= UserLevel.org_admin:
             st.page_link("pages/journey_simple_create.py", label="Create Journey")
+            st.page_link("pages/journey_simple_progress.py", label="Journey Progress")
             st.page_link("pages/journey_simple_manage.py", label="Manage Journeys")
             st.page_link("pages/organization_manage.py", label="Manage Organization")
         # if user_level >= UserLevel.super_admin:

@@ -856,7 +856,7 @@ class JourneyItem(BaseModel):
                     )
 
         if as_str:
-            return ".".join(indexes)
+            return ".".join(indexes) + "."
 
         return indexes
 

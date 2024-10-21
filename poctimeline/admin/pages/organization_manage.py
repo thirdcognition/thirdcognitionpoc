@@ -37,7 +37,8 @@ from lib.streamlit.user import check_auth
 st.set_page_config(
     page_title="TC POC: Manage organization",
     page_icon="static/icon.png",
-    layout="centered",
+    layout="wide",
+    initial_sidebar_state="expanded",
     menu_items={
         "About": """# ThirdCognition PoC
 [ThirdCognition](https://thirdcognition.com)

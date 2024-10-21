@@ -31,7 +31,8 @@ from lib.streamlit_tools import get_all_categories, llm_edit
 st.set_page_config(
     page_title="TC POC: Manage Uploads",
     page_icon="static/icon.png",
-    layout="centered",
+    layout="wide",
+    initial_sidebar_state="expanded",
     menu_items={
         "About": """# ThirdCognition PoC
 [ThirdCognition](https://thirdcognition.com)

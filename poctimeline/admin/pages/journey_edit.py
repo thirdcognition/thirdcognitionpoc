@@ -14,7 +14,11 @@ from admin.sidebar import get_image, init_sidebar
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
-from lib.models.journey_progress import JourneyItemProgress, JourneyItemProgressState, JourneyProgressDataTable
+from lib.models.journey_progress import (
+    JourneyItemProgress,
+    JourneyItemProgressState,
+    JourneyProgressDataTable,
+)
 from lib.streamlit.journey import ChildPosition
 from lib.models.journey import (
     JourneyItem,
@@ -39,7 +43,8 @@ from lib.models.user import (
 st.set_page_config(
     page_title="TC POC: Admin",
     page_icon="static/icon.png",
-    layout="centered",
+    layout="wide",
+    initial_sidebar_state="expanded",
     menu_items={
         "About": """# ThirdCognition PoC
 [ThirdCognition](https://thirdcognition.com)
@@ -92,11 +97,6 @@ def write_section_module(item: JourneyItem, journey: JourneyItem, item_id: str):
                     gap: 0;
                 }
                 """,
-                # """
-                # > div[data-testid=stVerticalBlockBorderWrapper]:nth-child(2) {
-                #     margin-top:1rem;
-                # }
-                # """,
             ],
         ):
             if JourneyItemType.MODULE == item.item_type and item.icon:
@@ -139,30 +139,6 @@ def write_section_module(item: JourneyItem, journey: JourneyItem, item_id: str):
                         use_column_width=True,
                     )
 
-                    # if edit_col.button(
-                    #     ActionSymbol.edit.value,
-                    #     key=f"edit_button_{item_id}",
-                    #     type="secondary",
-                    #     use_container_width=True,
-                    #     disabled=item_state.get("edit", False),
-                    # ):
-                    #     # item_state["edit"] = True
-                    #     # st.rerun(scope="fragment")
-                    #     open_item(item, journey, True)
-
-            # if item_state.get("edit"):
-            #     with st.container(border=True):
-            #         title_con, cancel_con = st.columns([0.9, 0.1])
-            #         title_con.subheader("Edit: " + item.title)
-            #         if cancel_con.button(
-            #             "X", key=f"cancel_edit_" + item.id, use_container_width=True
-            #         ):
-            #             del item_state["edit"]
-            #             st.rerun(scope="fragment")
-            #         edit_item(item, journey)
-
-            # pretty_print(item, force=True)
-            # else:
             for index, child in enumerate(item.children):
                 position = (
                     ChildPosition.FIRST
@@ -178,20 +154,6 @@ def write_section_module(item: JourneyItem, journey: JourneyItem, item_id: str):
 
 @st.fragment
 def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
-    # item_state: dict = st.session_state["journey_item_state"].get(item_id, {})
-
-    # if item_state.get("edit"):
-    #     with st.container(border=True):
-    #         title_con, cancel_con = st.columns([0.9, 0.1])
-    #         title_con.subheader("Edit: " + item.title)
-    #         if cancel_con.button(
-    #             "X", key=f"cancel_edit_" + item.id, use_container_width=True
-    #         ):
-    #             del item_state["edit"]
-    #             st.rerun(scope="fragment")
-    #         edit_item(item, journey)
-    #     return
-
     move_item: JourneyItem = st.session_state.get("journey_item_move")
     in_move = move_item is not None
     _, subcol1, subcol2 = st.columns([0.025, 0.8, 0.1])
@@ -206,12 +168,6 @@ def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
             }
             """,
         ):
-            # header_row1, _, header_row2 = st.columns(
-            #     [0.15, 0.05, 0.8], vertical_alignment="center"
-            # )
-            # header_row1.image(
-            #     get_image(item.icon, "icon_files"), use_column_width=True
-            # )
             st.markdown("##### " + item.title)
             st.markdown(item.description)
     with subcol2:
@@ -280,14 +236,14 @@ def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
                                 "content_instructions": item.content_instructions.model_copy(),
                             }
                         )
-                        # parent.children.insert(parent.children.index(item), new_item)
                         parent.add_child(new_item, parent.children.index(item))
-                        # item.after_id = new_item.id
-                        # item.move(new_item, journey)
+
                         journey.save_to_db()
-                        open_item(new_item, journey, JourneyItemType.MODULE == new_item.item_type)
-                        # st.rerun()
-                        # print("add before")
+                        open_item(
+                            new_item,
+                            journey,
+                            JourneyItemType.MODULE == new_item.item_type,
+                        )
                     if st.button(
                         "Add new after",
                         key=f"add_after_button_{item_id}",
@@ -307,15 +263,13 @@ def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
                             }
                         )
                         parent.add_child(new_item, parent.children.index(item) + 1)
-                        # item_index = parent.children.index(item)
-                        # if len(parent.children) > (item_index + 1):
-                        #     parent.children[item_index + 1].after_id = new_item.id
 
-                        # parent.children.insert(item_index + 1, new_item)
-                        # item.move(new_item, journey)
                         journey.save_to_db()
-                        open_item(new_item, journey, JourneyItemType.MODULE == new_item.item_type)
-                        # print("add after")
+                        open_item(
+                            new_item,
+                            journey,
+                            JourneyItemType.MODULE == new_item.item_type,
+                        )
                 if st.button(
                     ActionSymbol.up_down.value,
                     key=f"move_button_{item_id}",
@@ -323,16 +277,7 @@ def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
                 ):
                     st.session_state["journey_item_move"] = item
                     st.rerun()
-                # if st.button(
-                #     ActionSymbol.edit.value,
-                #     key=f"edit_button_{item_id}",
-                #     type="secondary",
-                #     use_container_width=True,
-                #     disabled=item_state.get("edit", False),
-                # ):
-                #     # item_state["edit"] = True
-                #     # st.rerun(scope="fragment")
-                #     open_item(item, journey)
+
                 with st.popover(ActionSymbol.remove.value):
                     if st.button(
                         f"Are you sure you want to remove:\n\n{item.title}?",
@@ -460,7 +405,6 @@ def write_item(
                 key=f"item_container_{item_id}", css_styles=button_styles
             )
         else:
-
 
             with main_container:
                 container = stylable_container(
@@ -590,6 +534,98 @@ def edit_journey(journey: JourneyItem):
         write_item(journey, journey=journey)
 
 
+def assign_journey(journey: JourneyItem):
+    org_id = get_user_org(st.session_state["username"]).id
+    users = get_all_users(org_id, reset=True)
+
+    # Display current assignments and user progress
+
+    # Load all progress items for the current journey
+    journey_id=journey.id
+    progress_items = JourneyProgressDataTable.load_all_from_db(
+        journey_item_id=journey_id
+    )
+
+    if len(progress_items) > 0:
+        st.subheader("Connected Users")
+        # Display current assignments and user progress
+        count = 0
+        for progress_item in progress_items:
+            # pretty_print(progress_item.__dict__, force=True)
+            # try:
+            # Get the user for the current progress item
+            user = get_db_user(id=progress_item.user_id)
+
+            container = st.container(border=True)
+            col1, col2, col3 = container.columns(
+                [0.2, 0.7, 0.15], vertical_alignment="center"
+            )
+
+            if user:
+                col1.markdown(f"**{user.name or user.email}**")
+                count += 1
+
+                journey_progress = JourneyItemProgress.from_db(progress_item)
+                if JourneyItemProgressState.NOT_STARTED > journey_progress.get_state():
+                    next_modules_progress = journey_progress.get_next(reset=True)
+                    # pretty_print(next_modules_progress, force=True)
+                    all_children = journey.all_children_by_id()
+                    next_module = all_children[next_modules_progress[0].journey_item_id]
+                    # journey_item = JourneyItem.get(journey_id = journey_progress.item_id)
+                    # st.write(f"Journey: {journey_item.title}")
+                    col2.progress(
+                        journey_progress.get_progress(), f"Next module: {next_module}"
+                    )
+                else:
+                    col2.write("Not yet started")
+
+                with col3.popover("Manage"):
+                    if st.button(f"Remove", key=f"remove_{journey_progress.id}"):
+                        journey_progress.removed = True
+                        journey_progress.save_to_db()
+                        st.rerun()
+
+        if count == 0:
+            st.write("No assigned users have yet signed up and started the journey")
+
+        st.divider()
+
+    st.subheader("Assign to Users")
+    assign_users = st.multiselect(
+        "Select users to assign journeys",
+        users,
+        format_func=lambda u: f"{u.name} ({u.email})" if u.name else u.email,
+    )
+
+    if assign_users and st.button(
+        "Assign to User(s)", key="assing_journey_users_" + journey_id
+    ):
+        journey_id = st.session_state.get("journey_edit_id")
+        for user in assign_users:
+            user_id = user.id
+            journey_item = JourneyItem.load_from_db(journey_id)
+            JourneyProgressDataTable.from_journey_item(journey_item, user_id=user_id)
+        st.success("Journeys assigned successfully.")
+        st.rerun()
+
+    st.divider()
+
+    st.subheader("Assign to New User")
+    new_user_email = st.text_input(
+        "New User Email", placeholder="e.g., newuser@example.com"
+    )
+
+    if new_user_email and st.button(
+        "Assign to New User", key="assing_journey_new_user_" + journey_id
+    ):
+        journey_id = st.session_state.get("journey_edit_id")
+        new_user = add_user(email=new_user_email, journeys=[journey_id], org_id=org_id)
+        journey_item = JourneyItem.load_from_db(journey_id)
+        JourneyProgressDataTable.from_journey_item(journey_item, user_id=new_user.id)
+        st.success("New user created and journey assigned.")
+        st.rerun()
+
+
 def journey_edit():
     tab1, tab2 = st.tabs(["Modify journey", "Assign to individual(s)"])
     journey_id = st.query_params.get("journey") or st.session_state.get(
@@ -600,8 +636,7 @@ def journey_edit():
         journey = JourneyItem.get(journey_id=journey_id)
     with tab1:
         if journey:
-            # print("Journey ID", journey_id)
-            # print(f"Journey keys: {get_available_journeys()}")
+
             edit_journey(journey)
         else:
             st.error("No data to show. Redirecting to journey management.")
@@ -609,103 +644,12 @@ def journey_edit():
             st.session_state["journey_edit"] = None
             st.switch_page("pages/journey_simple_manage.py")
 
-        # st.subheader("Assign Journey")
-
     with tab2:
         if journey:
-            org_id = get_user_org(st.session_state["username"]).id
-            users = get_all_users(org_id, reset=True)
-
-            # Display current assignments and user progress
-
-            # Load all progress items for the current journey
-            progress_items = JourneyProgressDataTable.load_all_from_db(journey_item_id=journey_id)
-
-            if len(progress_items) > 0:
-                st.subheader("Connected Users")
-                # Display current assignments and user progress
-                count = 0
-                for progress_item in progress_items:
-                    # pretty_print(progress_item.__dict__, force=True)
-                    # try:
-                    # Get the user for the current progress item
-                    user = get_db_user(id=progress_item.user_id)
-
-                    container = st.container(border=True)
-                    col1, col2, col3 = container.columns([0.2, 0.7, 0.15], vertical_alignment="center")
-
-                    if user:
-                        col1.markdown(f"**{user.name or user.email}**")
-                        count += 1
-
-                        journey_progress = JourneyItemProgress.from_db(progress_item)
-                        if JourneyItemProgressState.NOT_STARTED > journey_progress.get_state():
-                            next_modules_progress = journey_progress.get_next(reset=True)
-                            # pretty_print(next_modules_progress, force=True)
-                            all_children = journey.all_children_by_id()
-                            next_module = all_children[next_modules_progress[0].journey_item_id]
-                            # journey_item = JourneyItem.get(journey_id = journey_progress.item_id)
-                            # st.write(f"Journey: {journey_item.title}")
-                            col2.progress(journey_progress.get_progress(), f"Next module: {next_module}")
-                        else:
-                            col2.write("Not yet started")
-
-                        with col3.popover("Manage"):
-                            if st.button(f"Remove", key=f"remove_{journey_progress.id}"):
-                                journey_progress.removed = True
-                                journey_progress.save_to_db()
-                                st.rerun()
-
-
-                    # except Exception as e:
-                    #     st.error(f"Error loading user progress: {str(e)}")
-
-                if count == 0:
-                    st.write("No assigned users have yet signed up and started the journey")
-
-                st.divider()
-
-            st.subheader("Assign to Users")
-            assign_users = st.multiselect(
-                "Select users to assign journeys",
-                users,
-                format_func=lambda u: f"{u.name} ({u.email})" if u.name else u.email,
-            )
-
-            if assign_users and st.button("Assign to User(s)", key="assing_journey_users_"+journey_id):
-                journey_id = st.session_state.get("journey_edit_id")
-                for user in assign_users:
-                    user_id = user.id
-                    journey_item = JourneyItem.load_from_db(journey_id)
-                    JourneyProgressDataTable.from_journey_item(
-                        journey_item, user_id=user_id
-                    )
-                st.success("Journeys assigned successfully.")
-                st.rerun()
-
-            st.divider()
-
-            st.subheader("Assign to New User")
-            new_user_email = st.text_input(
-                "New User Email", placeholder="e.g., newuser@example.com"
-            )
-
-            if new_user_email and st.button("Assign to New User", key="assing_journey_new_user_"+journey_id):
-                journey_id = st.session_state.get("journey_edit_id")
-                new_user = add_user(email=new_user_email, journeys=[journey_id], org_id=org_id)
-                journey_item = JourneyItem.load_from_db(journey_id)
-                JourneyProgressDataTable.from_journey_item(
-                    journey_item, user_id=new_user.id
-                )
-                st.success("New user created and journey assigned.")
-                st.rerun()
+            assign_journey(journey)
 
     col1, col2, col3 = st.columns([0.15, 0.7, 0.15])
-    # with col1:
-    #     # st.page_link("pages/create_journey_2.py", label="Back")
-    #     if st.button("Back", use_container_width=True):
-    #         st.session_state["journey_creation_state"] = "init"
-    #         st.rerun()
+
     with col3:
         if st.button("Done", use_container_width=True, type="primary"):
             # print("donothing")

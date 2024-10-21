@@ -631,7 +631,7 @@ class JourneyItemProgress(BaseModel):
         title="Test Results",
         description="Results of the tests associated with the journey item.",
     )
-    extras: Optional[Dict[str, Any]] = Field(
+    extras: Optional[Any] = Field(
         default=None,
         title="Extras",
         description="Extra dict to store random bits",
@@ -674,10 +674,10 @@ class JourneyItemProgress(BaseModel):
         if self.completed_at is not None:
             return JourneyItemProgressState.COMPLETED
         elif self.started_at is not None:
-            if self.due_at is not None and datetime.now() > self.due_at:
-                return JourneyItemProgressState.OVERDUE
-            else:
-                return JourneyItemProgressState.STARTED
+            # if self.due_at is not None and datetime.now() > self.due_at:
+            #     return JourneyItemProgressState.OVERDUE
+            # else:
+            return JourneyItemProgressState.STARTED
         else:
             return JourneyItemProgressState.NOT_STARTED
 
@@ -716,7 +716,7 @@ class JourneyItemProgress(BaseModel):
                             session=session, commit=False, solo=True
                         )
                     if ancestor == root.id:
-                        root.start(session=session, commit=False, solo=False)
+                        root.start(session=session, commit=False, solo=True)
 
             for child in self.children:
                 if child.started_at is None:
@@ -728,15 +728,38 @@ class JourneyItemProgress(BaseModel):
             root.reset_cache()
             get_journey_cache().clear()
 
-    def complete(self, feedback: str = None, session=None, commit=True):
+    def complete(self, feedback: str = None, session=None, commit=True, solo=False):
         session = session or user_db_get_session()
         self.completed_at = datetime.now()
         if feedback != None:
             self.extras = self.extras or {}
             self.extras["completion_feedback"] = feedback
-        for child in self.children:
-            if child.started_at is None:
-                child.start(session=session, commit=False)
+        if not solo:
+            for child in self.children:
+                if child.completed_at is None:
+                    child.complete(session=session, commit=False)
+        root = self.get_root()
+        if self.id != root.id:
+            ancestry = self.get_ancestry(root)
+            all_children = root.all_children_by_id()
+            for ancestor in ancestry:
+                if ancestor != root.id and all_children[ancestor].completed_at is None:
+                    ancestor = all_children[ancestor]
+                    all_children_completed = all(
+                        child.get_state() == JourneyItemProgressState.COMPLETED
+                        for child in ancestor.children
+                    )
+                    if len(ancestor.children) == 1 or all_children_completed:
+                        ancestor.complete(
+                            session=session, commit=False, solo=True
+                        )
+                if ancestor == root.id:
+                    all_children_completed = all(
+                        child.get_state() == JourneyItemProgressState.COMPLETED
+                        for child in root.children
+                    )
+                    if all_children_completed:
+                        root.complete(session=session, commit=False, solo=True)
         self.save_to_db(session=session, commit=commit)
         root = self.get_root()
         root.reset_cache()
@@ -805,6 +828,8 @@ class JourneyItemProgress(BaseModel):
         #     )
         #     for child in journey_item.children
         # ]
+
+        # pretty_print(children, force=True)
 
         # Create JourneyItemProgress instance
         journey_item_progress = JourneyItemProgress(
@@ -893,11 +918,11 @@ class JourneyItemProgress(BaseModel):
         all_children = root.all_children_by_id()
 
         journey_relations = root.get_relations(reset)
-        print(
-            f"{self.item_type=} {self.id=} {root.item_type=} {root.id=} {self.journey_item_parent_id=}"
-        )
-        pretty_print(journey_relations, "Journey Relations", force=True)
-        pretty_print(all_children.keys(), "All children IDs", force=True)
+        # print(
+        #     f"{self.item_type=} {self.id=} {root.item_type=} {root.id=} {self.journey_item_parent_id=}"
+        # )
+        # pretty_print(journey_relations, "Journey Relations", force=True)
+        # pretty_print(all_children.keys(), "All children IDs", force=True)
         parent = journey_relations[self.id] if self.id != root.id else None
         if parent is not None:
             ancestry: list[str] = [parent]

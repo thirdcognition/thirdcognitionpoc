@@ -33,7 +33,8 @@ from lib.models.user import AuthStatus, UserLevel
 st.set_page_config(
     page_title="TC POC: Admin",
     page_icon="static/icon.png",
-    layout="centered",
+    layout="wide",
+    initial_sidebar_state="expanded",
     menu_items={
         "About": """# ThirdCognition PoC
 [ThirdCognition](https://thirdcognition.com)
@@ -58,12 +59,21 @@ def get_stylable_container_selector(id):
     return f'div[data-testid="stVerticalBlock"]:has(> div.element-container > div.stMarkdown > div[data-testid="stMarkdownContainer"] > p > span.{id})'
 
 
+def run_complete(journey_item_progress: JourneyItemProgress, feedback):
+    journey_item_progress.complete(feedback=feedback if feedback else None)
+    parent_progress = journey_item_progress.get(
+        progress_id=journey_item_progress.parent_id
+    )
+    if parent_progress.get_progress() == 1.0:
+        st.switch_page("pages/my_journeys.py")
+
+
 @st.dialog("Confirm completion")
 def complete_journey_item(
     journey_item: JourneyItem,
     journey: JourneyItem,
     journey_item_progress: JourneyItemProgress,
-):
+) -> bool:
     st.write(f"#### {journey_item.get_index(journey)} - {journey_item.title}")
 
     feedback = st.text_area(
@@ -85,60 +95,76 @@ def complete_journey_item(
         use_container_width=True,
         key=f"completion_complete_{journey.id}_{journey_item.id}",
     ):
-        journey_item_progress.complete(feedback=feedback if feedback else None)
-        st.switch_page("pages/my_journeys.py")
+        run_complete(journey_item_progress, feedback=feedback if feedback else None)
 
 
-@st.fragment
 def view_journey_item(
     journey_item: JourneyItem,
     journey: JourneyItem,
-    id_str: str,
-    all_children,
-    relations,
-    items_filtered,
-    use_container=False,
-    as_children=False,
+    content_container=None,
+    icon_container=None,
+    task_container=None,
 ):
     if (
         JourneyItemType.JOURNEY == journey_item.item_type
         or JourneyItemType.MODULE == journey_item.item_type
     ):
-        _, image_col, _ = st.columns([0.3, 0.4, 0.3])
+        if icon_container == None:
+            _, icon_container, _ = st.columns([0.3, 0.4, 0.3])
 
-        image_col.image(
-            get_image(journey_item.icon, "icon_files"),
+        icon_container.image(
+            str(get_image(journey_item.icon, "icon_files")),
             use_column_width=True,
         )
 
-    st.subheader(f"{journey_item.get_index(journey)} - {journey_item.title}")
-    st.write(journey_item.description)
+    if content_container is None:
+        content_container = st.container()
+
+    with content_container:
+        if JourneyItemType.MODULE == journey_item.item_type:
+            all_items = journey.all_children_by_id()
+            parent_item = all_items[journey_item.parent_id]
+            st.header(parent_item.get_index(journey) + " " + parent_item.title)
+
+            st.subheader(f"{journey_item.get_index(journey)} {journey_item.title}")
+            # st.write(journey_item.description)
 
     journey_item_progress = JourneyItemProgress.get(journey_item_id=journey_item.id)
 
     if JourneyItemType.ACTION == journey_item.item_type:
-        complete = st.checkbox(
-            journey_item.action,
-            key="action_" + journey_item.id,
-            value=st.session_state.get(
-                f"journey_item_complete_{journey_item.id}",
-                JourneyItemProgressState.COMPLETED == journey_item_progress.get_state(),
-            ),
+        with content_container:
+            st.write(journey_item.title)
+            st.write(" - " + journey_item.description)
+
+        if task_container is None:
+            task_container = st.container()
+
+        _, act_col1, act_col2 = task_container.columns(
+            [0.15, 0.7, 0.15], vertical_alignment="top"
         )
-        print(f"{complete=}")
-        if (
-            complete
-            and JourneyItemProgressState.COMPLETED != journey_item_progress.get_state()
-        ):
-            complete_journey_item(journey_item, journey, journey_item_progress)
+        with act_col1:
+            st.write(f"- {journey_item.action}")
+        with act_col2:
+            complete = st.checkbox(
+                "Done",
+                key="action_" + journey_item.id,
+                value=st.session_state.get(
+                    f"journey_item_complete_{journey_item.id}",
+                    JourneyItemProgressState.COMPLETED
+                    == journey_item_progress.get_state(),
+                ),
+            )
+            if (
+                complete
+                and JourneyItemProgressState.COMPLETED
+                != journey_item_progress.get_state()
+            ):
+                complete_journey_item(journey_item, journey, journey_item_progress)
 
-    return False  # changes
 
-
-@st.fragment
-def view_item(item: JourneyItem, journey: JourneyItem, show_children=False):
+def view_modules_items(item: JourneyItem, journey: JourneyItem, show_children=False):
     all_children = journey.all_children_by_id()
-    relations = journey.get_relations()
+    # relations = journey.get_relations()
     # ancestry = item.get_ancestry(journey)
     items_filtered = {
         "section": [
@@ -161,34 +187,45 @@ def view_item(item: JourneyItem, journey: JourneyItem, show_children=False):
 
     changes = []
 
+    icon_col, content_col, _ = st.columns([0.15, 0.8, 0.05], gap="small")
+
     # changes +=
-    view_journey_item(
-        item, journey, item.id, all_children, relations, items_filtered, False
-    )
+    view_journey_item(item, journey, content_col, icon_col)
 
     if show_children:
+        task_container = st.container()
+        _, task_header_container, _ = task_container.columns(
+            [0.15, 0.7, 0.15], vertical_alignment="top"
+        )
+        task_header_container.subheader("Action:" if len(item.children) == 1 else "Actions:")
         for child in item.children:
             # changes +=
             view_journey_item(
                 child,
                 journey,
-                item.id + "_" + child.id,
-                all_children,
-                relations,
-                items_filtered,
-                True,
-                True,
+                content_col,
+                icon_col,
+                task_container
             )
-
-    _, save_col = st.columns([0.85, 0.15])
 
     if len(changes) > 0:
         for change in changes:
             st.toast(f"For {change[0]} update: {change[1]}")
 
-        # st.rerun()
+    st.write(" ")
 
-    if save_col.button(
+    margin, status, back, complete = st.columns([0.15, 0.6, 0.1, 0.15])
+    # with status:
+    #     st.markdown("**Time to complete module:** 5 Days - You are on track!")
+
+    if back.button(
+        "Back",
+        key="back_button_" + id_str,
+        use_container_width=True
+    ):
+        st.switch_page("pages/my_journeys.py")
+
+    if complete.button(
         "Done",
         use_container_width=True,
         type="primary",
@@ -203,7 +240,7 @@ def view_item(item: JourneyItem, journey: JourneyItem, show_children=False):
         st.switch_page("pages/my_journeys.py")
 
 
-def journey_view():
+def module_view():
     journey_id = st.query_params.get("journey") or st.session_state.get(
         "journey_view_id"
     )
@@ -220,7 +257,7 @@ def journey_view():
 
         # st.title(f"{item.get_index(journey)} {item.title}")
 
-        view_item(item, journey, journey_item_show_children)
+        view_modules_items(item, journey, journey_item_show_children)
 
     else:
         st.error("No data to show. Please go back and recreate the journey.")
@@ -231,7 +268,7 @@ async def main():
         st.switch_page("login.py")
         return
 
-    journey_view()
+    module_view()
 
 
 if __name__ == "__main__":

@@ -28,6 +28,7 @@ st.set_page_config(
     page_title="TC POC: Admin",
     page_icon="static/icon.png",
     layout="wide",
+    initial_sidebar_state="expanded",
     menu_items={
         "About": """# ThirdCognition PoC
 [ThirdCognition](https://thirdcognition.com)

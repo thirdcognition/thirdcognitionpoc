@@ -447,8 +447,8 @@ def write_item(
                         if item_state["open"]
                         else ActionSymbol.closed.value
                     )
-                    + "\n\n"
-                    + item.get_index(journey)
+                    + "\n\n "
+                    + item.get_index(journey).replace('.', '\.')
                     + "\n\n"
                     + item.title,
                     key=f"open_button_{item_id}",

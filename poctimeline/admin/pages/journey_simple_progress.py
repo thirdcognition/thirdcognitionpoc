@@ -215,7 +215,7 @@ def write_progress(
                 else ActionSymbol.closed.value
             )
             + "\n\n"
-            + journey_item.get_index(journey)
+            + journey_item.get_index(journey).replace(".",  "\.")
             + "\n\n"
             + journey_item.title,
             key=f"open_button_{item_id}",

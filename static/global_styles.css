@@ -26,5 +26,6 @@ section[data-testid="stSidebar"] {
 
 section[data-testid="stSidebar"] .stHorizontalBlock:last-child {
     position: absolute;
-    top: calc(100vh - 100%)
+    top: calc(100vh - 100%);
+    width: 100%;
 }

@@ -99,7 +99,6 @@ def write_section_module(item: JourneyItem, journey: JourneyItem, item_id: str):
             ],
         ):
             action_content_col = None
-            button_col = None
             if JourneyItemType.MODULE == item.item_type and item.icon:
                 image_col, action_content_col, _ = st.columns([0.2, 0.9, 0.01])
                 with image_col:
@@ -120,22 +119,72 @@ def write_section_module(item: JourneyItem, journey: JourneyItem, item_id: str):
                             use_column_width=True,
                         )
 
-            for index, child in enumerate(item.children):
-                position = (
-                    ChildPosition.FIRST
-                    if index == 0
-                    else (
-                        ChildPosition.LAST
-                        if index == len(item.children) - 1
-                        else ChildPosition.MIDDLE
+            if item.children:
+                # if action_content_col:
+                #     action_content_col.write(" ")
+                #     action_content_col.write(item.description)
+                for index, child in enumerate(item.children):
+                    position = (
+                        ChildPosition.FIRST
+                        if index == 0
+                        else (
+                            ChildPosition.LAST
+                            if index == len(item.children) - 1
+                            else ChildPosition.MIDDLE
+                        )
                     )
-                )
-                # with action_content_col:
-                if action_content_col is not None:
-                    with action_content_col:
+                    # with action_content_col:
+                    if action_content_col is not None:
+                        with action_content_col:
+                            write_item(child, journey=journey, position=position)
+                    else:
                         write_item(child, journey=journey, position=position)
-                else:
-                    write_item(child, journey=journey, position=position)
+            elif action_content_col is not None:
+                with action_content_col:
+                    st.write(" ")
+                    st.write("No actions added yet")
+                    if st.button("Add first action", key="add_first_child_" + item_id):
+                        new_item = JourneyItem.create_new(
+                            {
+                                "parent_id": item.id,
+                                "icon": item.icon,
+                                "template_id": item.template_id,
+                                "end_of_day": item.end_of_day,
+                                "item_type": JourneyItemType.ACTION,
+                                "content_instructions": item.content_instructions.model_copy(),
+                            }
+                        )
+                        item.add_child(new_item, 0)
+                        journey.save_to_db()
+                        open_item(
+                            new_item,
+                            journey,
+                            JourneyItemType.MODULE == new_item.item_type,
+                        )
+        if JourneyItemType.MODULE > item.item_type and not item.children:
+            col1, col2 = st.columns([0.01, 0.9])
+            with col2:
+                st.write(f"{item.title} has no modules yet, add first?")
+                if st.button("Add first module", key="add_first_child_" + item_id):
+                    new_item = JourneyItem.create_new(
+                        {
+                            "parent_id": item.id,
+                            "icon": item.icon,
+                            "template_id": item.template_id,
+                            "end_of_day": item.end_of_day,
+                            "item_type": JourneyItemType.MODULE,
+                            "content_instructions": item.content_instructions.model_copy(),
+                        }
+                    )
+                    item.add_child(new_item, 0)
+                    journey.save_to_db()
+                    open_item(
+                        new_item,
+                        journey,
+                        JourneyItemType.MODULE == new_item.item_type,
+                    )
+                st.write(" ")
+
 
 def action_buttons(
     item: JourneyItem,
@@ -185,7 +234,11 @@ def action_buttons(
                 type="secondary",
                 use_container_width=True,
             ):
-                parent = all_children[item.parent_id]
+                parent = (
+                    all_children[item.parent_id]
+                    if item.parent_id in all_children
+                    else journey
+                )
                 new_item = JourneyItem.create_new(
                     {
                         "parent_id": parent.id,
@@ -193,7 +246,7 @@ def action_buttons(
                         "icon": item.icon,
                         "template_id": item.template_id,
                         "end_of_day": item.end_of_day,
-                        "item_type": JourneyItemType.ACTION,
+                        "item_type": item.item_type,  # JourneyItemType.ACTION,
                         "content_instructions": item.content_instructions.model_copy(),
                     }
                 )
@@ -211,7 +264,11 @@ def action_buttons(
                 type="secondary",
                 use_container_width=True,
             ):
-                parent = all_children[item.parent_id]
+                parent = (
+                    all_children[item.parent_id]
+                    if item.parent_id in all_children
+                    else journey
+                )
                 new_item = JourneyItem.create_new(
                     {
                         "parent_id": parent.id,
@@ -219,7 +276,7 @@ def action_buttons(
                         "after_id": item.id,
                         "template_id": item.template_id,
                         "end_of_day": item.end_of_day,
-                        "item_type": JourneyItemType.ACTION,
+                        "item_type": item.item_type,  # JourneyItemType.ACTION,
                         "content_instructions": item.content_instructions.model_copy(),
                     }
                 )
@@ -249,7 +306,6 @@ def action_buttons(
                 parent.remove_child(item)
                 journey.save_to_db()
                 st.rerun()
-                print("remove")
 
 
 @st.fragment
@@ -298,6 +354,7 @@ def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
             ],
         ):
             action_buttons(item, journey)
+
 
 @st.fragment
 def write_item(
@@ -506,7 +563,6 @@ def write_item(
             or JourneyItemType.MODULE == item.item_type
         ):
             write_section_module(item, journey, item_id)
-
         elif item.children:
             for index, child in enumerate(item.children):
                 position = (
@@ -562,6 +618,7 @@ def edit_journey(journey: JourneyItem):
 
         write_item(journey, journey=journey)
 
+
 @st.fragment
 def assign_journey(journey: JourneyItem):
     org_id = get_user_org(st.session_state["username"]).id
@@ -609,7 +666,11 @@ def assign_journey(journey: JourneyItem):
                     col2.write("Not yet started")
 
                 with col3.popover("Manage"):
-                    if st.button(f"Remove", key=f"remove_{journey_progress.id}", use_container_width=True):
+                    if st.button(
+                        f"Remove",
+                        key=f"remove_{journey_progress.id}",
+                        use_container_width=True,
+                    ):
                         journey_progress.removed = True
                         journey_progress.save_to_db()
                         st.rerun()

@@ -15,7 +15,7 @@ sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
 from admin.sidebar import init_sidebar
 from lib.models.journey import JourneyItem, JourneyItemType, get_all_journeys_from_db
-from lib.models.user import AuthStatus, get_db_user
+from lib.models.user import AuthStatus, UserLevel, check_auth_level, get_db_user
 
 st.set_page_config(
     page_title="TC POC: Admin",
@@ -64,7 +64,11 @@ def main():
             st.write("Please log in for more functionality.")
             return
     else:
-         st.switch_page("pages/my_journeys.py")
+        user_level = check_auth_level()
+        if user_level == UserLevel.user:
+            st.switch_page("pages/my_journeys.py")
+        elif user_level >= UserLevel.org_admin:
+            st.switch_page("pages/journey_simple_manage.py")
 
 
 if __name__ == "__main__":

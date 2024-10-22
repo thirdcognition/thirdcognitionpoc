@@ -134,7 +134,7 @@ def check_auth(
             with st.sidebar:
                 message = st.columns([2, 1], vertical_alignment="bottom")
                 message[0].write(
-                    f'{org.organization_name if org is not None else ""}\n\nWelcome *{user.name}*'
+                    f'{org.organization_name if org is not None else ""}\n\n*{user.name}*'
                 )
 
                 with message[1]:
@@ -167,7 +167,7 @@ def check_auth(
             if login_state == "login":
                 # with tab1:
                 try:
-                    authenticator.login()
+                    authenticator.login(fields={'Username':'Email'})
                     if st.session_state["authentication_status"]:
                         manual_login(
                             authenticator,
@@ -199,7 +199,7 @@ def check_auth(
 
                 message = st.columns([2, 1], vertical_alignment="bottom")
                 message[0].write(
-                    f'{org.organization_name if org is not None else ""}\n\nWelcome *{st.session_state["name"]}*'
+                    f'{org.organization_name if org is not None else ""}\n\nWelcome\n*{st.session_state["name"]}*'
                 )
 
                 with message[1]:

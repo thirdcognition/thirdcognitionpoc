@@ -189,8 +189,9 @@ def build_journey_cards(
         }""",
     ]
 
+    key = f"container_with_border_{hash(",".join([item.__getattribute__("id") if isinstance(item, BaseModel) else item["title"] for item in items]))}"
     styled_container = stylable_container(
-        key=f"container_with_border_{hash(",".join([item.__getattribute__("id") if isinstance(item, BaseModel) else item["title"] for item in items]))}", css_styles=css_styles
+        key=key, css_styles=css_styles
     )
 
     with styled_container.container(border=False):
@@ -198,7 +199,7 @@ def build_journey_cards(
         card_grid = grid(*card_rows, vertical_align="center")
         for i, item in enumerate(items):
             with card_grid.container(border=False):
-                if isinstance(item, JourneyItem):
+                if isinstance(item, BaseModel):
                     if JourneyItemType.JOURNEY != item.item_type:
                         render_journey_item(item, journey, journey_progress)
                     else:
@@ -293,22 +294,30 @@ def render_journey_card(item: JourneyItem):
         st.session_state["journey_edit_id"] = item.id
         st.switch_page("pages/journey_edit.py")
     but1, but2 = st.columns([1, 1])
-    if but1.button(
+    with but1.popover(
         ActionSymbol.duplicate.value,
-        key=f"journey_{item.id}_duplicate",
-        type="secondary",
         use_container_width=True,
     ):
-        print("no-op")
-    with but2.popover(ActionSymbol.delete.value, use_container_width=True):
-        st.write("Warning: This is permanent and cannot be undone.")
+        st.write(f"Do you want to duplicate {item.title}?")
         if st.button(
-            f"Are you sure you want to remove {item.title}",
+            "Yes",
+            key=f"journey_{item.id}_duplicate",
+            type="primary",
+            use_container_width=True,
+        ):
+            JourneyDataTable.duplicate_with_children(item.id, overwrite={"title": item.title + " (copy)"})
+            st.rerun()
+            # print("no-op")
+    with but2.popover(ActionSymbol.delete.value, use_container_width=True):
+        st.write(f"Are you sure you want to remove {item.title}")
+        if st.button(
+            "Remove",
             key=f"journey_{item.id}_delete",
             use_container_width=True,
         ):
             item.remove()
             st.rerun()
+        st.write("*Warning: This is permanent and cannot be undone.*")
 
 
 def render_generic_card(item: dict):

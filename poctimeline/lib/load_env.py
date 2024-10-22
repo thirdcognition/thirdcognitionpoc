@@ -12,6 +12,7 @@ print("Loading env: ", os.path.join(os.path.dirname(__file__), "../../../", ".en
 
 DEBUGMODE = os.getenv("LLM_DEBUG", "True") == "True" or False
 DEVMODE = os.getenv("LLM_DEV", "True") == "True" or False
+IN_PRODUCTION = os.getenv("STREAMLIT_PRODUCTION", "False") == "True" or False
 
 LANGCHAIN_TRACING_V2 = os.getenv("LANGCHAIN_TRACING_V2", "False") == "True" or False
 LANGCHAIN_API_KEY = os.getenv("LANGCHAIN_API_KEY", "")

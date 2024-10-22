@@ -35,7 +35,9 @@ def get_journey_data_from_db(id: str, session=None) -> "JourneyDataTable":
     return db_journey_item
 
 
-def get_all_journeys_from_db(session=None, ids: Optional[List[str]] = None) -> List["JourneyDataTable"]:
+def get_all_journeys_from_db(
+    session=None, ids: Optional[List[str]] = None
+) -> List["JourneyDataTable"]:
     if session is None:
         session = user_db_get_session()
 
@@ -43,15 +45,15 @@ def get_all_journeys_from_db(session=None, ids: Optional[List[str]] = None) -> L
         return
 
     query = session.query(JourneyDataTable).filter(
-                JourneyDataTable.item_type == JourneyItemType.JOURNEY.value
-            )
+        JourneyDataTable.item_type == JourneyItemType.JOURNEY.value
+    )
 
     db_journey_items = query.all()
 
     if ids:
         db_journey_items = [item for item in db_journey_items if item.id in ids]
 
-    print(f"{db_journey_items=}")
+    # print(f"{db_journey_items=}")
 
     if not db_journey_items:
         raise ValueError("Journey Items not found in the database.")
@@ -304,6 +306,79 @@ class JourneyDataTable(Base):
         # Commit the changes to the database
         # get_journey_data_from_db.cache_clear()
         session.commit()
+
+    @classmethod
+    def duplicate_with_children(
+        cls,
+        id: str,
+        session: Session = None,
+        commit=True,
+        overwrite: Dict[str, Any] = None,
+    ) -> "JourneyDataTable":
+        if session is None:
+            session = user_db_get_session()
+
+        # Load the original journey item
+        original_item = cls.load_from_db(id, session)
+        if original_item is None:
+            raise ValueError(f"Journey Item {id} not found in the database.")
+
+        # Prepare overwrite dictionary
+        if overwrite is None:
+            overwrite = {}
+
+        # Create a new journey item with a new ID and apply overwrites
+        new_item = cls(
+            id=overwrite.get("id", str(uuid.uuid4())),
+            journey_name=overwrite.get("journey_name", original_item.journey_name),
+            journey_template_id=overwrite.get(
+                "journey_template_id", original_item.journey_template_id
+            ),
+            parent_id=overwrite.get("parent_id", original_item.parent_id),
+            after_id=overwrite.get("after_id", original_item.after_id),
+            references=overwrite.get("references", original_item.references.copy()),
+            children=[],  # This will be handled later
+            use_guide=overwrite.get("use_guide", original_item.use_guide),
+            title=overwrite.get("title", original_item.title),
+            icon=overwrite.get("icon", original_item.icon),
+            intro=overwrite.get("intro", original_item.intro),
+            summary=overwrite.get("summary", original_item.summary),
+            description=overwrite.get("description", original_item.description),
+            content_instructions=overwrite.get(
+                "content_instructions", original_item.content_instructions
+            ),
+            content=overwrite.get("content", original_item.content),
+            test=overwrite.get("test", original_item.test),
+            action=overwrite.get("action", original_item.action),
+            end_of_day=overwrite.get("end_of_day", original_item.end_of_day),
+            item_type=overwrite.get("item_type", original_item.item_type),
+            chroma_collections=overwrite.get(
+                "chroma_collections", original_item.chroma_collections.copy()
+            ),
+            prompts=overwrite.get("prompts", original_item.prompts.copy()),
+            template=overwrite.get("template", original_item.template.copy()),
+            disabled=overwrite.get("disabled", original_item.disabled),
+            complete=overwrite.get("complete", original_item.complete),
+            last_updated=datetime.now(),
+        )
+
+        # Recursively duplicate children with overwrites for each child
+        children_overwrites = overwrite.get("children", {})
+        for child_id in original_item.children:
+            child_item = cls.load_from_db(child_id, session)
+            if child_item:
+                child_overwrite = children_overwrites.get(child_item.id, {})
+                new_child = cls.duplicate_with_children(
+                    child_item.id, session, commit=False, overwrite=child_overwrite
+                )
+                new_item.children.append(new_child.id)
+
+        # Add the new item to the session and commit
+        session.add(new_item)
+        if commit:
+            session.commit()
+
+        return new_item
 
 
 class JourneyItemType(Enum):

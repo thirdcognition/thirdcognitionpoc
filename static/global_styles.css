@@ -19,3 +19,7 @@ body * {
 button[title="View fullscreen"] {
     display: none;
 }
+
+section[data-testid="stSidebar"] {
+    width: 350px !important;
+}

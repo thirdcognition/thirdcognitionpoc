@@ -5,6 +5,8 @@ import time
 import streamlit as st
 from streamlit_theme import st_theme
 
+from lib.load_env import IN_PRODUCTION
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
@@ -60,6 +62,8 @@ def init_css():
     with open(current_dir + "/static/global_styles.css") as css:
         st.markdown(f"<style>{css.read()}</style>", unsafe_allow_html=True)
 
+    if IN_PRODUCTION:
+        st.markdown("<style>.stAppToolbar { display: none !important; }</style>", unsafe_allow_html=True)
     # st.markdown("""
     #         <style>
     #             button[title="View fullscreen"] {

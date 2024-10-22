@@ -264,7 +264,7 @@ def module_view():
 
 
 async def main():
-    if init_sidebar(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
+    if init_sidebar(UserLevel.user) != AuthStatus.LOGGED_IN:
         st.switch_page("login.py")
         return
 

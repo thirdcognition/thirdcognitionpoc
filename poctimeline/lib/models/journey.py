@@ -738,7 +738,7 @@ class JourneyItem(BaseModel):
             else:
                 # Calculate the match ratio using the fuzz.ratio function
                 match_ratio = fuzz.ratio(search_token.lower(), self.title.lower())
-                print("Match ratio:", match_ratio, self.title)
+                # print("Match ratio:", match_ratio, self.title)
                 if match_ratio > 50:  # You can adjust this threshold as needed
                     results.append(self.id)
 

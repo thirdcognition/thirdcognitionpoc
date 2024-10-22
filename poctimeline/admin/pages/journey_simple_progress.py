@@ -34,6 +34,7 @@ from lib.helpers.journey import (
 from lib.helpers.shared import pretty_print
 from lib.models.user import (
     AuthStatus,
+    UserDataTable,
     UserLevel,
     get_all_users,
     get_db_user,
@@ -215,7 +216,7 @@ def write_progress(
                 else ActionSymbol.closed.value
             )
             + "\n\n"
-            + journey_item.get_index(journey).replace(".",  "\.")
+            + journey_item.get_index(journey).replace(".",  r"\.")
             + "\n\n"
             + journey_item.title,
             key=f"open_button_{item_id}",
@@ -305,6 +306,10 @@ def journey_progress(journey: JourneyItem):
         count = 0
         for i, progress_item in enumerate(progress_items):
             user = get_db_user(id=progress_item.user_id)
+            if user is None:
+                user = UserDataTable(id="none", email="N/A", name="Removed user")
+
+
             item_id = progress_item.id
             item_state: dict = st.session_state["journey_item_progress_state"].get(
                 item_id, {}
@@ -316,6 +321,7 @@ def journey_progress(journey: JourneyItem):
             col1, col2, _ = container.columns(
                 [0.3, 0.6, 0.1], vertical_alignment="center"
             )
+
             if col1.button(
                 (
                     ActionSymbol.open.value
@@ -426,9 +432,9 @@ async def main():
     if journey is not None:
         journey_progress(journey)
 
-        # for i, journey in enumerate(journeys):
-        #     with st.expander(journey.title, expanded=i==0):
-        #         journey_progress(journey)
+            # for i, journey in enumerate(journeys):
+            #     with st.expander(journey.title, expanded=i==0):
+            #         journey_progress(journey)
 
     # except Exception as e:
     #     print(e)

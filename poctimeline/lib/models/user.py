@@ -488,7 +488,7 @@ def add_user(
     if org_id is None and (cur_user is not None and email != cur_user.email):
         has_access(user_level=UserLevel.super_admin)
     if cur_user is not None:
-        has_access(email, org_id)
+        has_access(email, org_id=org_id)
     # org admin can only modify users in their org
 
     if user:
@@ -520,7 +520,7 @@ def add_user(
         if updated:
             session.commit()
     else:
-        has_access(user_level=UserLevel.org_admin)
+        has_access(org_id=org_id, user_level=UserLevel.org_admin)
         if level is not None and not isinstance(level, UserLevel):
             level = UserLevel(level)
         # If the user does not exist, add them to the UserDataTable
@@ -549,7 +549,7 @@ def delete_user(id: str, org_id: str):
     # Query UserDataTable for the user
     user = get_db_user(id=id)
     email = user.email
-    has_access(email, org_id, UserLevel.org_admin)
+    has_access(org_id=org_id, user_level=UserLevel.org_admin)
 
     if user:
         # If the user exists, delete them from the UserDataTable

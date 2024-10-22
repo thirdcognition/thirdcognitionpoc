@@ -164,3 +164,4 @@ cython_debug/
 poetry.lock
 admin_auth.yaml
 timeline_auth.yaml
+.aider*

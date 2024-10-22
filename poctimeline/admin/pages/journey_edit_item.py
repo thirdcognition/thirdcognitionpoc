@@ -271,6 +271,7 @@ def edit_journey_item(
         if JourneyItemType.ACTION == journey_item.item_type:
             new_eod = st.number_input(
                 "Done by end of day #",
+                help="Will only affect new journeys",
                 value=journey_item.end_of_day,
                 key="eod_" + id_str,
             )
@@ -278,7 +279,7 @@ def edit_journey_item(
                 changes.append(
                     (
                         journey_item.title,
-                        "Change eod to: " + new_eod,
+                        "Change eod to: " + str(new_eod),
                         journey_item.end_of_day,
                         new_eod,
                     )

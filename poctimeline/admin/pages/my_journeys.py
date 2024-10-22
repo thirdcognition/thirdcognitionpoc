@@ -83,7 +83,7 @@ def main():
         )
         st.subheader("Here’s what we are learning today!")
     except ValueError as e:
-        st.write("No journeys have been assigned to you yet")
+        st.write("No journeys have been assigned to you yet.")
         return
 
     # db_journey = db_journey_items[0]
@@ -98,6 +98,7 @@ def main():
     )
     if search_journey:
         matches = []
+        # pretty_print(my_journey_progress, "journeys", force=True)
         for journey in journeys:
             journey_matches = journey.search_children_with_token(
                 search_journey, item_type=JourneyItemType.MODULE
@@ -108,7 +109,7 @@ def main():
             st.subheader("Found matches:")
             journey: JourneyItem
             for journey, matches in matches:
-                st.write(journey.title)
+                st.write("#### " + journey.title)
                 build_journey_cards(
                     [journey.get_child_by_id(module_id) for module_id in matches],
                     journey,

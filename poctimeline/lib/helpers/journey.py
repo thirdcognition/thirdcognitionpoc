@@ -72,7 +72,7 @@ def match_title_to_cat_and_id(title: str) -> tuple[str, str]:
         for item in cat["children"]:
             if item["title"] == title:
                 return cat["key"], item["key"]
-    return None, None
+    return None
 
 
 @cache

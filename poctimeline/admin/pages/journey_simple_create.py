@@ -36,6 +36,18 @@ This is an *extremely* cool admin tool!
     },
 )
 
+async def get_role_title(role_title, role_description):
+    result = await get_chain(
+        "journey_template_selector"
+    ).ainvoke(
+        {
+            "job_description": f"Title:\n{role_title.strip()}\n\nDescription:\n{role_description.strip()}"
+        }
+    )
+    # result = "Software Engineer"
+
+    # print("Result", result)
+    return match_title_to_cat_and_id(result)
 
 async def journey_creation():
     if (
@@ -85,13 +97,14 @@ async def journey_creation():
                 # with col2:
                 #     uploaded_files = st.file_uploader("Upload job descritpion (optional)", accept_multiple_files=True)
                 st.markdown(" ")
-            col1, col2 = st.columns([0.85, 0.15])
+
+            col1, col2 = st.columns([0.85, 0.15], vertical_alignment="center")
             with col2:
                 button_placeholder = st.empty()
                 # st.page_link("pages/create_journey_2.py", label="Continue")
                 theme = get_theme()
                 if button_placeholder.button("Continue", use_container_width=True, disabled=not (bool(role_title) and bool(role_description))):
-                    st.session_state["journey_creation_state"] = "name"
+
                     # button_placeholder.empty()
                     with button_placeholder:
                         with stylable_container(
@@ -121,26 +134,38 @@ async def journey_creation():
                                 .element-container > .stSpinner {
                                     width: 1.5rem;
                                 }""",
+                                """
+                                .element-container > .stSpinner div {
+                                    background: transparent;
+                                }""",
+                                """
+                                .element-container > .stSpinner p {
+                                    position: absolute;
+                                    top: -30%;
+                                    left: 65%;
+                                }""",
                             ],
                         ):
-                            with st.spinner(""):
-                                result = await get_chain(
-                                    "journey_template_selector"
-                                ).ainvoke(
-                                    {
-                                        "job_description": f"Title:\n{role_title.strip()}\n\nDescription:\n{role_description.strip()}"
-                                    }
-                                )
-                                # result = "Software Engineer"
-
-                                # print("Result", result)
-                                matching_ids = match_title_to_cat_and_id(result)
+                                matching_ids = None
+                                retry_count = 0
+                                while not matching_ids and retry_count < 3:
+                                    with st.spinner("" if retry_count < 1 else "..."):
+                                        retry_count += 1
+                                        matching_ids = await get_role_title(role_title=role_title, role_description=role_description)
+                                        if not matching_ids:
+                                            await asyncio.sleep(10 if retry_count > 1 else 1)
                                 # print("Matching IDs", matching_ids)
-                                template = load_journey_template(matching_ids[1])
-                                # pretty_print(template, force=True)
-                                st.session_state["journey_creation_data"] = template
+                                if matching_ids:
+                                    template = load_journey_template(matching_ids[1])
+                                    # pretty_print(template, force=True)
+                                    st.session_state["journey_creation_state"] = "name"
+                                    st.session_state["journey_creation_data"] = template
 
-                                st.rerun()
+                                    st.rerun()
+                                else:
+                                    col1.error("Unable to match with a role. Please try again later.")
+                                    await asyncio.sleep(10)
+                                    st.rerun()
         else:
             st.subheader("Work in progress")
             with st.container(border=True):

@@ -50,7 +50,7 @@ def get_all_journeys_from_db(
 
     db_journey_items = query.all()
 
-    if ids:
+    if ids is not None:
         db_journey_items = [item for item in db_journey_items if item.id in ids]
 
     # print(f"{db_journey_items=}")
@@ -806,7 +806,7 @@ class JourneyItem(BaseModel):
                 for word in title_words:
                     # Calculate the match ratio using the fuzz.ratio function
                     match_ratio = fuzz.ratio(word.lower(), lc_search_token)
-                    print("Match ratio:", match_ratio, word)
+                    # print("Match ratio:", match_ratio, word)
                     if match_ratio > 70:  # You can adjust this threshold as needed
                         results.append(self.id)
                         break  # Break the loop if a match is found

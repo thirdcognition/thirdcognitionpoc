@@ -96,6 +96,14 @@ class JourneyDataTable(Base):
     complete = sqla.Column(sqla.Boolean, default=False)
     last_updated = sqla.Column(sqla.DateTime, default=None)
 
+    def __eq__(self, other):
+        if (
+            isinstance(other, JourneyDataTable)
+            or type(other).__name__ == JourneyDataTable.__name__
+        ):
+            return self.id == other.id
+        return False
+
     @classmethod
     def load_from_db(cls, id: str, session=None) -> "JourneyDataTable":
         if session is None:
@@ -367,7 +375,15 @@ class JourneyDataTable(Base):
         for child_id in original_item.children:
             child_item = cls.load_from_db(child_id, session)
             if child_item:
-                child_overwrite = children_overwrites.get(child_item.id, {})
+                child_overwrite = children_overwrites.get(
+                    child_item.id,
+                    {
+                        "parent_id": new_item.id,
+                        "after_id": (
+                            new_item.children[-1] if new_item.children else None
+                        ),
+                    },
+                )
                 new_child = cls.duplicate_with_children(
                     child_item.id, session, commit=False, overwrite=child_overwrite
                 )
@@ -573,6 +589,14 @@ class JourneyItem(BaseModel):
 
     def __str__(self):
         return self.title
+
+    def __eq__(self, other):
+        if (
+            isinstance(other, JourneyItem)
+            or type(other).__name__ == JourneyItem.__name__
+        ):
+            return self.id == other.id
+        return False
 
     def reset_cache(self):
         self.cache = {}
@@ -1003,9 +1027,9 @@ class JourneyItem(BaseModel):
             journey.sort_children()
 
     def move(self, target: "JourneyItem", journey: "JourneyItem"):
-        print(
-            "Move to/after", (target.title if target is not None else "first at parent")
-        )
+        # print(
+        #     "Move to/after", (target.get_ident(False) if target is not None else "first at parent")
+        # )
         all_children = journey.all_children_by_id()
 
         if target is not None and self.item_type != target.item_type:
@@ -1017,7 +1041,7 @@ class JourneyItem(BaseModel):
                 target = target.children[0]
             target = all_children[target.parent_id]
 
-            print("Move to/after (children?)", target.title)
+            # print("Move to/after (children?)", target.title)
 
         ancestry = self.get_ancestry(
             journey
@@ -1049,11 +1073,21 @@ class JourneyItem(BaseModel):
         )
         target_parent = None
         # Get siblings ofself
-        siblings = [child for child in parent.children if child != self]
+        siblings = [child for child in parent.children if child.id != self.id]
+        sibling_ids = [child.id for child in siblings]
+        if self.after_id not in sibling_ids:
+            self.after_id = None
         # If self has siblings and one sibling is after self, set that sibling's after_id to self's after_id
-        for sibling in siblings:
+        for i, sibling in enumerate(siblings):
             if sibling.after_id == self.id:
-                sibling.after_id = self.after_id
+                if self.after_id == None:
+                    sibling.after_id = None
+                else:
+                    sibling.after_id = (
+                        self.after_id
+                        if self.after_id in sibling_ids
+                        else (sibling_ids[i - 1] if i > 0 else None)
+                    )
                 break
 
         if target is not None and self.item_type == target.item_type:
@@ -1127,11 +1161,14 @@ class JourneyItem(BaseModel):
                     sibling_order.append(sibling_id)
 
             # self.children.sort(key=lambda x: x.after_id)
-            if original_order != sibling_order:
+            if repr(original_order) != repr(sibling_order):
                 # print("Sorting children of", self.title)
-                # print("Original order:", original_order)
-                # print("New order:", sibling_order)
+                # print("Original order:", [id.split('-')[-1] for id in original_order])
+                # print("New order:     ", [id.split('-')[-1] for id in sibling_order])
                 self.children = [children_by_id[child_id] for child_id in sibling_order]
+                for i, child in enumerate(self.children):
+                    child.after_id = self.children[i - 1].id if i > 0 else None
+
             for child in self.children:
                 child.sort_children()
 

@@ -36,6 +36,14 @@ class JourneyProgressDataTable(Base):
     extras = sqla.Column(sqla.PickleType, default=None)
     chat_id = sqla.Column(sqla.String, default=None)
 
+    def __eq__(self, other):
+        if (
+            isinstance(other, JourneyProgressDataTable)
+            or type(other).__name__ == JourneyProgressDataTable.__name__
+        ):
+            return self.id == other.id
+        return False
+
     @classmethod
     def load_from_db(
         cls,
@@ -667,6 +675,14 @@ class JourneyItemProgress(BaseModel):
         description="Dictionary to store cached data related to the journey item. This field is ignored during serialization.",
         exclude=True,
     )
+
+    def __eq__(self, other):
+        if (
+            isinstance(other, JourneyItemProgress)
+            or type(other).__name__ == JourneyItemProgress.__name__
+        ):
+            return self.id == other.id
+        return False
 
     def reset_cache(self):
         self.cache = {}

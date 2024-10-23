@@ -16,6 +16,7 @@ class ActionSymbol(Enum):
     selected = "&#9673;"
     unselected = "&#9678;"
     up_down = "&#8597;"
+    above = "&#8613;"
     below = "&#8615;"
     image = "&#9968;"
     edit = "&#9881;"

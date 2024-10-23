@@ -8,6 +8,7 @@ from streamlit_extras.grid import grid
 import os
 import sys
 
+from admin.pages.journey_edit import assign_journey
 from admin.sidebar import get_image, init_sidebar
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -82,7 +83,7 @@ def edit_journey_item(
 
     with container:
         if not use_container:
-            st.write(journey_item.get_index(journey) + " " + journey_item.title)
+            st.subheader(((journey_item.get_index(journey) + " ") if JourneyItemType.JOURNEY != journey_item.item_type else "") + journey_item.title)
 
         if (
             JourneyItemType.JOURNEY == journey_item.item_type
@@ -119,7 +120,7 @@ def edit_journey_item(
             ]
             items = [all_children[id] for id in options]  # section_items
             titles = [
-                f"{all_children[id].get_index(journey)} - {all_children[id].title}{'' if len(all_children[id].children) > 0 else ' (empty)'}"
+                f"{all_children[id].get_index(journey)} {all_children[id].title}{'' if len(all_children[id].children) > 0 else ' (empty)'}"
                 for id in options
             ]  # section_items
 
@@ -169,7 +170,7 @@ def edit_journey_item(
             ]
             items = [all_children[id] for id in options]  # section_items
             titles = [
-                f"{all_children[id].get_index(journey)} - {all_children[id].title}"
+                f"{all_children[id].get_index(journey)} {all_children[id].title}"
                 for id in options
             ]  # section_items
 
@@ -183,7 +184,7 @@ def edit_journey_item(
                 > 1
             ):
                 journey_item_after_title = st.selectbox(
-                    "After",
+                    "Located after",
                     options=["[as first item]"] + titles,
                     index=(
                         options.index(journey_item.after_id) + 1
@@ -370,7 +371,7 @@ def edit_item(item: JourneyItem, journey: JourneyItem, show_children=False):
     if item.item_type != JourneyItemType.JOURNEY and item.parent_id:
         if st.button("Edit parent", key="edit_parent_"+item.parent_id):
             open_item(item.parent_id, journey)
-    if item.item_type == JourneyItemType.JOURNEY:
+    if item.item_type == JourneyItemType.JOURNEY and not st.session_state.get("journey_simple_edit", False):
         if st.button("Edit journey", key="edit_parent_"+journey.id):
             st.session_state["journey_edit_id"] = item.id
             del st.session_state["journey_edit_item_id"]
@@ -390,7 +391,7 @@ def edit_item(item: JourneyItem, journey: JourneyItem, show_children=False):
                 all_children,
                 relations,
                 items_filtered,
-                True,
+                not show_children,
                 True,
             )
 
@@ -463,9 +464,18 @@ def edit_item(item: JourneyItem, journey: JourneyItem, show_children=False):
             item.save_to_db()
             journey.reset_cache()
         # st.session_state.vote = {"item": item, "reason": feedback}
+        simple_journey_edit = st.session_state.get("journey_simple_edit", False)
+        if "journey_simple_edit" in st.session_state:
+            del st.session_state["journey_simple_edit"]
+
+
+        del st.session_state["journey_edit_id"]
         del st.session_state["journey_edit_item_id"]
         del st.session_state["journey_edit_item_show_children"]
-        st.switch_page("pages/journey_edit.py")
+        if not simple_journey_edit:
+            st.switch_page("pages/journey_edit.py")
+        else:
+            st.switch_page("pages/journey_simple_manage.py")
 
 
 def journey_edit():
@@ -500,7 +510,22 @@ async def main():
         st.switch_page("login.py")
         return
 
-    journey_edit()
+    simple_journey_edit = st.session_state.get("journey_simple_edit", False)
+    if simple_journey_edit:
+        tab1, tab2 = st.tabs(["Modify journey", "Assign to individual(s)"])
+    else:
+        tab1 = st.empty()
+
+    with tab1:
+        journey_edit()
+
+    if simple_journey_edit:
+        with tab2:
+            journey_id = st.query_params.get("journey") or st.session_state.get(
+                "journey_edit_id"
+            )
+            if journey_id:
+                assign_journey(journey_id)
 
 
 if __name__ == "__main__":

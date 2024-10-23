@@ -15,11 +15,12 @@ sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
 def get_theme(reset=False):
     theme = st.session_state.get("theme")
+    if theme and not reset:
+        return theme
+
     retry = st.session_state.get("theme_retry", 0)
     retry += 1
     st.session_state["theme_retry"] = retry
-
-    load_theme = False
 
     if theme is None or reset:
         try:
@@ -49,9 +50,6 @@ def get_theme(reset=False):
             "borderColor": "rgba(49, 51, 63, 0.2)",
             "borderColorLight": "rgba(49, 51, 63, 0.1)",
         }
-        st.session_state['theme_load_failed'] = True
-    else:
-        st.session_state['theme_load_failed'] = False
 
     st.session_state["theme"] = theme
 

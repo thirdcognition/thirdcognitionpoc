@@ -55,7 +55,7 @@ async def main():
             JourneyItem.get(journey_item=db_journey) for db_journey in db_journey_items
         ]
 
-        journey: JourneyItem
+        st.session_state["journey_simple_edit"] = False
         build_journey_cards(journeys, key_start="manage_")
     except Exception as e:
         print(e)

@@ -718,6 +718,8 @@ def assign_journey(journey: JourneyItem):
             user_id = user.id
             journey_item = JourneyItem.load_from_db(journey_id)
             JourneyProgressDataTable.from_journey_item(journey_item, user_id=user_id)
+
+        journey_item.reset_cache()
         st.success("Journeys assigned successfully.")
         st.rerun(scope="fragment")
 
@@ -735,6 +737,8 @@ def assign_journey(journey: JourneyItem):
         new_user = add_user(email=new_user_email, org_id=org_id)
         journey_item = JourneyItem.load_from_db(journey_id)
         JourneyProgressDataTable.from_journey_item(journey_item, user_id=new_user.id)
+        journey_item.reset_cache()
+
         st.success("New user created and journey assigned.")
         st.rerun(scope="fragment")
 
@@ -757,17 +761,19 @@ def journey_edit():
             st.session_state["journey_edit"] = None
             st.switch_page("pages/journey_simple_manage.py")
 
+        col1, col2, col3 = st.columns([0.15, 0.7, 0.15])
+
+        with col3:
+            if st.button("Done", use_container_width=True, type="primary"):
+                # print("donothing")
+                st.session_state["journey_edit"] = None
+                st.switch_page("pages/journey_simple_manage.py")
+
     with tab2:
         if journey:
             assign_journey(journey)
 
-    col1, col2, col3 = st.columns([0.15, 0.7, 0.15])
 
-    with col3:
-        if st.button("Done", use_container_width=True, type="primary"):
-            # print("donothing")
-            st.session_state["journey_edit"] = None
-            st.switch_page("pages/journey_simple_manage.py")
 
 
 async def main():

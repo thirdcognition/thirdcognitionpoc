@@ -289,7 +289,11 @@ class JourneyProgressDataTable(Base):
                 else (journey if journey_item_grand_parent_id == journey.id else None)
             )
             if grand_parent is not None and len(grand_parent.children) > 1:
-                parent_index = grand_parent.children.index(parent)
+                parent_index = next(
+                    index
+                    for index, child in enumerate(grand_parent.children)
+                    if child.id == parent.id
+                )
             else:
                 parent_index = 0
 

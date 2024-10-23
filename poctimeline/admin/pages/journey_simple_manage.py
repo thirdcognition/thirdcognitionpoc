@@ -39,6 +39,7 @@ This is an *extremely* cool admin tool!
 
 ## Symbols from https://www.w3schools.com/charsets/
 
+
 async def main():
     st.title("List of existing Journeys")
 
@@ -50,18 +51,26 @@ async def main():
     try:
         db_journey_items = get_all_journeys_from_db()
 
-        journeys = [JourneyItem.get(journey_item=db_journey) for db_journey in db_journey_items]
+        journeys = [
+            JourneyItem.get(journey_item=db_journey) for db_journey in db_journey_items
+        ]
 
         journey: JourneyItem
-        build_journey_cards(
-            journeys
-        )
+        build_journey_cards(journeys, key_start="manage_")
     except Exception as e:
         print(e)
         # st.write("No journeys available")
         build_journey_cards(
-            [{"title": "Create a new journey", "icon": "logo_4", "page": "journey_simple_create"}]
+            [
+                {
+                    "title": "Create a new journey",
+                    "icon": "logo_4",
+                    "page": "journey_simple_create",
+                }
+            ],
+            key_start="new_",
         )
+
 
 if __name__ == "__main__":
     import asyncio

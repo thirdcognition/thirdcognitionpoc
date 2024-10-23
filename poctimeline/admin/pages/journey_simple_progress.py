@@ -146,7 +146,7 @@ def write_section_module(
         if feedback and but.button("See feedback", key="view_feedback_" + item_id):
             see_feedback(journey_item, journey, feedback)
 
-
+@st.fragment
 def write_progress(
     item: JourneyItemProgress,
     journey_progress: JourneyItemProgress = None,
@@ -223,7 +223,7 @@ def write_progress(
             type="primary",
         ):
             item_state["open"] = not item_state["open"]
-            st.rerun()
+            st.rerun(scope="fragment")
         progress = item.get_progress()
         state = item.get_state()
         if JourneyItemProgressState.COMPLETED == state:

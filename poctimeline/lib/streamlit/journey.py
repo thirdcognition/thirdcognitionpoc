@@ -18,6 +18,14 @@ class ChildPosition(Enum):
     LAST = 3
 
 
+def open_item(item: JourneyItem, journey: JourneyItem, show_children=False):
+    st.session_state["journey_edit_item_id"] = item.id if isinstance(item, JourneyItem) else item
+    st.session_state["journey_edit_journey"] = journey.id if isinstance(journey, JourneyItem) else journey
+    st.session_state["journey_edit_item_show_children"] = show_children
+    st.switch_page("pages/journey_edit_item.py")
+
+    # edit_item(item, journey)
+
 @st.dialog("Change logo to...", width="large")
 def open_logo_dialog(item: JourneyItem, journey: JourneyItem):
     id_str = journey.id + "_" + item.id
@@ -70,6 +78,7 @@ def build_journey_cards(
     journey: JourneyItem = None,
     journey_progress: JourneyItemProgress = None,
     row_len=3,
+    key_start=""
 ):
     theme = get_theme()
     css_styles = [
@@ -189,7 +198,7 @@ def build_journey_cards(
         }""",
     ]
 
-    key = f"container_with_border_{hash(",".join([item.__getattribute__("id") if isinstance(item, BaseModel) else item["title"] for item in items]))}"
+    key = key_start + f"container_with_border_{hash(",".join([item.__getattribute__("id") if isinstance(item, BaseModel) else item["title"] for item in items]))}"
     styled_container = stylable_container(
         key=key, css_styles=css_styles
     )
@@ -201,7 +210,7 @@ def build_journey_cards(
             with card_grid.container(border=False):
                 if isinstance(item, BaseModel):
                     if JourneyItemType.JOURNEY != item.item_type:
-                        render_journey_item(item, journey, journey_progress)
+                        render_journey_item(item, journey, journey_progress, key=key_start)
                     else:
                         render_journey_card(item)
                 elif isinstance(item, dict):
@@ -209,7 +218,7 @@ def build_journey_cards(
 
 
 def render_journey_item(
-    item: JourneyItem, journey: JourneyItem, journey_progress: JourneyItemProgress
+    item: JourneyItem, journey: JourneyItem, journey_progress: JourneyItemProgress, key=""
 ):
     st.markdown(
         f"""
@@ -241,7 +250,7 @@ def render_journey_item(
     ):
         if st.button(
             "Start" if item.item_type == JourneyItemType.MODULE else "Open",
-            key=("start" if progress_item else "open")
+            key=key+("start" if progress_item else "open")
             + "_journey_"
             + journey.id
             + "_"
@@ -257,11 +266,13 @@ def render_journey_item(
             st.session_state["journey_view_id"] = journey.id
             st.session_state["journey_view_item_id"] = item.id
             st.session_state["journey_item_show_children"] = True
+            if journey_progress is not None:
+                st.session_state["journey_view_progress_id"] = journey_progress.id
             st.switch_page("pages/journey_view_item.py")
     else:
         if st.button(
             "Open",
-            key="continue_journey_"
+            key=key+"continue_journey_"
             + journey.id
             + "_"
             + item.id
@@ -273,6 +284,8 @@ def render_journey_item(
             st.session_state["journey_view_id"] = journey.id
             st.session_state["journey_view_item_id"] = item.id
             st.session_state["journey_item_show_children"] = True
+            if journey_progress is not None:
+                st.session_state["journey_view_progress_id"] = journey_progress.id
             st.switch_page("pages/journey_view_item.py")
 
 

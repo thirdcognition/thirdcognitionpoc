@@ -7,7 +7,11 @@ from streamlit_extras.stylable_container import stylable_container
 
 from admin.global_styles import get_theme
 from lib.helpers.shared import pretty_print
-from lib.models.journey_progress import JourneyItemProgress, JourneyItemProgressState, JourneyProgressDataTable
+from lib.models.journey_progress import (
+    JourneyItemProgress,
+    JourneyItemProgressState,
+    JourneyProgressDataTable,
+)
 from lib.streamlit.journey import build_journey_cards
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -113,6 +117,7 @@ def main():
                 build_journey_cards(
                     [journey.get_child_by_id(module_id) for module_id in matches],
                     journey,
+                    key_start="search_",
                 )
         else:
             st.write("No matches found")
@@ -150,7 +155,9 @@ def main():
                     all_children[item.journey_item_id] for item in cards[journey_id]
                 ]
                 # print(len(card_items))
-                build_journey_cards(card_items, journey, journey_progress)
+                build_journey_cards(
+                    card_items, journey, journey_progress, key_start="active_"
+                )
 
         st.divider()
 
@@ -207,6 +214,7 @@ def main():
             [all_children[module_id] for module_id in modules],
             journey,
             journey_progress,
+            key_start="next_",
         )
 
     else:

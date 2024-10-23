@@ -186,7 +186,7 @@ class JourneyDataTable(Base):
         )
 
         if db_journey_item is None:
-            # print("Create new db item", journey_item.template_id, journey_item.id)
+            # print("Create new db item", journey_item.get_ident(with_index=False))
             db_journey_item = JourneyDataTable(
                 id=journey_item.id,
                 journey_name=journey_item.title,
@@ -221,7 +221,7 @@ class JourneyDataTable(Base):
             session.add(db_journey_item)
 
         else:
-            # print("Update existing db item", journey_item.id)
+            # print("Update existing db item", journey_item.get_ident(with_index=False))
             db_journey_item.id = journey_item.id
             db_journey_item.journey_name = journey_item.title
             db_journey_item.journey_template_id = journey_item.template_id
@@ -259,7 +259,7 @@ class JourneyDataTable(Base):
 
         # Add the new JourneyDataTable item to the session and commit the changes
         if commit:
-            print("Save to db", journey_item.id)
+            # print("Save to db", journey_item.get_ident(with_index=False))
             # get_journey_data_from_db.cache_clear()
             session.commit()
 
@@ -579,6 +579,25 @@ class JourneyItem(BaseModel):
         if self.children and len(self.children) > 0:
             for child in self.children:
                 child.reset_cache()
+        get_journey_cache().clear()
+
+    def get_ident(self, with_index=True):
+        cache_key = "ident"
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+
+        parent_part = self.parent_id.split("-")[-1] if self.parent_id else "root"
+        id_part = self.id.split("-")[-1]
+
+        # Get the journey item
+        journey_title = (
+            f"{self.get_index() if with_index else ""} {self.title}"
+        ).ljust(25)[:25]
+
+        # Get the user's email
+        ident = f"{parent_part}-{id_part}:{journey_title}"
+        self.cache[cache_key] = ident
+        return ident
 
     @classmethod
     def create_new(cls, data: Dict[str, Any]) -> "JourneyItem":
@@ -638,7 +657,7 @@ class JourneyItem(BaseModel):
         )
 
     def add_child(self, item: "JourneyItem", index=0):
-        if index < 0 or index > len(self.children):
+        if index < 0 or index > len(self.children or []):
             raise IndexError("Index out of range")
 
         if index == len(self.children):
@@ -657,9 +676,12 @@ class JourneyItem(BaseModel):
         self.reset_cache()
 
     def remove_child(self, item: "JourneyItem"):
-        if item in self.children:
-            index = self.children.index(item)
-            self.children.remove(item)
+        index = next(
+            (i for i, child in enumerate(self.children) if child.id == item.id),
+            None,
+        )
+        if index is not None:
+            del self.children[index]
             item.parent_id = None
             item.after_id = None
 
@@ -893,7 +915,12 @@ class JourneyItem(BaseModel):
             root = self.get_root()
 
         journey_relations = root.get_relations(reset)
-        parent = journey_relations[self.id]
+
+        parent = (
+            journey_relations[self.id]
+            if self.id in journey_relations
+            else self.parent_id
+        )
         ancestry: list[str] = [parent]
         while parent is not None:
             # add parent to the beginning of the list and check its parent
@@ -908,31 +935,53 @@ class JourneyItem(BaseModel):
         self.cache["ancestry"] = ancestry
         return ancestry
 
-    def get_index(self, root: "JourneyItem", reset=False, as_str=True):
+    def get_index(self, root: "JourneyItem" = None, reset=False, as_str=True):
+        key = "journey_index" if as_str else "journey_index_arr"
+        if root is not None:
+            key = key + "_" + root.id
+        if key in self.cache and not reset:
+            return self.cache.get(key)
+
+        if root is None:
+            root = self.get_root()
         ancestry = self.get_ancestry(root, reset)
         all_items = root.all_children_by_id(reset)
 
         indexes = []
 
-        for i, ancestor in enumerate(ancestry):
+        for i, ancestor_id in enumerate(ancestry):
             if (i + 1) < len(ancestry):
-                if ancestor in all_items:
+                if ancestor_id in all_items:
                     indexes.append(
                         str(
-                            all_items[ancestor].children.index(
-                                all_items[ancestry[i + 1]]
+                            next(
+                                idx
+                                for idx, child in enumerate(
+                                    all_items[ancestor_id].children
+                                )
+                                if child.id == ancestry[i + 1]
                             )
                             + 1
                         )
                     )
                 else:
                     indexes.append(
-                        str(root.children.index(all_items[ancestry[i + 1]]) + 1)
+                        str(
+                            next(
+                                idx
+                                for idx, child in enumerate(root.children)
+                                if child.id == ancestry[i + 1]
+                            )
+                            + 1
+                        )
                     )
 
         if as_str:
-            return ".".join(indexes) + "."
+            ret_str = ".".join(indexes) + "."
+            self.cache[key] = ret_str
+            return ret_str
 
+        self.cache[key] = indexes
         return indexes
 
     # Remove item from journey and from database, resort journey afterwards.
@@ -1166,7 +1215,7 @@ class JourneyItem(BaseModel):
         session = user_db_get_session()
         self.reset_cache()
 
-        print("Save to db", self.id)
+        # print("Save to db", self.get_ident())
 
         return JourneyDataTable.from_journey_item(self, session)
 
@@ -1185,14 +1234,58 @@ class JourneyItem(BaseModel):
         if journey_item is not None:
             if journey_item.id not in get_journey_cache().keys():
                 get_journey_cache()[journey_item.id] = cls.from_db(journey_item)
-            return get_journey_cache()[journey_item.id]
+            return cls.reinit(get_journey_cache()[journey_item.id], journey_item.id)
         elif journey_id is not None:
             if journey_id not in get_journey_cache().keys():
                 journey: cls = cls.load_from_db(journey_id)
                 get_journey_cache()[journey_id] = journey
-            return get_journey_cache()[journey_id]
+            return cls.reinit(get_journey_cache()[journey_id], journey_id)
 
         raise ValueError("Either journey_item or journey_id must be defined")
+
+    @classmethod
+    def reinit(cls, item: "JourneyItem", key=None) -> "JourneyItem":
+        if isinstance(item, cls):
+            return item
+
+        children = (
+            [cls.reinit(child) for child in item.children] if item.children else None
+        )
+
+        new_item = cls(
+            id=item.id,
+            template_id=item.template_id,
+            parent_id=item.parent_id,
+            after_id=item.after_id,
+            references=item.references,
+            children=children,
+            use_guide=item.use_guide,
+            title=item.title,
+            icon=item.icon,
+            intro=item.intro,
+            summary=item.summary,
+            description=item.description,
+            content_instructions=(
+                item.content_instructions
+                if isinstance(item.content_instructions, ContentInstructions)
+                else ContentInstructions(
+                    role=item.content_instructions.role,
+                    instructions=item.content_instructions.instructions,
+                )
+            ),
+            content=item.content,
+            test=item.test,
+            action=item.action,
+            end_of_day=item.end_of_day or 0,
+            item_type=JourneyItemType(
+                item.item_type
+            ),  # Assuming item_type is already a JourneyItemType
+            cache=item.cache,
+        )
+
+        if key:
+            get_journey_cache()[key] = new_item
+        return new_item
 
 
 # The rest of the code remains the same as it is not part of the requested edit.

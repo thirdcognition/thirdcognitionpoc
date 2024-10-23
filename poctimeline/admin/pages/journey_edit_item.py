@@ -14,6 +14,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
 from lib.streamlit.journey import (
+    open_item,
     open_logo_dialog,
 )
 from lib.models.journey import (
@@ -58,7 +59,6 @@ def get_stylable_container_selector(id):
     return f'div[data-testid="stVerticalBlock"]:has(> div.element-container > div.stMarkdown > div[data-testid="stMarkdownContainer"] > p > span.{id})'
 
 
-@st.fragment
 def edit_journey_item(
     journey_item: JourneyItem,
     journey: JourneyItem,
@@ -82,7 +82,7 @@ def edit_journey_item(
 
     with container:
         if not use_container:
-            st.write(journey_item.get_index(journey) + " - " + journey_item.title)
+            st.write(journey_item.get_index(journey) + " " + journey_item.title)
 
         if (
             JourneyItemType.JOURNEY == journey_item.item_type
@@ -148,7 +148,7 @@ def edit_journey_item(
                 )
                 journey_item.move(all_children[new_id], journey)
                 journey.save_to_db()
-                st.rerun(scope="fragment")
+                # st.rerun(scope="fragment")
                 # st.rerun()
             # except Exception as e:
             #     st.error("Failed to set:" + e)
@@ -207,7 +207,7 @@ def edit_journey_item(
                         )
                         journey_item.move(None, journey)
                         journey.save_to_db()
-                        st.rerun(scope="fragment")
+                        # st.rerun(scope="fragment")
                 else:
                     # try:
                     new_id = items[titles.index(journey_item_after_title)].id
@@ -222,12 +222,12 @@ def edit_journey_item(
                         )
                         journey_item.move(all_children[new_id], journey)
                         journey.save_to_db()
-                        st.rerun(scope="fragment")
+                        # st.rerun(scope="fragment")
                         # st.rerun(scope="fragment")
                 # except Exception as e:
                 #     st.error("Failed to set:" + repr(e))
 
-        new_title = st.text_input("Title", value=journey_item.title)
+        new_title = st.text_input("Title", value=journey_item.title, key="title_"+id_str)
         if new_title.strip() != journey_item.title.strip():
             changes.append(
                 (
@@ -261,7 +261,7 @@ def edit_journey_item(
             )
             journey_item.description = description.strip()
             journey_item.save_to_db()
-            st.rerun(scope="fragment")
+            # st.rerun(scope="fragment")
         # journey_item.test = st.text_area("Test", value=journey_item.test, key = "test_"+id_str)
         action = st.text_input(
             "Action", value=journey_item.action, key="action_" + id_str
@@ -277,39 +277,51 @@ def edit_journey_item(
             )
             journey_item.action = action
             journey_item.save_to_db()
-            st.rerun(scope="fragment")
+            # st.rerun(scope="fragment")
 
-        if JourneyItemType.ACTION == journey_item.item_type:
-            new_eod = st.number_input(
-                "Done by end of day #",
-                help="Will only affect new journeys",
-                value=journey_item.end_of_day,
-                key="eod_" + id_str,
+        # if JourneyItemType.ACTION == journey_item.item_type:
+        #     new_eod = st.number_input(
+        #         "Done by end of day #",
+        #         help="Will only affect new journeys",
+        #         value=journey_item.end_of_day,
+        #         key="eod_" + id_str,
+        #     )
+        #     if new_eod != journey_item.end_of_day:
+        #         changes.append(
+        #             (
+        #                 journey_item.title,
+        #                 "Change eod to: " + str(new_eod),
+        #                 journey_item.end_of_day,
+        #                 new_eod,
+        #             )
+        #         )
+        #         journey_item.end_of_day = new_eod
+        #         journey.update_eod()
+        #         journey.save_to_db()
+        #         st.rerun(scope="fragment")
+
+        edit_col, _, remove_col = st.columns([0.2, 0.6, 0.2])
+        if as_children and journey_item.item_type not in [JourneyItemType.ACTION] and edit_col.button(
+            f"Edit children",
+            key=f"open_button_{journey_item.id}",
+            use_container_width=True,
+        ):
+            open_item(
+                journey_item,
+                journey,
+                JourneyItemType.MODULE == journey_item.item_type,
             )
-            if new_eod != journey_item.end_of_day:
-                changes.append(
-                    (
-                        journey_item.title,
-                        "Change eod to: " + str(new_eod),
-                        journey_item.end_of_day,
-                        new_eod,
-                    )
-                )
-                journey_item.end_of_day = new_eod
-                journey.update_eod()
-                journey.save_to_db()
-                st.rerun(scope="fragment")
 
-        _, but_col = st.columns([0.8, 0.2])
-        with but_col.popover("Remove item", use_container_width=True):
+        with remove_col.popover("Remove item", use_container_width=True):
             if st.button(
                 f"Are you sure you want to remove:\n\n{journey_item.title}?",
                 key=f"delete_button_{journey_item.id}",
                 use_container_width=True,
             ):
-                parent = all_children[journey_item.parent_id]
+                parent:JourneyItem = all_children[journey_item.parent_id]
                 parent.remove_child(journey_item)
-                journey.save_to_db()
+                parent.save_to_db()
+                journey.reset_cache()
                 st.rerun()
 
         # ancestor.item_type = st.selectbox(
@@ -321,7 +333,7 @@ def edit_journey_item(
 
 @st.fragment
 def edit_item(item: JourneyItem, journey: JourneyItem, show_children=False):
-    all_children = journey.all_children_by_id()
+    all_children = journey.all_children_by_id(reset=True)
     relations = journey.get_relations()
     # ancestry = item.get_ancestry(journey)
     items_filtered = {
@@ -355,11 +367,21 @@ def edit_item(item: JourneyItem, journey: JourneyItem, show_children=False):
     #     ):
     #         continue
 
+    if item.item_type != JourneyItemType.JOURNEY and item.parent_id:
+        if st.button("Edit parent", key="edit_parent_"+item.parent_id):
+            open_item(item.parent_id, journey)
+    if item.item_type == JourneyItemType.JOURNEY:
+        if st.button("Edit journey", key="edit_parent_"+journey.id):
+            st.session_state["journey_edit_id"] = item.id
+            del st.session_state["journey_edit_item_id"]
+            del st.session_state["journey_edit_item_show_children"]
+            st.switch_page("pages/journey_edit.py")
+
     changes += edit_journey_item(
         item, journey, item.id, all_children, relations, items_filtered, False
     )
 
-    if show_children:
+    if item.children:
         for child in item.children:
             changes += edit_journey_item(
                 child,
@@ -375,7 +397,7 @@ def edit_item(item: JourneyItem, journey: JourneyItem, show_children=False):
     with st.container(border=True):
         st.write("Add children")
 
-        options = [child.id for child in item.children]
+        options = [child.id for child in item.children] if item.children else []
         titles = [
             f"{all_children[id].get_index(journey)} - {all_children[id].title}"
             for id in options
@@ -425,12 +447,10 @@ def edit_item(item: JourneyItem, journey: JourneyItem, show_children=False):
     _, save_col = st.columns([0.8, 0.2])
 
     if len(changes) > 0:
-        print("changes", changes)
-
         for change in changes:
             st.toast(f"For {change[0]} update: {change[1]}")
 
-        # st.rerun()
+        st.rerun(scope="fragment")
 
     if save_col.button(
         "Done",
@@ -441,6 +461,7 @@ def edit_item(item: JourneyItem, journey: JourneyItem, show_children=False):
     ):
         if changes:
             item.save_to_db()
+            journey.reset_cache()
         # st.session_state.vote = {"item": item, "reason": feedback}
         del st.session_state["journey_edit_item_id"]
         del st.session_state["journey_edit_item_show_children"]
@@ -461,6 +482,10 @@ def journey_edit():
     if journey_item_id is not None:
         journey = JourneyItem.get(journey_id=journey_id)
         item = journey.get_child_by_id(journey_item_id)
+
+        if item is None:
+            st.error("Unable to find item")
+            return
 
         st.title(f"Modify {item.item_type.name.capitalize()} {item.get_index(journey)}")
 

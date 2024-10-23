@@ -11,7 +11,7 @@ from lib.db.sqlite import Base
 from lib.helpers.shared import pretty_print
 from lib.load_env import SETTINGS
 from lib.models.journey import JourneyItem, JourneyItemType, get_journey_cache
-from lib.models.user import user_db_get_session
+from lib.models.user import get_db_user, user_db_get_session
 
 
 class JourneyProgressDataTable(Base):
@@ -669,8 +669,10 @@ class JourneyItemProgress(BaseModel):
         if self.children and len(self.children) > 0:
             for child in self.children:
                 child.reset_cache()
+        get_journey_cache().clear()
 
     def get_state(self) -> JourneyItemProgressState:
+        # print(f"{self.get_ident()} {self.completed_at=} {self.started_at=}")
         if self.completed_at is not None:
             return JourneyItemProgressState.COMPLETED
         elif self.started_at is not None:
@@ -750,9 +752,7 @@ class JourneyItemProgress(BaseModel):
                         for child in ancestor.children
                     )
                     if len(ancestor.children) == 1 or all_children_completed:
-                        ancestor.complete(
-                            session=session, commit=False, solo=True
-                        )
+                        ancestor.complete(session=session, commit=False, solo=True)
                 if ancestor == root.id:
                     all_children_completed = all(
                         child.get_state() == JourneyItemProgressState.COMPLETED
@@ -785,6 +785,42 @@ class JourneyItemProgress(BaseModel):
         return due_date
 
     @classmethod
+    def reinit(cls, item: "JourneyItemProgress", key=None) -> "JourneyItemProgress":
+        if isinstance(item, cls):
+            return item
+
+        children = (
+            [cls.reinit(child) for child in item.children] if item.children else None
+        )
+
+        new_item = cls(
+            id=item.id,
+            parent_id=item.parent_id,
+            journey_id=item.journey_id,
+            journey_item_id=item.journey_item_id,
+            journey_item_parent_id=item.journey_item_parent_id,
+            item_type=JourneyItemType(item.item_type),
+            user_id=item.user_id,
+            assigned_at=item.assigned_at,
+            started_at=item.started_at,
+            completed_at=item.completed_at,
+            end_of_day=item.end_of_day or 0,
+            due_at=item.due_at,
+            length_in_days=item.length_in_days,
+            test_results=item.test_results,
+            extras=item.extras,
+            chat_id=item.chat_id,
+            children=children,
+            disabled=item.disabled or False,
+            removed=item.removed or False,
+        )
+
+        if key:
+            get_journey_cache()[key] = new_item
+
+        return new_item
+
+    @classmethod
     def from_db(
         cls, item: JourneyProgressDataTable = None, id=None, session=None, reset=False
     ) -> "JourneyItemProgress":
@@ -798,7 +834,7 @@ class JourneyItemProgress(BaseModel):
         # Use Streamlit's session_state for caching
         cache_key = f"journey_item_progress_{id}"
         if cache_key in get_journey_cache() and not reset:
-            return get_journey_cache()[cache_key]
+            return cls.reinit(get_journey_cache()[cache_key], cache_key)
 
         session = user_db_get_session()
         if item is None and id is not None:
@@ -865,6 +901,7 @@ class JourneyItemProgress(BaseModel):
         progress_item: JourneyProgressDataTable = None,
         progress_id: str = None,
         journey_item_id: str = None,
+        user_id: str = None,
         reset=False,
     ) -> "JourneyItemProgress":
         if reset:
@@ -873,9 +910,11 @@ class JourneyItemProgress(BaseModel):
         if progress_item is not None:
             progress_id = progress_item.id
 
-        if journey_item_id is not None:
+        if journey_item_id is not None and progress_id is None:
+            if user_id is None:
+                raise ValueError("User id is required with journey_item_id")
             journey_progress = JourneyProgressDataTable.load_from_db(
-                journey_item_id=journey_item_id
+                journey_item_id=journey_item_id, user_id=user_id
             )
             progress_id = journey_progress.id
 
@@ -884,7 +923,7 @@ class JourneyItemProgress(BaseModel):
                 journey_progress = cls.from_db(id=progress_id)
                 get_journey_cache()[progress_id] = journey_progress
 
-            return get_journey_cache()[progress_id]
+            return cls.reinit(get_journey_cache()[progress_id], progress_id)
 
         raise ValueError("Either progress_item or progress_id must be defined")
 
@@ -951,6 +990,30 @@ class JourneyItemProgress(BaseModel):
 
         return changes, result
 
+    def get_ident(self):
+        cache_key = "ident"
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+
+        parent_part = self.parent_id.split("-")[-1] if self.parent_id else "root"
+        id_part = self.id.split("-")[-1]
+
+        # Get the journey item
+        journey_item = JourneyItem.get(journey_id=self.journey_item_id)
+        journey_title = (
+            f"{journey_item.get_index()} {journey_item.title}"
+            if journey_item
+            else "Unknown"
+        ).ljust(25)[:25]
+
+        # Get the user's email
+        user = get_db_user(id=self.user_id)  # Assuming this method is defined
+        ident = (
+            f" ({user.email if user else ""}) {parent_part}-{id_part}:{journey_title}"
+        )
+        self.cache[cache_key] = ident
+        return ident
+
     def get_progress(self) -> float:
         if not self.children:
             if self.get_state() == JourneyItemProgressState.COMPLETED:
@@ -959,12 +1022,15 @@ class JourneyItemProgress(BaseModel):
                 return 0.0
         else:
             total_progress = 0.0
-            total_length = 0.0
+            # total_length = 0.0
+            child_len = len(self.children)
             for child in self.children:
                 child_progress = child.get_progress()
-                total_progress += child_progress * child.length_in_days
-                total_length += child.length_in_days
-            return total_progress / total_length if total_length > 0 else 0.0
+                total_progress += child_progress / child_len  # child.length_in_days
+                # total_length += child.length_in_days
+            # print(f"{"\n\n" if self.parent_id is None else ""}{self.get_ident()} - {child_len=} {total_progress=}")
+            return total_progress
+            # return total_progress / total_length if total_length > 0 else 0.0
 
     def flatten(
         self,

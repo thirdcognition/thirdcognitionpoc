@@ -411,7 +411,7 @@ def journey_progress(journey: JourneyItem, user_id=None):
 async def main():
     st.title("Journey progress")
 
-    if init_sidebar(UserLevel.org_admin) != AuthStatus.LOGGED_IN:
+    if init_sidebar(UserLevel.user) != AuthStatus.LOGGED_IN:
         st.switch_page("login.py")
         return
 

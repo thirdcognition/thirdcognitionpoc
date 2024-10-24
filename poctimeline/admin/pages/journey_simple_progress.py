@@ -412,7 +412,7 @@ async def main():
     user_level = check_auth_level()
     user_id = None
 
-    if UserLevel.user == user_level or True:
+    if UserLevel.user == user_level:
         user = get_db_user(st.session_state["username"])
         user_id = user.id
         my_journey_progress = JourneyProgressDataTable.load_all_from_db(

@@ -70,6 +70,7 @@ def main():
     my_active_modules = JourneyProgressDataTable.load_all_from_db(
         user_id=user.id, item_type=JourneyItemType.MODULE, started=True, completed=False
     )
+    my_active_modules = [module for module in my_active_modules if module.completed_at is None]
 
     # my_journeys = []
 
@@ -167,7 +168,7 @@ def main():
     # journey = st.session_state.get("active_journey", journeys[0])
     if len(my_journey_progress) > 0:
         st.subheader(
-            "Next modules" if len(my_active_modules) > 0 else "Choose your first module"
+            "Next modules" if len(my_active_modules) > 0 else "Choose your module"
         )
         if len(journeys) > 1:
             journey_titles = [journey.title for journey in journeys]

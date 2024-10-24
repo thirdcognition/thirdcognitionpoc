@@ -62,11 +62,12 @@ def get_stylable_container_selector(id):
 
 def run_complete(journey_item_progress: JourneyItemProgress, feedback):
     journey_item_progress.complete(feedback=feedback if feedback else None)
-    parent_progress = journey_item_progress.get(
-        progress_id=journey_item_progress.parent_id
-    )
-    if parent_progress.get_progress() == 1.0:
-        st.switch_page("pages/my_journeys.py")
+    # parent_progress = journey_item_progress.get(
+    #     progress_id=journey_item_progress.parent_id
+    # )
+    st.rerun()
+    # if parent_progress.get_progress() == 1.0:
+    #     st.switch_page("pages/my_journeys.py")
 
 
 @st.dialog("Confirm completion")
@@ -240,6 +241,16 @@ def view_modules_items(
         type="primary",
         key="save_button_" + id_str,
     ):
+        journey_item_progress = (
+            JourneyItemProgress.get(
+                journey_item_id=item.id,
+                user_id=get_db_user(email=st.session_state.get("username")).id,
+            )
+            if journey_progress is None
+            else journey_progress.get_by_journey_item(item)
+        )
+        if journey_item_progress.get_state() == JourneyItemProgressState.COMPLETED:
+            journey_item_progress.complete(solo=True)
         if changes:
             item.save_to_db()
         # st.session_state.vote = {"item": item, "reason": feedback}

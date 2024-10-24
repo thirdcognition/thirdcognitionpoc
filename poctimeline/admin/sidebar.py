@@ -45,31 +45,6 @@ def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous, login_containe
     #     st.logo(get_image("logo-white", ""))
 
     with st.sidebar:
-        st.markdown(
-            """<style>
-        div[data-testid=stVerticalBlock]:has(div[data-testid=stPageLink]) {
-            display: block;
-            text-align: left;
-            color: inherit;
-            text-decoration: none;
-            background-color: unset;
-            border: none;
-            padding-top: 0;
-            padding-bottom: 0;
-            margin: .5rem 0 .5rem;
-        }
-        div[data-testid=stPageLink]:active {
-            text-decoration: underline;
-            background-color: unset;
-            color: inherit;
-        }
-        div[data-testid=stPageLink]:disabled {
-            border: none;
-            cursor: auto !important;
-        }
-        </style>""",
-            unsafe_allow_html=True,
-        )
         menu_items = st.empty()
 
     auth_valid = check_auth(

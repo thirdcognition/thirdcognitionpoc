@@ -129,7 +129,7 @@ def manage_organizations():
             if st.button("Save") and new_org_name != user_org.organization_name:
                 set_org_name(user_org.id, new_org_name)
                 st.success("Organization name updated successfully!")
-                get_user_org(reset=True)
+                # get_user_org(st.session_state["username"],  reset=True)
                 st.rerun()
 
 

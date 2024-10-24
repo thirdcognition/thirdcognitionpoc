@@ -8,13 +8,14 @@ from streamlit_extras.grid import grid
 import os
 import sys
 
-from admin.pages.journey_edit import assign_journey
+# from admin.pages.journey_edit import assign_journey
 from admin.sidebar import get_image, init_sidebar
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
 from lib.streamlit.journey import (
+    assign_journey,
     open_item,
     open_logo_dialog,
 )
@@ -85,11 +86,12 @@ def edit_journey_item(
         if not use_container:
             st.subheader(((journey_item.get_index(journey) + " ") if JourneyItemType.JOURNEY != journey_item.item_type else "") + journey_item.title)
 
+
         if (
             JourneyItemType.JOURNEY == journey_item.item_type
             or JourneyItemType.MODULE == journey_item.item_type
         ):
-            _, image_col, _ = st.columns([0.3, 0.4, 0.3])
+            image_col, container = st.columns([0.25,0.75])
 
             image_col.image(
                 get_image(journey_item.icon, "icon_files"),
@@ -101,244 +103,248 @@ def edit_journey_item(
                 key=f"journey_process_change_item_image_{journey_item.id}",
             ):
                 open_logo_dialog(journey_item, journey)
+        else:
+            container = st.container()
 
-        if (
-            JourneyItemType.JOURNEY != journey_item.item_type
-            and JourneyItemType.SECTION != journey_item.item_type
-            and not as_children
-        ):
-            if JourneyItemType.MODULE == journey_item.item_type:
-                sel_options = items_filtered["section"]
-            else:
-                sel_options = items_filtered["module"]
+        with container:
+            if (
+                JourneyItemType.JOURNEY != journey_item.item_type
+                and JourneyItemType.SECTION != journey_item.item_type
+                and not as_children
+            ):
+                if JourneyItemType.MODULE == journey_item.item_type:
+                    sel_options = items_filtered["section"]
+                else:
+                    sel_options = items_filtered["module"]
 
-            options = [
-                id[0]
-                for id in sel_options
-                if id[1] == all_children[journey_item.parent_id].parent_id
-                and journey_item.id != id[0]
-            ]
-            items = [all_children[id] for id in options]  # section_items
-            titles = [
-                f"{all_children[id].get_index(journey)} {all_children[id].title}{'' if len(all_children[id].children) > 0 else ' (empty)'}"
-                for id in options
-            ]  # section_items
+                options = [
+                    id[0]
+                    for id in sel_options
+                    if id[1] == all_children[journey_item.parent_id].parent_id
+                    and journey_item.id != id[0]
+                ]
+                items = [all_children[id] for id in options]  # section_items
+                titles = [
+                    f"{all_children[id].get_index(journey)} {all_children[id].title}{'' if len(all_children[id].children) > 0 else ' (empty)'}"
+                    for id in options
+                ]  # section_items
 
-            journey_item_parent_title = st.selectbox(
-                "Parent",
-                options=titles,
-                index=(
-                    options.index(journey_item.parent_id)
-                    if journey_item.parent_id in options
-                    else None
-                ),
-                key="parent_" + id_str,
-            )
+                journey_item_parent_title = st.selectbox(
+                    JourneyItemType.previous(journey_item.item_type).value.capitalize(),  #"Parent",
+                    options=titles,
+                    index=(
+                        options.index(journey_item.parent_id)
+                        if journey_item.parent_id in options
+                        else None
+                    ),
+                    key="parent_" + id_str,
+                )
 
-            # try:
-            new_id = items[titles.index(journey_item_parent_title)].id
-            if new_id != journey_item.parent_id:
-                # journey_item.parent_id = new_id
+                # try:
+                new_id = items[titles.index(journey_item_parent_title)].id
+                if new_id != journey_item.parent_id:
+                    # journey_item.parent_id = new_id
+                    changes.append(
+                        (
+                            journey_item.title,
+                            f"Set {JourneyItemType.previous(journey_item.item_type).value} as: {all_children[new_id].title}",
+                            journey_item.parent_id,
+                            new_id,
+                        )
+                    )
+                    journey_item.move(all_children[new_id], journey)
+                    journey.save_to_db()
+                    # st.rerun(scope="fragment")
+                    # st.rerun()
+                # except Exception as e:
+                #     st.error("Failed to set:" + e)
+                # journey_item.parent_id = None
+
+            if JourneyItemType.JOURNEY != journey_item.item_type:
+                if JourneyItemType.SECTION == journey_item.item_type:
+                    sel_options = items_filtered["section"]
+                elif JourneyItemType.MODULE == journey_item.item_type:
+                    sel_options = items_filtered["module"]
+                else:
+                    sel_options = items_filtered["action"]
+
+                options = [
+                    id[0]
+                    for id in sel_options
+                    if id[1] == journey_item.parent_id and journey_item.id != id[0]
+                ]
+                items = [all_children[id] for id in options]  # section_items
+                titles = [
+                    f"{all_children[id].get_index(journey)} {all_children[id].title}"
+                    for id in options
+                ]  # section_items
+
+                if (
+                    journey_item.id in relations.keys()
+                    and len(
+                        all_children[relations[journey_item.id]].children
+                        if relations[journey_item.id] in all_children
+                        else journey.children
+                    )
+                    > 1
+                ):
+                    col1, col2 = st.columns([0.85, 0.15], vertical_alignment="bottom")
+                    # print(journey_item.after_id in options, journey_item.id in options, journey_item.after_id.split('-')[-1] if journey_item.after_id else None, journey_item.id.split('-')[-1])
+                    # if journey_item.after_id not in options and journey_item.id in options:
+                    #     after_index = options.index(journey_item.id) - 1
+                    #     journey_item.after_id = options[after_index] if after_index > 0 else None
+                    #     print("Index", after_index)
+
+                    journey_item_after_title = col1.selectbox(
+                        "Located after",
+                        options=["[as first item]"] + titles,
+                        index=(
+                            options.index(journey_item.after_id) + 1
+                            if journey_item.after_id in options
+                            and journey_item.after_id is not None
+                            else 0
+                        ),
+                        key="after_" + id_str,
+                    )
+
+                    if col2.button("Move", key="move_after_"+id_str ,use_container_width=True):
+                        if journey_item_after_title == "[as first item]":
+                            if journey_item.after_id is not None:
+                                changes.append(
+                                    (
+                                        journey_item.title,
+                                        "Move to first",
+                                        all_children[journey_item.after_id].title if journey_item.after_id in all_children.keys() else "None",
+                                        None,
+                                        titles,
+                                    )
+                                )
+                                journey_item.move(None, journey)
+                                journey.save_to_db()
+                                st.rerun()
+                            else:
+                                print("No after_id found for "+journey_item.get_ident(with_index=False))
+                        else:
+                            # try:
+                            new_id = items[titles.index(journey_item_after_title)].id
+                            if new_id != journey_item.after_id:
+                                changes.append(
+                                    (
+                                        journey_item.title,
+                                        "Move after: " + all_children[new_id].title,
+                                        journey_item.after_id,
+                                        new_id,
+                                    )
+                                )
+                                journey_item.move(all_children[new_id], journey)
+                                journey.save_to_db()
+                                st.rerun()
+                                    # st.rerun(scope="fragment")
+                                    # st.rerun(scope="fragment")
+                        # except Exception as e:
+                    #     st.error("Failed to set:" + repr(e))
+
+            new_title = st.text_input("Title", value=journey_item.title, key="title_"+id_str)
+            if new_title.strip() != journey_item.title.strip():
                 changes.append(
                     (
                         journey_item.title,
-                        f"Set parent as: {all_children[new_id].title}",
-                        journey_item.parent_id,
-                        new_id,
+                        "Change title to: " + new_title,
+                        journey_item.title,
+                        new_title,
                     )
                 )
-                journey_item.move(all_children[new_id], journey)
-                journey.save_to_db()
+                journey_item.title = new_title.strip()
+                journey_item.save_to_db()
+
+            # # journey_item.icon = st.text_input("Icon", value=journey_item.icon, key = "icon_"+id_str)
+            # # journey_item.intro = st.text_area("Introduction", value=journey_item.intro, key = "intro_"+id_str)
+            # # journey_item.summary = st.text_area("Summary", value=journey_item.summary, key = "summary_"+id_str)
+
+            description = st.text_area(
+                "Description",
+                value=journey_item.description,
+                key="description_" + id_str,
+                height=300 if JourneyItemType.ACTION == journey_item.item_type else 30,
+            )
+            if (description or "").strip() != (journey_item.description or "").strip():
+                changes.append(
+                    (
+                        journey_item.title,
+                        "Change description to: " + description,
+                        journey_item.description,
+                        description,
+                    )
+                )
+                journey_item.description = description.strip()
+                journey_item.save_to_db()
                 # st.rerun(scope="fragment")
-                # st.rerun()
-            # except Exception as e:
-            #     st.error("Failed to set:" + e)
-            # journey_item.parent_id = None
-
-        if JourneyItemType.JOURNEY != journey_item.item_type:
-            if JourneyItemType.SECTION == journey_item.item_type:
-                sel_options = items_filtered["section"]
-            elif JourneyItemType.MODULE == journey_item.item_type:
-                sel_options = items_filtered["module"]
-            else:
-                sel_options = items_filtered["action"]
-
-            options = [
-                id[0]
-                for id in sel_options
-                if id[1] == journey_item.parent_id and journey_item.id != id[0]
-            ]
-            items = [all_children[id] for id in options]  # section_items
-            titles = [
-                f"{all_children[id].get_index(journey)} {all_children[id].title}"
-                for id in options
-            ]  # section_items
-
-            if (
-                journey_item.id in relations.keys()
-                and len(
-                    all_children[relations[journey_item.id]].children
-                    if relations[journey_item.id] in all_children
-                    else journey.children
+            # journey_item.test = st.text_area("Test", value=journey_item.test, key = "test_"+id_str)
+            if JourneyItemType.ACTION == journey_item.item_type:
+                action = st.text_input(
+                    "Action", value=journey_item.action, key="action_" + id_str
                 )
-                > 1
-            ):
-                col1, col2 = st.columns([0.85, 0.15], vertical_alignment="bottom")
-                # print(journey_item.after_id in options, journey_item.id in options, journey_item.after_id.split('-')[-1] if journey_item.after_id else None, journey_item.id.split('-')[-1])
-                # if journey_item.after_id not in options and journey_item.id in options:
-                #     after_index = options.index(journey_item.id) - 1
-                #     journey_item.after_id = options[after_index] if after_index > 0 else None
-                #     print("Index", after_index)
+                if (action or "").strip() != (journey_item.action or "").strip():
+                    changes.append(
+                        (
+                            journey_item.title,
+                            "Change action to: " + action,
+                            journey_item.action,
+                            action,
+                        )
+                    )
+                    journey_item.action = action
+                    journey_item.save_to_db()
+                    # st.rerun(scope="fragment")
 
-                journey_item_after_title = col1.selectbox(
-                    "Located after",
-                    options=["[as first item]"] + titles,
-                    index=(
-                        options.index(journey_item.after_id) + 1
-                        if journey_item.after_id in options
-                        and journey_item.after_id is not None
-                        else 0
-                    ),
-                    key="after_" + id_str,
-                )
+            # if JourneyItemType.ACTION == journey_item.item_type:
+            #     new_eod = st.number_input(
+            #         "Done by end of day #",
+            #         help="Will only affect new journeys",
+            #         value=journey_item.end_of_day,
+            #         key="eod_" + id_str,
+            #     )
+            #     if new_eod != journey_item.end_of_day:
+            #         changes.append(
+            #             (
+            #                 journey_item.title,
+            #                 "Change eod to: " + str(new_eod),
+            #                 journey_item.end_of_day,
+            #                 new_eod,
+            #             )
+            #         )
+            #         journey_item.end_of_day = new_eod
+            #         journey.update_eod()
+            #         journey.save_to_db()
+            #         st.rerun(scope="fragment")
 
-                if col2.button("Move", key="move_after_"+id_str ,use_container_width=True):
-                    if journey_item_after_title == "[as first item]":
-                        if journey_item.after_id is not None:
-                            changes.append(
-                                (
-                                    journey_item.title,
-                                    "Move to first",
-                                    all_children[journey_item.after_id].title if journey_item.after_id in all_children.keys() else "None",
-                                    None,
-                                    titles,
-                                )
-                            )
-                            journey_item.move(None, journey)
-                            journey.save_to_db()
-                            st.rerun()
-                        else:
-                            print("No after_id found for "+journey_item.get_ident(with_index=False))
-                    else:
-                        # try:
-                        new_id = items[titles.index(journey_item_after_title)].id
-                        if new_id != journey_item.after_id:
-                            changes.append(
-                                (
-                                    journey_item.title,
-                                    "Move after: " + all_children[new_id].title,
-                                    journey_item.after_id,
-                                    new_id,
-                                )
-                            )
-                            journey_item.move(all_children[new_id], journey)
-                            journey.save_to_db()
-                            st.rerun()
-                                # st.rerun(scope="fragment")
-                                # st.rerun(scope="fragment")
-                    # except Exception as e:
-                #     st.error("Failed to set:" + repr(e))
-
-        new_title = st.text_input("Title", value=journey_item.title, key="title_"+id_str)
-        if new_title.strip() != journey_item.title.strip():
-            changes.append(
-                (
-                    journey_item.title,
-                    "Change title to: " + new_title,
-                    journey_item.title,
-                    new_title,
-                )
-            )
-            journey_item.title = new_title.strip()
-            journey_item.save_to_db()
-
-        # # journey_item.icon = st.text_input("Icon", value=journey_item.icon, key = "icon_"+id_str)
-        # # journey_item.intro = st.text_area("Introduction", value=journey_item.intro, key = "intro_"+id_str)
-        # # journey_item.summary = st.text_area("Summary", value=journey_item.summary, key = "summary_"+id_str)
-
-        description = st.text_area(
-            "Description",
-            value=journey_item.description,
-            key="description_" + id_str,
-            height=300 if JourneyItemType.ACTION == journey_item.item_type else 30,
-        )
-        if (description or "").strip() != (journey_item.description or "").strip():
-            changes.append(
-                (
-                    journey_item.title,
-                    "Change description to: " + description,
-                    journey_item.description,
-                    description,
-                )
-            )
-            journey_item.description = description.strip()
-            journey_item.save_to_db()
-            # st.rerun(scope="fragment")
-        # journey_item.test = st.text_area("Test", value=journey_item.test, key = "test_"+id_str)
-        action = st.text_input(
-            "Action", value=journey_item.action, key="action_" + id_str
-        )
-        if (action or "").strip() != (journey_item.action or "").strip():
-            changes.append(
-                (
-                    journey_item.title,
-                    "Change action to: " + action,
-                    journey_item.action,
-                    action,
-                )
-            )
-            journey_item.action = action
-            journey_item.save_to_db()
-            # st.rerun(scope="fragment")
-
-        # if JourneyItemType.ACTION == journey_item.item_type:
-        #     new_eod = st.number_input(
-        #         "Done by end of day #",
-        #         help="Will only affect new journeys",
-        #         value=journey_item.end_of_day,
-        #         key="eod_" + id_str,
-        #     )
-        #     if new_eod != journey_item.end_of_day:
-        #         changes.append(
-        #             (
-        #                 journey_item.title,
-        #                 "Change eod to: " + str(new_eod),
-        #                 journey_item.end_of_day,
-        #                 new_eod,
-        #             )
-        #         )
-        #         journey_item.end_of_day = new_eod
-        #         journey.update_eod()
-        #         journey.save_to_db()
-        #         st.rerun(scope="fragment")
-
-        edit_col, _, remove_col = st.columns([0.2, 0.6, 0.2])
-        if as_children and journey_item.item_type not in [JourneyItemType.ACTION] and edit_col.button(
-            f"Edit children",
-            key=f"open_button_{journey_item.id}",
-            use_container_width=True,
-        ):
-            open_item(
-                journey_item,
-                journey,
-                JourneyItemType.MODULE == journey_item.item_type,
-            )
-
-        with remove_col.popover("Remove item", use_container_width=True):
-            if st.button(
-                f"Are you sure you want to remove:\n\n{journey_item.title}?",
-                key=f"delete_button_{journey_item.id}",
+            edit_col, _, remove_col = st.columns([0.3, 0.4, 0.3])
+            if as_children and journey_item.item_type not in [JourneyItemType.ACTION] and edit_col.button(
+                f"Edit "+JourneyItemType.next(journey_item.item_type).value + "s",
+                key=f"open_button_{journey_item.id}",
                 use_container_width=True,
             ):
-                parent:JourneyItem = all_children[journey_item.parent_id]
-                parent.remove_child(journey_item)
-                parent.save_to_db()
-                journey.reset_cache()
-                st.rerun()
+                open_item(
+                    journey_item,
+                    journey,
+                    JourneyItemType.MODULE == journey_item.item_type,
+                )
 
-        # ancestor.item_type = st.selectbox(
-        #     "Item Type", options=[e.value for e in JourneyItemType]
-        # )
+            with remove_col.popover("Remove "+journey_item.item_type.value, use_container_width=True):
+                if st.button(
+                    f"Are you sure you want to remove:\n\n{journey_item.title}?",
+                    key=f"delete_button_{journey_item.id}",
+                    use_container_width=True,
+                ):
+                    parent:JourneyItem = all_children[journey_item.parent_id]
+                    parent.remove_child(journey_item)
+                    parent.save_to_db()
+                    journey.reset_cache()
+                    st.rerun()
+
+            # ancestor.item_type = st.selectbox(
+            #     "Item Type", options=[e.value for e in JourneyItemType]
+            # )
 
     return changes
 
@@ -380,7 +386,7 @@ def edit_item(item: JourneyItem, journey: JourneyItem, show_children=False):
     #         continue
 
     if item.item_type != JourneyItemType.JOURNEY and item.parent_id:
-        if st.button("Edit parent", key="edit_parent_"+item.parent_id):
+        if st.button("Edit " + JourneyItemType.previous(item.item_type).value.capitalize(), key="edit_parent_"+item.parent_id):
             open_item(item.parent_id, journey)
     if item.item_type == JourneyItemType.JOURNEY and not st.session_state.get("journey_simple_edit", False):
         if st.button("Edit journey", key="edit_parent_"+journey.id):
@@ -407,7 +413,7 @@ def edit_item(item: JourneyItem, journey: JourneyItem, show_children=False):
             )
 
     with st.container(border=True):
-        st.write("Add children")
+        st.write("Add " + JourneyItemType.next(item.item_type).value + "s")
 
         options = [child.id for child in item.children] if item.children else []
         titles = [
@@ -433,7 +439,7 @@ def edit_item(item: JourneyItem, journey: JourneyItem, show_children=False):
         elif JourneyItemType.SECTION == item.item_type:
             item_type = JourneyItemType.MODULE
 
-        if st.button("Add child", key="add_child_" + item.id):
+        if st.button("Add " + JourneyItemType.next(item.item_type).value, key="add_child_" + item.id):
             new_item = JourneyItem.create_new(
                 {
                     "parent_id": item.id,

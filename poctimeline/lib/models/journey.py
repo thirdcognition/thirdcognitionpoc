@@ -426,6 +426,24 @@ class JourneyItemType(Enum):
             return order.index(self.value) < order.index(other)
         return NotImplemented
 
+    @classmethod
+    def next(cls, value):
+        order = ["journey", "section", "module", "action"]
+        try:
+            index = order.index(value.value if isinstance(value, Enum) else value)
+            return cls(order[index + 1]) if index + 1 < len(order) else None
+        except ValueError:
+            return None
+
+    @classmethod
+    def previous(cls, value):
+        order = ["journey", "section", "module", "action"]
+        try:
+            index = order.index(value.value if isinstance(value, Enum) else value)
+            return cls(order[index - 1]) if index > 0 else None
+        except ValueError:
+            return None
+
 
 class ContentInstructions(BaseModel):
     # content_role: From which roles point of view the content is generated from

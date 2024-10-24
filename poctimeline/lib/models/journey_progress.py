@@ -448,11 +448,11 @@ class JourneyProgressDataTable(Base):
         else:
             if db_journey_item_progress.journey_id != item.journey_id:
                 db_journey_item_progress.journey_id = item.journey_id
-                print(f"Update {item.id=} {item.journey_id=}")
+                #print(f"Update {item.id=} {item.journey_id=}")
                 changes = True
             if db_journey_item_progress.journey_item_id != item.journey_item_id:
                 db_journey_item_progress.journey_item_id = item.journey_item_id
-                print(f"Update {item.id=} {item.journey_item_id=}")
+                #print(f"Update {item.id=} {item.journey_item_id=}")
                 changes = True
             if (
                 db_journey_item_progress.journey_item_parent_id
@@ -461,58 +461,58 @@ class JourneyProgressDataTable(Base):
                 db_journey_item_progress.journey_item_parent_id = (
                     item.journey_item_parent_id
                 )
-                print(f"Update {item.id=} {item.journey_item_parent_id=}")
+                #print(f"Update {item.id=} {item.journey_item_parent_id=}")
                 changes = True
             if db_journey_item_progress.item_type != item.item_type.value:
                 db_journey_item_progress.item_type = item.item_type.value
-                print(f"Update {item.id=} {item.item_type.value=}")
+                #print(f"Update {item.id=} {item.item_type.value=}")
                 changes = True
             if db_journey_item_progress.user_id != item.user_id:
                 db_journey_item_progress.user_id = item.user_id
-                print(f"Update {item.id=} {item.user_id=}")
+                #print(f"Update {item.id=} {item.user_id=}")
                 changes = True
             if db_journey_item_progress.assigned_at != item.assigned_at:
                 db_journey_item_progress.assigned_at = item.assigned_at
-                print(f"Update {item.id=} {item.assigned_at=}")
+                #print(f"Update {item.id=} {item.assigned_at=}")
                 changes = True
             if db_journey_item_progress.started_at != item.started_at:
                 db_journey_item_progress.started_at = item.started_at
-                print(f"Update {item.id=} {item.started_at=}")
+                #print(f"Update {item.id=} {item.started_at=}")
                 changes = True
             if db_journey_item_progress.completed_at != item.completed_at:
                 db_journey_item_progress.completed_at = item.completed_at
-                print(f"Update {item.id=} {item.completed_at=}")
+                #print(f"Update {item.id=} {item.completed_at=}")
                 changes = True
             if db_journey_item_progress.due_at != item.due_at:
                 db_journey_item_progress.due_at = item.due_at
-                print(f"Update {item.id=} {item.due_at=}")
+                #print(f"Update {item.id=} {item.due_at=}")
                 changes = True
             if db_journey_item_progress.length_in_days != item.length_in_days:
                 db_journey_item_progress.length_in_days = item.length_in_days
-                print(f"Update {item.id=} {item.length_in_days=}")
+                #print(f"Update {item.id=} {item.length_in_days=}")
                 changes = True
             if db_journey_item_progress.test_results != item.test_results:
                 db_journey_item_progress.test_results = item.test_results
-                print(f"Update {item.id=} {item.test_results=}")
+                #print(f"Update {item.id=} {item.test_results=}")
                 changes = True
             if db_journey_item_progress.extras != item.extras:
                 db_journey_item_progress.extras = item.extras
-                print(f"Update {item.id=} {item.extras=}")
+                #print(f"Update {item.id=} {item.extras=}")
                 changes = True
             if db_journey_item_progress.chat_id != item.chat_id:
                 db_journey_item_progress.chat_id = item.chat_id
-                print(f"Update {item.id=} {item.chat_id=}")
+                #print(f"Update {item.id=} {item.chat_id=}")
                 changes = True
             if db_journey_item_progress.disabled != item.disabled:
                 db_journey_item_progress.disabled = item.disabled
-                print(f"Update {item.id=} {item.disabled=}")
+                #print(f"Update {item.id=} {item.disabled=}")
                 changes = True
             if db_journey_item_progress.removed != item.removed:
                 db_journey_item_progress.removed = item.removed
-                print(f"Update {item.id=} {item.removed=}")
+                #print(f"Update {item.id=} {item.removed=}")
                 changes = True
 
-        if include_children:
+        if include_children and item.children:
             for child in item.children:
                 child_changes, _ = cls.from_journey_item_progress(
                     child, session=session, commit=False, include_children=True
@@ -756,7 +756,7 @@ class JourneyItemProgress(BaseModel):
         if feedback != None:
             self.extras = self.extras or {}
             self.extras["completion_feedback"] = feedback
-        if not solo:
+        if not solo and self.children:
             for child in self.children:
                 if child.completed_at is None:
                     child.complete(session=session, commit=False)

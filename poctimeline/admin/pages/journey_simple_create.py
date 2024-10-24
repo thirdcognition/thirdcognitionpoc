@@ -248,7 +248,6 @@ async def journey_creation():
                     # print("Create journey " + journey.id)
                     journey.title = journey_name
                     journey.save_to_db()
-                    del get_journey_cache()[journey.id]
                     st.session_state["journey_edit_id"] = journey.id
                     st.session_state["journey_creation_id"] = None
                     st.session_state["journey_creation_data"] = None

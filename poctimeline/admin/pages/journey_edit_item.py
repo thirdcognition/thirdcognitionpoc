@@ -2,8 +2,6 @@ import time
 from typing import List
 
 import streamlit as st
-from streamlit_extras.stylable_container import stylable_container
-from streamlit_extras.grid import grid
 
 import os
 import sys
@@ -22,13 +20,9 @@ from lib.models.journey import (
     JourneyItem,
     JourneyItemType,
 )
-from lib.chains.init import get_chain
 from lib.helpers.journey import (
     ActionSymbol,
-    load_journey_template,
-    match_title_to_cat_and_id,
 )
-from lib.helpers.shared import pretty_print
 from lib.models.user import AuthStatus, UserLevel
 
 st.set_page_config(
@@ -43,15 +37,6 @@ This is an *extremely* cool admin tool!
         """
     },
 )
-
-## Symbols from https://www.w3schools.com/charsets/
-
-selected_symbol = "&#9673;"
-unselected_symbol = "&#9678;"
-up_down_symbol = "&#8597;"
-below_symbol = "&#8615;"
-image_symbol = "&#9968;"
-edit_symbol = "&#9881;"
 
 container_level = ["journey", "section", "module", "action"]
 

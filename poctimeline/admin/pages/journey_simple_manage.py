@@ -2,8 +2,6 @@ import time
 from typing import List
 
 import streamlit as st
-from streamlit_extras.stylable_container import stylable_container
-from streamlit_extras.grid import grid
 
 import os
 import sys
@@ -16,12 +14,8 @@ sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
 from lib.models.journey import (
     JourneyItem,
-    JourneyItemType,
     get_all_journeys_from_db,
 )
-from lib.chains.init import get_chain
-from lib.helpers.journey import load_journey_template, match_title_to_cat_and_id
-from lib.helpers.shared import pretty_print
 from lib.models.user import AuthStatus, UserLevel
 
 st.set_page_config(

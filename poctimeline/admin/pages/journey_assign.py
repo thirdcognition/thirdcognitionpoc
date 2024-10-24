@@ -2,14 +2,11 @@ import time
 from typing import List
 
 import streamlit as st
-from streamlit_extras.stylable_container import stylable_container
-from streamlit_extras.grid import grid
 
 import os
 import sys
 
-from admin.global_styles import get_theme
-from admin.sidebar import get_image, init_sidebar
+from admin.sidebar import init_sidebar
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))

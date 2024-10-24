@@ -3,7 +3,6 @@ from typing import List
 
 import streamlit as st
 from streamlit_extras.stylable_container import stylable_container
-from streamlit_extras.grid import grid
 
 import os
 import sys
@@ -15,7 +14,7 @@ from lib.models.journey_progress import (
     JourneyItemProgressState,
     JourneyProgressDataTable,
 )
-from lib.streamlit.journey import ChildPosition, build_journey_cards
+from lib.streamlit.journey import ChildPosition
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
@@ -25,21 +24,15 @@ from lib.models.journey import (
     JourneyItemType,
     get_all_journeys_from_db,
 )
-from lib.chains.init import get_chain
 from lib.helpers.journey import (
     ActionSymbol,
-    load_journey_template,
-    match_title_to_cat_and_id,
 )
-from lib.helpers.shared import pretty_print
 from lib.models.user import (
     AuthStatus,
     UserDataTable,
     UserLevel,
     check_auth_level,
-    get_all_users,
     get_db_user,
-    get_user_org,
 )
 
 st.set_page_config(
@@ -59,8 +52,6 @@ This is an *extremely* cool admin tool!
 container_level = ["journey", "section", "module", "action"]
 
 level_step = 1
-
-## Symbols from https://www.w3schools.com/charsets/
 
 
 @st.dialog("Feedback", width="large")
@@ -147,6 +138,7 @@ def write_section_module(
         if feedback and but.button("See feedback", key="view_feedback_" + item_id):
             see_feedback(journey_item, journey, feedback)
 
+
 @st.fragment
 def write_progress(
     item: JourneyItemProgress,
@@ -217,7 +209,7 @@ def write_progress(
                 else ActionSymbol.closed.value
             )
             + "\n\n"
-            + journey_item.get_index(journey).replace(".",  r"\.")
+            + journey_item.get_index(journey).replace(".", r"\.")
             + "\n\n"
             + journey_item.title,
             key=f"open_button_{item_id}",
@@ -310,7 +302,6 @@ def journey_progress(journey: JourneyItem, user_id=None):
             if user is None:
                 user = UserDataTable(id="none", email="N/A", name="Removed user")
 
-
             item_id = progress_item.id
             item_state: dict = st.session_state["journey_item_progress_state"].get(
                 item_id, {}
@@ -320,7 +311,8 @@ def journey_progress(journey: JourneyItem, user_id=None):
             with styles:
                 container = st.container(border=True)
             col1, col2 = container.columns(
-                [0.3 if user_id is None else 0.5, 0.7 if user_id is None else 0.5], vertical_alignment="center"
+                [0.3 if user_id is None else 0.5, 0.7 if user_id is None else 0.5],
+                vertical_alignment="center",
             )
 
             if user_id == None and col1.button(
@@ -336,7 +328,7 @@ def journey_progress(journey: JourneyItem, user_id=None):
                 item_state["open"] = not item_state["open"]
                 st.rerun()
             elif user_id != None:
-                col1.write("#### "+journey.title)
+                col1.write("#### " + journey.title)
             if user:
                 count += 1
 
@@ -458,9 +450,9 @@ async def main():
     if journey is not None:
         journey_progress(journey, user_id)
 
-            # for i, journey in enumerate(journeys):
-            #     with st.expander(journey.title, expanded=i==0):
-            #         journey_progress(journey)
+        # for i, journey in enumerate(journeys):
+        #     with st.expander(journey.title, expanded=i==0):
+        #         journey_progress(journey)
 
     # except Exception as e:
     #     print(e)

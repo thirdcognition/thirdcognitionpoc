@@ -3,7 +3,6 @@ from typing import List
 
 import streamlit as st
 from streamlit_extras.stylable_container import stylable_container
-from streamlit_extras.grid import grid
 
 import os
 import sys
@@ -14,30 +13,17 @@ from admin.sidebar import get_image, init_sidebar
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
-from lib.models.journey_progress import (
-    JourneyItemProgress,
-    JourneyItemProgressState,
-    JourneyProgressDataTable,
-)
 from lib.streamlit.journey import ChildPosition, open_item
 from lib.models.journey import (
     JourneyItem,
     JourneyItemType,
 )
-from lib.chains.init import get_chain
 from lib.helpers.journey import (
     ActionSymbol,
-    load_journey_template,
-    match_title_to_cat_and_id,
 )
-from lib.helpers.shared import pretty_print
 from lib.models.user import (
     AuthStatus,
     UserLevel,
-    add_user,
-    get_all_users,
-    get_db_user,
-    get_user_org,
 )
 
 st.set_page_config(
@@ -57,19 +43,6 @@ This is an *extremely* cool admin tool!
 container_level = ["journey", "section", "module", "action"]
 
 level_step = 1
-
-
-# def get_stylable_container_selector(id):
-#     return f'div[data-testid="stVerticalBlock"]:has(> div.element-container > div.stMarkdown > div[data-testid="stMarkdownContainer"] > p > span.{id})'
-
-# st.checkbox(label=str(i), label_visibility="collapsed", value=(logo_id) == ancestor.icon, key="image_"+id_str+"_"+logo_id, on_change=change_icon)
-
-# Selector with 1-50 images that when selected updates ancestor.icon to the id
-# Image id's are logo_1 to logo_50 and the image url can be fetched via get_image(image_id)
-# The existing icon should be automatically selected.
-# for logo_id, selected in logo_list.items():
-#     print(logo_id, selected)
-# print("logo", item.icon)
 
 
 @st.fragment
@@ -97,7 +70,7 @@ def write_section_module(item: JourneyItem, journey: JourneyItem, item_id: str):
                     margin-top: 1rem;
                     max-width: 10rem;
                 }
-                """
+                """,
             ],
         ):
             action_content_col = None
@@ -176,7 +149,7 @@ def write_section_module(item: JourneyItem, journey: JourneyItem, item_id: str):
 
 
 @st.dialog("Add")
-def add_item_modal(item:JourneyItem, journey:JourneyItem):
+def add_item_modal(item: JourneyItem, journey: JourneyItem):
     item_id = item.id
     all_children = journey.all_children_by_id()
     if st.button(
@@ -186,9 +159,7 @@ def add_item_modal(item:JourneyItem, journey:JourneyItem):
         use_container_width=True,
     ):
         parent = (
-            all_children[item.parent_id]
-            if item.parent_id in all_children
-            else journey
+            all_children[item.parent_id] if item.parent_id in all_children else journey
         )
         new_item = JourneyItem.create_new(
             {
@@ -202,11 +173,7 @@ def add_item_modal(item:JourneyItem, journey:JourneyItem):
             }
         )
         index = next(
-            (
-                i
-                for i, child in enumerate(parent.children)
-                if child.id == item.id
-            ),
+            (i for i, child in enumerate(parent.children) if child.id == item.id),
             -1,
         )
         parent.add_child(new_item, max(index, 0))
@@ -225,9 +192,7 @@ def add_item_modal(item:JourneyItem, journey:JourneyItem):
         use_container_width=True,
     ):
         parent = (
-            all_children[item.parent_id]
-            if item.parent_id in all_children
-            else journey
+            all_children[item.parent_id] if item.parent_id in all_children else journey
         )
         new_item = JourneyItem.create_new(
             {
@@ -241,11 +206,7 @@ def add_item_modal(item:JourneyItem, journey:JourneyItem):
             }
         )
         index = next(
-            (
-                i
-                for i, child in enumerate(parent.children)
-                if child.id == item.id
-            ),
+            (i for i, child in enumerate(parent.children) if child.id == item.id),
             -1,
         )
         parent.add_child(new_item, index + 1)
@@ -264,8 +225,9 @@ def add_item_modal(item:JourneyItem, journey:JourneyItem):
             JourneyItemType.MODULE == new_item.item_type,
         )
 
+
 @st.dialog("Remove")
-def remove_item_modal(item:JourneyItem, journey:JourneyItem):
+def remove_item_modal(item: JourneyItem, journey: JourneyItem):
     item_id = item.id
     all_children = journey.all_children_by_id()
 
@@ -279,6 +241,7 @@ def remove_item_modal(item:JourneyItem, journey:JourneyItem):
         parent.save_to_db()
         journey.reset_cache()
         st.rerun()
+
 
 def action_buttons(
     item: JourneyItem,
@@ -478,6 +441,7 @@ def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
         ):
             action_buttons(item, journey)
 
+
 stat_button_styles = [
     """
     :is(.stButton, .stPopover) :is(button[kind=primary], button[data-testid=stPopoverButton]) {
@@ -528,6 +492,7 @@ stat_button_styles = [
     }
     """,
 ]
+
 
 def write_item(
     item: JourneyItem,
@@ -701,7 +666,6 @@ def write_item(
         write_action(item, journey, item_id)
 
 
-
 @st.fragment
 def edit_journey(journey: JourneyItem):
     theme = get_theme()
@@ -741,6 +705,7 @@ def edit_journey(journey: JourneyItem):
 
         write_item(journey, journey=journey)
 
+
 def journey_edit():
     # tab1, tab2 = st.tabs(["Modify journey", "Assign to individual(s)"])
     journey_id = st.query_params.get("journey") or st.session_state.get(
@@ -769,8 +734,6 @@ def journey_edit():
     # with tab2:
     #     if journey:
     #         assign_journey(journey_id)
-
-
 
 
 async def main():

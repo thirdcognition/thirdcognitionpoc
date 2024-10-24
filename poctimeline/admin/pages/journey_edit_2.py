@@ -3,7 +3,6 @@ from typing import List
 
 import streamlit as st
 from streamlit_extras.stylable_container import stylable_container
-from streamlit_extras.grid import grid
 
 import os
 import sys
@@ -14,30 +13,17 @@ from admin.sidebar import get_image, init_sidebar
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
-from lib.models.journey_progress import (
-    JourneyItemProgress,
-    JourneyItemProgressState,
-    JourneyProgressDataTable,
-)
 from lib.streamlit.journey import ChildPosition, open_item
 from lib.models.journey import (
     JourneyItem,
     JourneyItemType,
 )
-from lib.chains.init import get_chain
 from lib.helpers.journey import (
     ActionSymbol,
-    load_journey_template,
-    match_title_to_cat_and_id,
 )
-from lib.helpers.shared import pretty_print
 from lib.models.user import (
     AuthStatus,
     UserLevel,
-    add_user,
-    get_all_users,
-    get_db_user,
-    get_user_org,
 )
 
 st.set_page_config(
@@ -57,19 +43,6 @@ This is an *extremely* cool admin tool!
 container_level = ["journey", "section", "module", "action"]
 
 level_step = 1
-
-
-# def get_stylable_container_selector(id):
-#     return f'div[data-testid="stVerticalBlock"]:has(> div.element-container > div.stMarkdown > div[data-testid="stMarkdownContainer"] > p > span.{id})'
-
-# st.checkbox(label=str(i), label_visibility="collapsed", value=(logo_id) == ancestor.icon, key="image_"+id_str+"_"+logo_id, on_change=change_icon)
-
-# Selector with 1-50 images that when selected updates ancestor.icon to the id
-# Image id's are logo_1 to logo_50 and the image url can be fetched via get_image(image_id)
-# The existing icon should be automatically selected.
-# for logo_id, selected in logo_list.items():
-#     print(logo_id, selected)
-# print("logo", item.icon)
 
 
 @st.fragment
@@ -175,164 +148,6 @@ def write_section_module(item: JourneyItem, journey: JourneyItem, item_id: str):
                 st.write(" ")
 
 
-@st.dialog("Add")
-def add_item_modal(item: JourneyItem, journey: JourneyItem):
-    item_id = item.id
-    all_children = journey.all_children_by_id()
-    if st.button(
-        f"Add new {item.item_type.value.capitalize()} before\n\n{item.get_index(journey)} {item.title}",
-        key=f"add_before_button_{item_id}",
-        type="secondary",
-        use_container_width=True,
-    ):
-        parent = (
-            all_children[item.parent_id] if item.parent_id in all_children else journey
-        )
-        new_item = JourneyItem.create_new(
-            {
-                "parent_id": parent.id,
-                "after_id": item.after_id,
-                "icon": item.icon,
-                "template_id": item.template_id,
-                "end_of_day": item.end_of_day,
-                "item_type": item.item_type,  # JourneyItemType.ACTION,
-                "content_instructions": item.content_instructions.model_copy(),
-            }
-        )
-        index = next(
-            (i for i, child in enumerate(parent.children) if child.id == item.id),
-            -1,
-        )
-        parent.add_child(new_item, max(index, 0))
-
-        parent.save_to_db()
-        journey.reset_cache()
-        open_item(
-            new_item,
-            journey,
-            JourneyItemType.MODULE == new_item.item_type,
-        )
-    if st.button(
-        f"Add new {item.item_type.value.capitalize()} after\n\n{item.get_index(journey)} {item.title}",
-        key=f"add_after_button_{item_id}",
-        type="secondary",
-        use_container_width=True,
-    ):
-        parent = (
-            all_children[item.parent_id] if item.parent_id in all_children else journey
-        )
-        new_item = JourneyItem.create_new(
-            {
-                "parent_id": parent.id,
-                "icon": item.icon,
-                "after_id": item.id,
-                "template_id": item.template_id,
-                "end_of_day": item.end_of_day,
-                "item_type": item.item_type,  # JourneyItemType.ACTION,
-                "content_instructions": item.content_instructions.model_copy(),
-            }
-        )
-        index = next(
-            (i for i, child in enumerate(parent.children) if child.id == item.id),
-            -1,
-        )
-        parent.add_child(new_item, index + 1)
-        # print(
-        #     "Index",
-        #     index + 1,
-        #     new_item.id,
-        #     [child.id for child in parent.children],
-        # )
-
-        parent.save_to_db()
-        journey.reset_cache()
-        open_item(
-            new_item,
-            journey,
-            JourneyItemType.MODULE == new_item.item_type,
-        )
-
-
-@st.dialog("Remove")
-def remove_item_modal(item: JourneyItem, journey: JourneyItem):
-    item_id = item.id
-    all_children = journey.all_children_by_id()
-
-    if st.button(
-        f"Are you sure you want to remove:\n\n{item.title}?",
-        key=f"delete_button_{item_id}",
-        use_container_width=True,
-    ):
-        parent = all_children[item.parent_id]
-        parent.remove_child(item)
-        parent.save_to_db()
-        journey.reset_cache()
-        st.rerun()
-
-
-def action_buttons(
-    item: JourneyItem,
-    journey: JourneyItem,
-    add_cont=None,
-    move_cont=None,
-    remove_cont=None,
-    button_type="secondary",
-):
-    item_id = item.id
-    all_children = journey.all_children_by_id()
-
-    if add_cont is None:
-        add_cont = st.empty()
-    if move_cont is None:
-        move_cont = st.empty()
-    if remove_cont is None:
-        remove_cont = st.empty()
-
-    move_item: JourneyItem = st.session_state.get("journey_item_move")
-    in_move = move_item is not None
-
-    if in_move:
-        if move_item.id == item.id and move_cont.button(
-            ActionSymbol.selected.value,
-            key=f"move_button_{item_id}",
-            type=button_type,
-        ):
-            move_item.move(item, journey)
-            journey.save_to_db()
-            st.session_state["journey_item_move"] = None
-            st.rerun()
-        elif move_item.id != item.id and move_cont.button(
-            ActionSymbol.below.value,
-            key=f"move_button_{item_id}",
-            type=button_type,
-            disabled=move_item.after_id == item.id,
-        ):
-            move_item.move(item, journey)
-            journey.save_to_db()
-            st.session_state["journey_item_move"] = None
-            st.rerun()
-    else:
-        if add_cont.button(
-            ActionSymbol.add.value,
-            use_container_width=True,
-            key="add_new_" + item_id,
-            type=button_type,
-        ):
-            add_item_modal(item, journey)
-        if move_cont.button(
-            ActionSymbol.up_down.value,
-            key=f"move_button_{item_id}",
-            type=button_type,
-        ):
-            st.session_state["journey_item_move"] = item
-            st.rerun()
-
-        if remove_cont.button(
-            ActionSymbol.remove.value, key="remove_item_" + item_id, type=button_type
-        ):
-            remove_item_modal(item, journey)
-
-
 def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
 
     subcol1, subcol2 = st.columns([0.8, 0.1])
@@ -350,34 +165,6 @@ def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
         ):
             st.markdown("##### " + item.title)
             st.markdown(item.description)
-    # with subcol2:
-    #     key = f"button_container_{item_id}"
-    #     with stylable_container(
-    #         key=key,
-    #         css_styles=[
-    #             f"""
-    #             {{
-    #                 margin-top: 2.2rem;
-    #                 gap: 0.5rem;
-    #                 display: flex;
-    #                 justify-content: flex-end;
-    #                 text-align: right;
-    #             }}
-    #         """,
-    #             """
-    #             button {
-    #                 width: 4rem;
-    #             }
-    #         """,
-    #             """
-    #             button p {
-    #                 font-weight: bold;
-    #                 font-size: 1.33rem;
-    #             }
-    #         """,
-    #         ],
-    #     ):
-    #         action_buttons(item, journey)
 
 
 stat_button_styles = [
@@ -450,33 +237,6 @@ def write_item(
         (container_level.index(item.item_type.value) - 1) * level_step, 0.01
     )
 
-    # if (
-    #     item.item_type not in [JourneyItemType.JOURNEY, JourneyItemType.ACTION]
-    #     and in_move
-    #     and item.id != move_item.id
-    # ):
-    #     select_column, main_container = st.columns([0.05, 0.95])
-    #     ancestry = move_item.get_ancestry(journey)
-
-    #     if item.id in ancestry:
-    #         select_column.button(
-    #             ActionSymbol.selected.value,
-    #             key=f"move_item_{item_id}_parent",
-    #             disabled=True,
-    #         )
-    #     else:
-    #         if select_column.button(
-    #             ActionSymbol.unselected.value, key=f"move_item_{item_id}_in"
-    #         ):
-    #             move_item.move(item, journey)
-    #             journey.save_to_db()
-    #             st.session_state["journey_item_move"] = None
-    #             st.rerun()
-    # elif in_move:
-    #     select_column, main_container = st.columns([0.05, 0.95])
-    # else:
-    main_container = st.empty()
-
     theme = get_theme()
     if theme is not None:
         if theme["base"] == "light":
@@ -499,16 +259,7 @@ def write_item(
         ]
 
         item_state["open"] = item_state.get("open", False)
-        # if JourneyItemType.JOURNEY == item.item_type:
-        # container = main_container
 
-        # else:
-        #     with main_container:
-        #         container = stylable_container(
-        #             key=f"item_container_{item_id}",
-        #             css_styles=
-        #             + button_styles,
-        #        )
         container = stylable_container(
             key=f"item_container_{item_id}",
             css_styles=button_styles
@@ -549,9 +300,6 @@ def write_item(
             JourneyItemType.SECTION == item.item_type
             or JourneyItemType.MODULE == item.item_type
         ):
-            # col1, remove_col, move_col, add_col, col3 = container.columns(
-            #     [0.8, 0.05, 0.05, 0.05, 0.1], vertical_alignment="center"
-            # )
             if col1.button(
                 (
                     ActionSymbol.open.value
@@ -567,14 +315,7 @@ def write_item(
             ):
                 item_state["open"] = not item_state["open"]
                 st.rerun(scope="fragment")  #
-            # action_buttons(
-            #     item,
-            #     journey,
-            #     add_cont=add_col,
-            #     move_cont=move_col,
-            #     remove_cont=remove_col,
-            #     button_type="primary",
-            # )
+
             if col3.button(
                 ActionSymbol.edit.value,
                 key="edit_parent_button_" + item_id,
@@ -613,7 +354,6 @@ def write_item(
 @st.fragment
 def edit_journey(journey: JourneyItem):
     theme = get_theme()
-    # with st.container(border=True):
     border_color = "gray"
     if theme != None and theme["base"] == "dark":
         border_color = theme["borderColor"]
@@ -645,19 +385,17 @@ def edit_journey(journey: JourneyItem):
             """,
         ],
     ):
-        # st.write(st.session_state["journey_creation_data"])
 
         write_item(journey, journey=journey)
 
+
 def journey_edit():
-    # tab1, tab2 = st.tabs(["Modify journey", "Assign to individual(s)"])
     journey_id = st.query_params.get("journey") or st.session_state.get(
         "journey_edit_id"
     )
     journey: JourneyItem = None
     if journey_id is not None:
         journey = JourneyItem.get(journey_id=journey_id)
-    # with tab1:
     if journey:
         edit_journey(journey)
     else:
@@ -673,10 +411,6 @@ def journey_edit():
             # print("donothing")
             st.session_state["journey_edit"] = None
             st.switch_page("pages/journey_simple_manage.py")
-
-    # with tab2:
-    #     if journey:
-    #         assign_journey(journey_id)
 
 
 async def main():

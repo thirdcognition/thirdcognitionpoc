@@ -526,22 +526,22 @@ async def main():
         st.switch_page("login.py")
         return
 
-    simple_journey_edit = st.session_state.get("journey_simple_edit", False)
-    if simple_journey_edit:
-        tab1, tab2 = st.tabs(["Modify journey", "Assign to individual(s)"])
-    else:
-        tab1 = st.empty()
+    # simple_journey_edit = st.session_state.get("journey_simple_edit", False)
+    # if simple_journey_edit:
+    #     tab1, tab2 = st.tabs(["Modify journey", "Assign to individual(s)"])
+    # else:
+    #     tab1 = st.empty()
 
-    with tab1:
-        journey_edit()
+    # with tab1:
+    journey_edit()
 
-    if simple_journey_edit:
-        with tab2:
-            journey_id = st.query_params.get("journey") or st.session_state.get(
-                "journey_edit_id"
-            )
-            if journey_id:
-                assign_journey(journey_id)
+    # if simple_journey_edit:
+    #     with tab2:
+    #         journey_id = st.query_params.get("journey") or st.session_state.get(
+    #             "journey_edit_id"
+    #         )
+    #         if journey_id:
+    #             assign_journey(journey_id)
 
 
 if __name__ == "__main__":

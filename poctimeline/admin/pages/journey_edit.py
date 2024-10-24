@@ -742,33 +742,33 @@ def edit_journey(journey: JourneyItem):
         write_item(journey, journey=journey)
 
 def journey_edit():
-    tab1, tab2 = st.tabs(["Modify journey", "Assign to individual(s)"])
+    # tab1, tab2 = st.tabs(["Modify journey", "Assign to individual(s)"])
     journey_id = st.query_params.get("journey") or st.session_state.get(
         "journey_edit_id"
     )
     journey: JourneyItem = None
     if journey_id is not None:
         journey = JourneyItem.get(journey_id=journey_id)
-    with tab1:
-        if journey:
-            edit_journey(journey)
-        else:
-            st.error("No data to show. Redirecting to journey management.")
-            time.sleep(2)
+    # with tab1:
+    if journey:
+        edit_journey(journey)
+    else:
+        st.error("No data to show. Redirecting to journey management.")
+        time.sleep(2)
+        st.session_state["journey_edit"] = None
+        st.switch_page("pages/journey_simple_manage.py")
+
+    col1, col2, col3 = st.columns([0.15, 0.7, 0.15])
+
+    with col3:
+        if st.button("Done", use_container_width=True, type="primary"):
+            # print("donothing")
             st.session_state["journey_edit"] = None
             st.switch_page("pages/journey_simple_manage.py")
 
-        col1, col2, col3 = st.columns([0.15, 0.7, 0.15])
-
-        with col3:
-            if st.button("Done", use_container_width=True, type="primary"):
-                # print("donothing")
-                st.session_state["journey_edit"] = None
-                st.switch_page("pages/journey_simple_manage.py")
-
-    with tab2:
-        if journey:
-            assign_journey(journey_id)
+    # with tab2:
+    #     if journey:
+    #         assign_journey(journey_id)
 
 
 

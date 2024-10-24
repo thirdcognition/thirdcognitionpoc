@@ -36,6 +36,7 @@ from lib.models.user import (
     AuthStatus,
     UserDataTable,
     UserLevel,
+    check_auth_level,
     get_all_users,
     get_db_user,
     get_user_org,
@@ -249,14 +250,14 @@ def write_progress(
             write_section_module(child, journey_progress, item_id, position)
 
 
-def journey_progress(journey: JourneyItem):
+def journey_progress(journey: JourneyItem, user_id=None):
     journey_id = journey.id
 
     # Display current assignments and user progress
 
     # Load all progress items for the current journey
     progress_items = JourneyProgressDataTable.load_all_from_db(
-        journey_item_id=journey_id
+        journey_item_id=journey_id, user_id=user_id
     )
 
     st.session_state["journey_item_progress_state"] = st.session_state.get(
@@ -272,7 +273,7 @@ def journey_progress(journey: JourneyItem):
     #     border_color = theme["borderColorLight"]
 
     st.write(" ")
-    st.subheader("Individual user progress")
+    st.subheader("Individual user progress" if user_id is None else "My progress")
     styles = stylable_container(
         key="progress_item_container_" + journey_id,
         css_styles=[
@@ -315,14 +316,14 @@ def journey_progress(journey: JourneyItem):
                 item_id, {}
             )
             st.session_state["journey_item_progress_state"][item_id] = item_state
-            item_state["open"] = item_state.get("open", False)
+            item_state["open"] = item_state.get("open", (user_id != None))
             with styles:
                 container = st.container(border=True)
-            col1, col2, _ = container.columns(
-                [0.3, 0.6, 0.1], vertical_alignment="center"
+            col1, col2 = container.columns(
+                [0.3 if user_id is None else 0.5, 0.7 if user_id is None else 0.5], vertical_alignment="center"
             )
 
-            if col1.button(
+            if user_id == None and col1.button(
                 (
                     ActionSymbol.open.value
                     if item_state["open"]
@@ -334,6 +335,8 @@ def journey_progress(journey: JourneyItem):
             ):
                 item_state["open"] = not item_state["open"]
                 st.rerun()
+            elif user_id != None:
+                col1.write("#### "+journey.title)
             if user:
                 count += 1
 
@@ -414,11 +417,34 @@ async def main():
 
     st.markdown(" ")
     # try:
-    db_journey_items = get_all_journeys_from_db()
+    user_level = check_auth_level()
+    user_id = None
 
-    journeys = [
-        JourneyItem.get(journey_item=db_journey) for db_journey in db_journey_items
-    ]
+    if UserLevel.user == user_level or True:
+        user = get_db_user(st.session_state["username"])
+        user_id = user.id
+        my_journey_progress = JourneyProgressDataTable.load_all_from_db(
+            user_id=user.id, item_type=JourneyItemType.JOURNEY
+        )
+
+        try:
+            db_journey_items = get_all_journeys_from_db(
+                ids=[
+                    journey_progress.journey_item_id
+                    for journey_progress in my_journey_progress
+                ]
+            )
+        except ValueError as e:
+            st.write("No journeys have been assigned to you yet.")
+            return
+        journeys = [
+            JourneyItem.get(journey_item=db_journey) for db_journey in db_journey_items
+        ]
+    else:
+        db_journey_items = get_all_journeys_from_db()
+        journeys = [
+            JourneyItem.get(journey_item=db_journey) for db_journey in db_journey_items
+        ]
 
     journey: JourneyItem
 
@@ -430,7 +456,7 @@ async def main():
         journey = journeys[0]
 
     if journey is not None:
-        journey_progress(journey)
+        journey_progress(journey, user_id)
 
             # for i, journey in enumerate(journeys):
             #     with st.expander(journey.title, expanded=i==0):

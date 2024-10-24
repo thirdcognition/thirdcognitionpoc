@@ -72,8 +72,11 @@ def init_sidebar(req_user_level: UserLevel = UserLevel.anonymous, login_containe
     with menu_container:
         if user_level >= UserLevel.user:
             st.page_link("pages/my_journeys.py", label="My Journeys")
+            if user_level == UserLevel.user:
+                st.page_link("pages/journey_simple_progress.py", label="My Progress")
         if user_level >= UserLevel.org_admin:
             st.page_link("pages/journey_simple_create.py", label="Create Journey")
+            st.page_link("pages/journey_assign.py", label="Assign Journey")
             st.page_link("pages/journey_simple_progress.py", label="Journey Progress")
             st.page_link("pages/journey_simple_manage.py", label="Manage Journeys")
             st.page_link("pages/organization_manage.py", label="Manage Organization")

@@ -304,7 +304,7 @@ def build_journey_cards(
             border-radius: 1.3rem;
         }}""",
         """
-        button[kind=secondary] * {
+        .stPopover button[kind=secondary] * {
             font-size: 2rem;
         }""",
     ]
@@ -389,7 +389,7 @@ def render_journey_item(
             st.switch_page("pages/journey_view_item.py")
     else:
         if st.button(
-            "Open",
+            "Open" if progress_item.get_state() != JourneyItemProgressState.COMPLETED else "Completed",
             key=key
             + "continue_journey_"
             + journey.id
@@ -397,7 +397,7 @@ def render_journey_item(
             + item.id
             + "_"
             + progress_item.id,
-            type="primary",
+            type="primary" if progress_item.get_state() != JourneyItemProgressState.COMPLETED else "secondary",
             use_container_width=True,
         ):
             st.session_state["journey_view_id"] = journey.id

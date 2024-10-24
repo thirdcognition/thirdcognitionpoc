@@ -19,7 +19,7 @@ from lib.models.journey_progress import (
     JourneyItemProgressState,
     JourneyProgressDataTable,
 )
-from lib.streamlit.journey import ChildPosition, assign_journey, open_item
+from lib.streamlit.journey import ChildPosition, open_item
 from lib.models.journey import (
     JourneyItem,
     JourneyItemType,

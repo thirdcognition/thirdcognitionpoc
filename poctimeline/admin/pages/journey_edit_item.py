@@ -15,7 +15,6 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
 from lib.streamlit.journey import (
-    assign_journey,
     open_item,
     open_logo_dialog,
 )

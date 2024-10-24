@@ -8,6 +8,7 @@ import sys
 
 from admin.sidebar import get_image, init_sidebar
 from lib.models.user import get_db_user
+from lib.streamlit.journey import write_action_ui
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
@@ -15,6 +16,7 @@ sys.path.append(os.path.dirname(current_dir + "/../lib"))
 from lib.models.journey_progress import JourneyItemProgress, JourneyItemProgressState
 
 from lib.models.journey import (
+    ActionItemType,
     JourneyItem,
     JourneyItemType,
 )
@@ -48,46 +50,6 @@ container_level = ["journey", "section", "module", "action"]
 
 def get_stylable_container_selector(id):
     return f'div[data-testid="stVerticalBlock"]:has(> div.element-container > div.stMarkdown > div[data-testid="stMarkdownContainer"] > p > span.{id})'
-
-
-def run_complete(journey_item_progress: JourneyItemProgress, feedback):
-    journey_item_progress.complete(feedback=feedback if feedback else None)
-    # parent_progress = journey_item_progress.get(
-    #     progress_id=journey_item_progress.parent_id
-    # )
-    st.rerun()
-    # if parent_progress.get_progress() == 1.0:
-    #     st.switch_page("pages/my_journeys.py")
-
-
-@st.dialog("Confirm completion")
-def complete_journey_item(
-    journey_item: JourneyItem,
-    journey: JourneyItem,
-    journey_item_progress: JourneyItemProgress,
-) -> bool:
-    st.write(f"#### {journey_item.get_index(journey)} - {journey_item.title}")
-
-    feedback = st.text_area(
-        "Leave feedback",
-        key=f"leave_feedback_{journey.id}_{journey_item.id}",
-        placeholder="Please add some details",
-    )
-
-    left, _, right = st.columns([0.4, 0.2, 0.4])
-    left.button(
-        "Cancel",
-        type="secondary",
-        use_container_width=True,
-        key=f"cancel_completion_{journey.id}_{journey_item.id}",
-    )
-    if right.button(
-        "Complete",
-        type="primary",
-        use_container_width=True,
-        key=f"completion_complete_{journey.id}_{journey_item.id}",
-    ):
-        run_complete(journey_item_progress, feedback=feedback if feedback else None)
 
 
 def view_journey_item(
@@ -132,35 +94,13 @@ def view_journey_item(
     )
 
     if JourneyItemType.ACTION == journey_item.item_type:
-        with content_container:
-            st.write(journey_item.title)
-            st.write(" - " + journey_item.description)
-
-        if task_container is None:
-            task_container = st.container()
-
-        _, act_col1, act_col2 = task_container.columns(
-            [0.15, 0.7, 0.15], vertical_alignment="top"
+        write_action_ui(
+            journey_item,
+            journey,
+            journey_item_progress,
+            content_container,
+            task_container,
         )
-        with act_col1:
-            st.write(f"- {journey_item.action}")
-        with act_col2:
-            print(journey_item_progress.get_ident() + " - check progress")
-            complete = st.checkbox(
-                "Done",
-                key="action_" + journey_item.id,
-                value=st.session_state.get(
-                    f"journey_item_complete_{journey_item.id}",
-                    JourneyItemProgressState.COMPLETED
-                    == journey_item_progress.get_state(),
-                ),
-            )
-            if (
-                complete
-                and JourneyItemProgressState.COMPLETED
-                != journey_item_progress.get_state()
-            ):
-                complete_journey_item(journey_item, journey, journey_item_progress)
 
 
 def view_modules_items(

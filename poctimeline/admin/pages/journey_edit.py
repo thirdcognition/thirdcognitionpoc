@@ -13,7 +13,7 @@ from admin.sidebar import get_image, init_sidebar
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
-from lib.streamlit.journey import ChildPosition, open_item
+from lib.streamlit.journey import ChildPosition, open_item, write_action_ui
 from lib.models.journey import (
     JourneyItem,
     JourneyItemType,
@@ -410,8 +410,9 @@ def write_action(item: JourneyItem, journey: JourneyItem, item_id: str):
             }
             """,
         ):
-            st.markdown("##### " + item.title)
-            st.markdown(item.description)
+            write_action_ui(item, journey, no_col=True)
+            # st.markdown("##### " + item.title)
+            # st.markdown(item.description)
     with subcol2:
         key = f"button_container_{item_id}"
         with stylable_container(

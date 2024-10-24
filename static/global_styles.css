@@ -24,6 +24,10 @@ section[data-testid="stSidebar"] {
     width: 350px !important;
 }
 
+section[data-testid="stSidebar"] div[data-testid=stSidebarContent] {
+    overflow: hidden;
+}
+
 section[data-testid="stSidebar"] div[data-testid=stSidebarUserContent],
 section[data-testid="stSidebar"] div[data-testid=stSidebarUserContent] > div,
 section[data-testid="stSidebar"] div[data-testid=stSidebarUserContent] div[data-testid=stVerticalBlockBorderWrapper],

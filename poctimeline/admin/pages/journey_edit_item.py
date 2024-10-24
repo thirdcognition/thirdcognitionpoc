@@ -17,6 +17,8 @@ from lib.streamlit.journey import (
     open_logo_dialog,
 )
 from lib.models.journey import (
+    ActionItem,
+    ActionItemType,
     JourneyItem,
     JourneyItemType,
 )
@@ -109,7 +111,7 @@ def edit_journey_item(
                 ]
                 items = [all_children[id] for id in options]  # section_items
                 titles = [
-                    f"{all_children[id].get_index(journey)} {all_children[id].title}{'' if len(all_children[id].children) > 0 else ' (empty)'}"
+                    f"{all_children[id].get_index(journey)} {all_children[id].title}{'' if all_children[id].children and len(all_children[id].children) > 0 else ' (empty)'}"
                     for id in options
                 ]  # section_items
 
@@ -265,20 +267,108 @@ def edit_journey_item(
                 # st.rerun(scope="fragment")
             # journey_item.test = st.text_area("Test", value=journey_item.test, key = "test_"+id_str)
             if JourneyItemType.ACTION == journey_item.item_type:
-                action = st.text_input(
-                    "Action", value=journey_item.action, key="action_" + id_str
+                # Assuming the necessary imports have been made, for example:
+                # from poctimeline.lib.models.journey import ActionItem, ActionItemType
+
+                # Adjust the input fields to support ActionItem properties
+
+                action_extras = journey_item.action.extras if journey_item.action and journey_item.action.extras else {}
+
+                action_title = st.text_input(
+                    "Action", value=journey_item.action.title if journey_item.action else "", key="action_title_" + id_str
                 )
-                if (action or "").strip() != (journey_item.action or "").strip():
+                # action_description = st.text_area(
+                #     "Description", value=journey_item.action.description if journey_item.action and journey_item.action.description else "", key="action_description_" + id_str
+                # )
+
+                col1, col2 = st.columns([0.3, 0.7], vertical_alignment="top")
+                type_options = [e.value for e in ActionItemType if e != ActionItemType.REFERENCE]
+                action_type = col1.selectbox(
+                    "Type", options=type_options,
+                    index=(type_options.index(journey_item.action.action_type.value)) if journey_item.action else 0,
+                    key="action_type_" + id_str
+                )
+                if action_type != ActionItemType.REFERENCE:
+                    action_link_placeholder = {
+                        ActionItemType.LINK.value: "e.g., Any link that the user can have access to",
+                        ActionItemType.VIDEO.value: "Link to a video file or e.g. youtube.",
+                        ActionItemType.AUDIO.value: "Link to a audio file.",
+                        ActionItemType.AUDIO.value: "Link to a image file.",
+                        ActionItemType.CALENDAR.value: "e.g. a link to callendly",
+                        # Add more placeholders for other ActionItemTypes if needed
+                    }
+
+                    action_extras["url"] = col2.text_input(
+                        "Link",
+                        value=action_extras.get('url', '') if journey_item.action else "",
+                        key="action_link_" + id_str,
+                        placeholder=action_link_placeholder.get(journey_item.action.action_type.value, "Enter link here")
+                    )
+                    if action_type == ActionItemType.LINK:
+                        action_extras["url_title"] = col2.text_input(
+                            "Title for the link",
+                            value=action_extras.get('url_title', '') if journey_item.action else "",
+                            key="action_link_title_" + id_str,
+                            placeholder="Add a short description of contents here.")
+
+                    if action_type == ActionItemType.VIDEO:
+                        col1.selectbox(
+                            "Mime Type",
+                            options=[
+                                "video/mp4",
+                                "video/x-msvideo",
+                                "video/quicktime",
+                                "video/x-ms-wmv",
+                                "video/x-matroska"
+                            ],
+                            key="video_mime_type_" + id_str
+                        )
+                    elif action_type == ActionItemType.AUDIO:
+                        col1.selectbox(
+                            "Mime Type",
+                            options=[
+                                "audio/mpeg",
+                                "audio/wav",
+                                "audio/x-wav",
+                                "audio/ogg",
+                                "audio/x-m4a",
+                                "audio/flac"
+                            ],
+                            key="audio_mime_type_" + id_str
+                        )
+
+                else:
+                    action_extras = {}
+                    col2.write(" ")
+                    col2.write(" ")
+                    col2.write("References not yet supported")
+                # Assume Reference entries have been converted from journey_item.action.references if necessary
+
+                # Check for changes and update
+                if (
+                    (action_title or "").strip() != (journey_item.action.title or "").strip() or
+                    (action_type or "").strip() != (journey_item.action.action_type.value or "").strip() or
+                    hash(frozenset(action_extras.items())) != hash(frozenset((journey_item.action.extras or {}).items()))
+                    # (action_description or "").strip() != (journey_item.action.description or "").strip()
+                ):
                     changes.append(
                         (
                             journey_item.title,
-                            "Change action to: " + action,
-                            journey_item.action,
-                            action,
+                            f"Change action item to: {action_title}, {action_type}, {action_extras}",
+                            journey_item.action.to_json() if journey_item.action else None,
+                            {"title": action_title, "type": action_type, "extras": action_extras}
                         )
                     )
-                    journey_item.action = action
+
+                    # Update the ActionItem
+                    journey_item.action = ActionItem(
+                        title=action_title,
+                        action_type=ActionItemType(action_type),
+                        extras=action_extras,
+                        description="" #action_description
+                    )
                     journey_item.save_to_db()
+
                     # st.rerun(scope="fragment")
 
             # if JourneyItemType.ACTION == journey_item.item_type:

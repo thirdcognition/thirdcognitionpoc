@@ -51,8 +51,7 @@ async def main():
 
         st.session_state["journey_simple_edit"] = False
         build_journey_cards(journeys, key_start="manage_")
-    except Exception as e:
-        print(e)
+    except ValueError as e:
         # st.write("No journeys available")
         build_journey_cards(
             [

@@ -13,7 +13,7 @@ from admin.sidebar import get_image, init_sidebar
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(current_dir + "/../lib"))
 
-from lib.streamlit.journey import ChildPosition, open_item
+from lib.streamlit.journey import ChildPosition, open_item, write_action_ui
 from lib.models.journey import (
     JourneyItem,
     JourneyItemType,
@@ -330,6 +330,7 @@ def write_item(
                 + item.title
             )
 
+
         if (
             JourneyItemType.SECTION == item.item_type
             or JourneyItemType.MODULE == item.item_type
@@ -348,7 +349,10 @@ def write_item(
                 )
                 write_item(child, journey=journey, position=position)
     elif JourneyItemType.ACTION == item.item_type:
-        write_action(item, journey, item_id)
+        st.write(" ")
+        write_action_ui(item, journey)
+        st.write(" ")
+        # write_action(item, journey, item_id)
 
 
 @st.fragment

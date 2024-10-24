@@ -61,6 +61,95 @@ def get_all_journeys_from_db(
     return db_journey_items
 
 
+class ActionItemType(Enum):
+    CALENDAR = "calendar"
+    LINK = "link"
+    REFERENCE = "reference"
+    VIDEO = "video"
+    IMAGE = "image"
+    AUDIO = "audio"
+
+    def __eq__(self, other):
+        if isinstance(other, Enum):
+            return self.value == other.value
+        if isinstance(other, str):
+            return self.value == other
+        return False
+
+
+class ActionItem(BaseModel):
+    title: str = Field(description="Title of the action item.", title="Title")
+    action_type: ActionItemType = Field(
+        description="Type of the action item, such as calendar, link, or reference.",
+        title="Type",
+    )
+    extras: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional dictionary for storing additional data or metadata about the action item.",
+        title="Extras",
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="Detailed description or notes about the action item.",
+        title="Description",
+    )
+    references: Optional[List[Reference]] = Field(
+        default=None,
+        description="List of references related to the action item.",
+        title="References",
+    )
+
+    @classmethod
+    def from_json(cls, data: Union[Dict[str, Any], str]) -> "ActionItem":
+        if isinstance(data, cls) or type(data).__name__ == cls.__name__:
+            return cls.copy(data)
+
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except json.JSONDecodeError:
+                return cls(title=data, action_type=ActionItemType.LINK)
+
+        return cls(
+            title=data.get("title"),
+            action_type=ActionItemType(data.get("action_type")) if "action_type" in data else ActionItemType("link"),
+            extras=data.get("extras"),
+            description=data.get("description"),
+            references=(
+                [Reference(**ref) for ref in data.get("references", [])]
+                if data.get("references")
+                else None
+            ),
+        )
+
+    @classmethod
+    def copy(cls, instance: "ActionItem") -> "ActionItem":
+        return cls(
+            title=instance.title,
+            action_type=ActionItemType(instance.action_type or "link"),
+            extras=instance.extras,
+            description=instance.description,
+            references=(
+                [Reference(**ref) for ref in instance.references]
+                if instance.references
+                else None
+            ),
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        return {
+            "title": self.title,
+            "action_type": self.action_type.value,
+            "extras": self.extras,
+            "description": self.description,
+            "references": (
+                [ref.model_dump(mode="json") for ref in self.references]
+                if self.references
+                else None
+            ),
+        }
+
+
 class JourneyDataTable(Base):
     __tablename__ = SETTINGS.journey_tablename
 
@@ -216,7 +305,7 @@ class JourneyDataTable(Base):
                 ),
                 content=journey_item.content,
                 test=journey_item.test,
-                action=journey_item.action,
+                action=json.dumps(journey_item.action.to_json()),
                 end_of_day=journey_item.end_of_day,
                 item_type=journey_item.item_type.value,
                 # Assuming that prompts and template are not present in JourneyItem
@@ -250,7 +339,7 @@ class JourneyDataTable(Base):
             )
             db_journey_item.content = journey_item.content
             db_journey_item.test = journey_item.test
-            db_journey_item.action = journey_item.action
+            db_journey_item.action = json.dumps(journey_item.action.to_json())
             db_journey_item.end_of_day = journey_item.end_of_day
             db_journey_item.item_type = journey_item.item_type.value
             db_journey_item.disabled = False
@@ -298,7 +387,7 @@ class JourneyDataTable(Base):
         self.content_instructions = journey_item.content_instructions.to_json()
         self.content = journey_item.content
         self.test = journey_item.test
-        self.action = journey_item.action
+        self.action = (json.dumps(journey_item.action.to_json()),)
         self.end_of_day = journey_item.end_of_day
         self.item_type = journey_item.item_type.value
         self.last_updated = datetime.now()
@@ -582,7 +671,7 @@ class JourneyItem(BaseModel):
         title="Test",
         description="Description of a test or evaluation related to the journey item.",
     )
-    action: Optional[str] = Field(
+    action: Union[None, ActionItem] = Field(
         default=None,
         title="Action",
         description="Description of an action connected to the journey item.",
@@ -649,7 +738,11 @@ class JourneyItem(BaseModel):
         parent_id = data.get("parent_id")
         after_id = data.get("after_id")
         children = data.get("children", [])
-        references = data.get("references", [])
+        references = (
+            [Reference(**ref) for ref in data.get("references", [])]
+            if data.get("references")
+            else []
+        )
         use_guide = data.get("use_guide", "")
         title = data.get("title", "New journey " + item_type.name.capitalize())
         icon = data.get("icon", "icon-1")
@@ -668,7 +761,9 @@ class JourneyItem(BaseModel):
         )
         content = data.get("content", "")
         test = data.get("test", "")
-        action = data.get("action", "")
+        action = data.get(
+            "action", ActionItem(title="New action", action_type=ActionItemType.LINK)
+        )
         end_of_day = data.get("end_of_day", 0)
 
         children_items = []
@@ -785,7 +880,11 @@ class JourneyItem(BaseModel):
             parent_id=data.get("parent_id"),
             after_id=data.get("after_id"),
             children=children,
-            references=data.get("references"),
+            references=(
+                [Reference(**ref) for ref in data.get("references", [])]
+                if data.get("references")
+                else None
+            ),
             use_guide=data.get("use_guide"),
             title=data.get("title"),
             icon=data.get("icon"),
@@ -799,7 +898,11 @@ class JourneyItem(BaseModel):
             ),
             content=data.get("content"),
             test=data.get("test"),
-            action=data.get("action"),
+            action=(
+                ActionItem.from_json(data.get("action"))
+                if "action" in data.keys()
+                else None
+            ),
             end_of_day=data.get("end_of_day"),
             item_type=JourneyItemType(data["type"]),
         )
@@ -825,7 +928,7 @@ class JourneyItem(BaseModel):
             ),
             "content": self.content,
             "test": self.test,
-            "action": self.action,
+            "action": self.action.to_json(),
             "end_of_day": self.end_of_day,
             "type": self.item_type,
         }
@@ -1208,7 +1311,11 @@ class JourneyItem(BaseModel):
             template_id=db_item.journey_template_id,
             parent_id=db_item.parent_id,
             after_id=db_item.after_id,
-            references=db_item.references,
+            references=(
+                [Reference(**ref) for ref in db_item.references]
+                if db_item.references
+                else []
+            ),
             children=[],  # db_item.children,
             use_guide=db_item.use_guide,
             title=db_item.title,
@@ -1221,7 +1328,7 @@ class JourneyItem(BaseModel):
             ),
             content=db_item.content,
             test=db_item.test,
-            action=db_item.action,
+            action=ActionItem.from_json(db_item.action) if db_item.action else None,
             end_of_day=db_item.end_of_day,
             item_type=JourneyItemType(db_item.item_type),
         )
@@ -1258,7 +1365,11 @@ class JourneyItem(BaseModel):
         self.content_instructions = refreshed_item.content_instructions
         self.content = refreshed_item.content
         self.test = refreshed_item.test
-        self.action = refreshed_item.action
+        self.action = (
+            ActionItem.from_json(refreshed_item.action)
+            if refreshed_item.action
+            else None
+        )
         self.end_of_day = refreshed_item.end_of_day
         self.item_type = JourneyItemType(refreshed_item.item_type)
 
@@ -1312,7 +1423,7 @@ class JourneyItem(BaseModel):
             template_id=item.template_id,
             parent_id=item.parent_id,
             after_id=item.after_id,
-            references=item.references,
+            references=[Reference(**ref.model_dump()) for ref in item.references or []],
             children=children,
             use_guide=item.use_guide,
             title=item.title,
@@ -1330,11 +1441,9 @@ class JourneyItem(BaseModel):
             ),
             content=item.content,
             test=item.test,
-            action=item.action,
+            action=ActionItem.from_json(item.action) if item.action else None,
             end_of_day=item.end_of_day or 0,
-            item_type=JourneyItemType(
-                item.item_type
-            ),  # Assuming item_type is already a JourneyItemType
+            item_type=JourneyItemType(item.item_type),
             cache=item.cache,
         )
 

@@ -8,7 +8,7 @@ from admin.global_styles import get_theme
 from admin.sidebar import get_image
 from lib.helpers.journey import ActionSymbol
 from lib.helpers.shared import pretty_print
-from lib.models.journey import JourneyDataTable, JourneyItem, JourneyItemType
+from lib.models.journey import ActionItemType, JourneyDataTable, JourneyItem, JourneyItemType
 from lib.models.journey_progress import (
     JourneyItemProgress,
     JourneyItemProgressState,
@@ -400,3 +400,136 @@ def render_generic_card(item: dict):
     ):
         st.switch_page(f"pages/{page}.py")
         # st.write(f"Opening {title}")
+
+def run_complete(journey_item_progress: JourneyItemProgress, feedback):
+    journey_item_progress.complete(feedback=feedback if feedback else None)
+    # parent_progress = journey_item_progress.get(
+    #     progress_id=journey_item_progress.parent_id
+    # )
+    st.rerun()
+    # if parent_progress.get_progress() == 1.0:
+    #     st.switch_page("pages/my_journeys.py")
+
+
+@st.dialog("Confirm completion")
+def complete_journey_item(
+    journey_item: JourneyItem,
+    journey: JourneyItem,
+    journey_item_progress: JourneyItemProgress,
+) -> bool:
+    st.write(f"#### {journey_item.get_index(journey)} - {journey_item.title}")
+
+    feedback = st.text_area(
+        "Leave feedback",
+        key=f"leave_feedback_{journey.id}_{journey_item.id}",
+        placeholder="Please add some details",
+    )
+
+    left, _, right = st.columns([0.4, 0.2, 0.4])
+    left.button(
+        "Cancel",
+        type="secondary",
+        use_container_width=True,
+        key=f"cancel_completion_{journey.id}_{journey_item.id}",
+    )
+    if right.button(
+        "Complete",
+        type="primary",
+        use_container_width=True,
+        key=f"completion_complete_{journey.id}_{journey_item.id}",
+    ):
+        run_complete(journey_item_progress, feedback=feedback if feedback else None)
+
+
+def write_action_ui(journey_item: JourneyItem, journey:JourneyItem=None, journey_item_progress:JourneyItemProgress=None, container=None, task_container=None, no_col=False):
+    if container is None:
+        container = st.container()
+    with container:
+        st.write("##### " +journey_item.get_index(journey) + " " + journey_item.title)
+        # Only display the description if it exists
+        if journey_item.description:
+            st.write(" - " + journey_item.description)
+
+        media_types = [ActionItemType.VIDEO, ActionItemType.IMAGE, ActionItemType.AUDIO]
+
+        if not journey_item_progress and journey_item.action.action_type in media_types:
+            container = st.expander(journey_item.action.title)
+        else:
+            container = st.empty()
+
+
+        # Render media items within the content container
+        with container:
+            if journey_item.action.action_type in media_types:
+                if no_col:
+                    col1 = st.empty()
+                else:
+                    _, col1, _ = st.columns([0.025, 0.8, 0.025])
+                if journey_item.action.action_type == ActionItemType.VIDEO and journey_item.action.extras:
+                    col1.video(journey_item.action.extras.get("url"))
+
+                elif journey_item.action.action_type == ActionItemType.IMAGE and journey_item.action.extras:
+                    col1.image(journey_item.action.extras.get("url"))
+
+                elif journey_item.action.action_type == ActionItemType.AUDIO and journey_item.action.extras:
+                    col1.audio(journey_item.action.extras.get("url"))
+            elif not journey_item_progress:
+                if journey_item.action.action_type == ActionItemType.LINK and journey_item.action.extras and journey_item.action.extras.get("url"):
+                    link_title = journey_item.action.extras.get("url_title", "Link")
+                    link_url = journey_item.action.extras.get("url")
+                    if link_url:
+                        st.write(f" * {journey_item.action.title}\n\n\t[{link_title}]({link_url})")
+
+                elif journey_item.action.action_type == ActionItemType.CALENDAR and journey_item.action.extras and journey_item.action.extras.get("url"):
+                    link_url = journey_item.action.extras.get("url")
+                    if link_url:
+                        st.write(f" - {journey_item.action.title}: [Select a slot]({link_url})")
+                else:
+                    st.write(f" - {journey_item.action.title}")
+                        # st.write(f"Calendar: {calendar_info}")
+
+        # elif journey_item.action.action_type == ActionItemType.REFERENCE:
+        #     # Process and display references if any
+        #     if journey_item.action.references:
+        #         for ref in journey_item.action.references:
+        #             st.write(f"Reference: {ref.title} - {ref.description}")
+
+    if task_container is None:
+        task_container = st.container()
+
+
+    if journey_item_progress:
+        _, act_col1, act_col2 = task_container.columns(
+            [0.15, 0.7, 0.15], vertical_alignment="top"
+        )
+
+        with act_col1:
+            if journey_item.action.action_type == ActionItemType.LINK and journey_item.action.extras and journey_item.action.extras.get("url"):
+                link_title = journey_item.action.extras.get("url_title", "Link")
+                link_url = journey_item.action.extras.get("url")
+                if link_url:
+                    st.write(f" * {journey_item.action.title}\n\n\t[{link_title}]({link_url})")
+
+            elif journey_item.action.action_type == ActionItemType.CALENDAR and journey_item.action.extras and journey_item.action.extras.get("url"):
+                link_url = journey_item.action.extras.get("url")
+                if link_url:
+                    st.write(f" - {journey_item.action.title}: [Select a slot]({link_url})")
+            else:
+                st.write(f" - {journey_item.action.title}")
+                    # st.write(f"Calendar: {calendar_info}")
+
+        with act_col2:
+            complete = st.checkbox(
+                "Done",
+                key="action_" + journey_item.id,
+                value=st.session_state.get(
+                    f"journey_item_complete_{journey_item.id}",
+                    JourneyItemProgressState.COMPLETED == journey_item_progress.get_state(),
+                ),
+            )
+            if (
+                complete
+                and JourneyItemProgressState.COMPLETED != journey_item_progress.get_state()
+            ):
+                complete_journey_item(journey_item, journey, journey_item_progress)
+

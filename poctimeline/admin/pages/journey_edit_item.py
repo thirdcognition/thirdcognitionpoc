@@ -70,14 +70,20 @@ def edit_journey_item(
 
     with container:
         if not use_container:
-            st.subheader(((journey_item.get_index(journey) + " ") if JourneyItemType.JOURNEY != journey_item.item_type else "") + journey_item.title)
-
+            st.subheader(
+                (
+                    (journey_item.get_index(journey) + " ")
+                    if JourneyItemType.JOURNEY != journey_item.item_type
+                    else ""
+                )
+                + journey_item.title
+            )
 
         if (
             JourneyItemType.JOURNEY == journey_item.item_type
             or JourneyItemType.MODULE == journey_item.item_type
         ):
-            image_col, container = st.columns([0.25,0.75])
+            image_col, container = st.columns([0.25, 0.75])
 
             image_col.image(
                 get_image(journey_item.icon, "icon_files"),
@@ -116,7 +122,9 @@ def edit_journey_item(
                 ]  # section_items
 
                 journey_item_parent_title = st.selectbox(
-                    JourneyItemType.previous(journey_item.item_type).value.capitalize(),  #"Parent",
+                    JourneyItemType.previous(
+                        journey_item.item_type
+                    ).value.capitalize(),  # "Parent",
                     options=titles,
                     index=(
                         options.index(journey_item.parent_id)
@@ -193,14 +201,21 @@ def edit_journey_item(
                         key="after_" + id_str,
                     )
 
-                    if col2.button("Move", key="move_after_"+id_str ,use_container_width=True):
+                    if col2.button(
+                        "Move", key="move_after_" + id_str, use_container_width=True
+                    ):
                         if journey_item_after_title == "[as first item]":
                             if journey_item.after_id is not None:
                                 changes.append(
                                     (
                                         journey_item.title,
                                         "Move to first",
-                                        all_children[journey_item.after_id].title if journey_item.after_id in all_children.keys() else "None",
+                                        (
+                                            all_children[journey_item.after_id].title
+                                            if journey_item.after_id
+                                            in all_children.keys()
+                                            else "None"
+                                        ),
                                         None,
                                         titles,
                                     )
@@ -209,7 +224,10 @@ def edit_journey_item(
                                 journey.save_to_db()
                                 st.rerun()
                             else:
-                                print("No after_id found for "+journey_item.get_ident(with_index=False))
+                                print(
+                                    "No after_id found for "
+                                    + journey_item.get_ident(with_index=False)
+                                )
                         else:
                             # try:
                             new_id = items[titles.index(journey_item_after_title)].id
@@ -225,12 +243,14 @@ def edit_journey_item(
                                 journey_item.move(all_children[new_id], journey)
                                 journey.save_to_db()
                                 st.rerun()
-                                    # st.rerun(scope="fragment")
-                                    # st.rerun(scope="fragment")
+                                # st.rerun(scope="fragment")
+                                # st.rerun(scope="fragment")
                         # except Exception as e:
                     #     st.error("Failed to set:" + repr(e))
 
-            new_title = st.text_input("Title", value=journey_item.title, key="title_"+id_str)
+            new_title = st.text_input(
+                "Title", value=journey_item.title, key="title_" + id_str
+            )
             if new_title.strip() != journey_item.title.strip():
                 changes.append(
                     (
@@ -272,21 +292,34 @@ def edit_journey_item(
 
                 # Adjust the input fields to support ActionItem properties
 
-                action_extras = journey_item.action.extras if journey_item.action and journey_item.action.extras else {}
+                action_extras = (
+                    journey_item.action.extras
+                    if journey_item.action and journey_item.action.extras
+                    else {}
+                )
 
                 action_title = st.text_input(
-                    "Action", value=journey_item.action.title if journey_item.action else "", key="action_title_" + id_str
+                    "Action",
+                    value=journey_item.action.title if journey_item.action else "",
+                    key="action_title_" + id_str,
                 )
                 # action_description = st.text_area(
                 #     "Description", value=journey_item.action.description if journey_item.action and journey_item.action.description else "", key="action_description_" + id_str
                 # )
 
                 col1, col2 = st.columns([0.3, 0.7], vertical_alignment="top")
-                type_options = [e.value for e in ActionItemType if e != ActionItemType.REFERENCE]
+                type_options = [
+                    e.value for e in ActionItemType if e != ActionItemType.REFERENCE
+                ]
                 action_type = col1.selectbox(
-                    "Type", options=type_options,
-                    index=(type_options.index(journey_item.action.action_type.value)) if journey_item.action else 0,
-                    key="action_type_" + id_str
+                    "Type",
+                    options=type_options,
+                    index=(
+                        (type_options.index(journey_item.action.action_type.value))
+                        if journey_item.action
+                        else 0
+                    ),
+                    key="action_type_" + id_str,
                 )
                 if action_type != ActionItemType.REFERENCE:
                     action_link_placeholder = {
@@ -300,16 +333,25 @@ def edit_journey_item(
 
                     action_extras["url"] = col2.text_input(
                         "Link",
-                        value=action_extras.get('url', '') if journey_item.action else "",
+                        value=(
+                            action_extras.get("url", "") if journey_item.action else ""
+                        ),
                         key="action_link_" + id_str,
-                        placeholder=action_link_placeholder.get(journey_item.action.action_type.value, "Enter link here")
+                        placeholder=action_link_placeholder.get(
+                            journey_item.action.action_type.value, "Enter link here"
+                        ),
                     )
                     if action_type == ActionItemType.LINK:
                         action_extras["url_title"] = col2.text_input(
                             "Title for the link",
-                            value=action_extras.get('url_title', '') if journey_item.action else "",
+                            value=(
+                                action_extras.get("url_title", "")
+                                if journey_item.action
+                                else ""
+                            ),
                             key="action_link_title_" + id_str,
-                            placeholder="Add a short description of contents here.")
+                            placeholder="Add a short description of contents here.",
+                        )
 
                     if action_type == ActionItemType.VIDEO:
                         col1.selectbox(
@@ -319,9 +361,9 @@ def edit_journey_item(
                                 "video/x-msvideo",
                                 "video/quicktime",
                                 "video/x-ms-wmv",
-                                "video/x-matroska"
+                                "video/x-matroska",
                             ],
-                            key="video_mime_type_" + id_str
+                            key="video_mime_type_" + id_str,
                         )
                     elif action_type == ActionItemType.AUDIO:
                         col1.selectbox(
@@ -332,9 +374,9 @@ def edit_journey_item(
                                 "audio/x-wav",
                                 "audio/ogg",
                                 "audio/x-m4a",
-                                "audio/flac"
+                                "audio/flac",
                             ],
-                            key="audio_mime_type_" + id_str
+                            key="audio_mime_type_" + id_str,
                         )
 
                 else:
@@ -346,17 +388,28 @@ def edit_journey_item(
 
                 # Check for changes and update
                 if (
-                    (action_title or "").strip() != (journey_item.action.title or "").strip() or
-                    (action_type or "").strip() != (journey_item.action.action_type.value or "").strip() or
-                    hash(frozenset(action_extras.items())) != hash(frozenset((journey_item.action.extras or {}).items()))
+                    (action_title or "").strip()
+                    != (journey_item.action.title or "").strip()
+                    or (action_type or "").strip()
+                    != (journey_item.action.action_type.value or "").strip()
+                    or hash(frozenset(action_extras.items()))
+                    != hash(frozenset((journey_item.action.extras or {}).items()))
                     # (action_description or "").strip() != (journey_item.action.description or "").strip()
                 ):
                     changes.append(
                         (
                             journey_item.title,
                             f"Change action item to: {action_title}, {action_type}, {action_extras}",
-                            journey_item.action.to_json() if journey_item.action else None,
-                            {"title": action_title, "type": action_type, "extras": action_extras}
+                            (
+                                journey_item.action.to_json()
+                                if journey_item.action
+                                else None
+                            ),
+                            {
+                                "title": action_title,
+                                "type": action_type,
+                                "extras": action_extras,
+                            },
                         )
                     )
 
@@ -365,7 +418,7 @@ def edit_journey_item(
                         title=action_title,
                         action_type=ActionItemType(action_type),
                         extras=action_extras,
-                        description="" #action_description
+                        description="",  # action_description
                     )
                     journey_item.save_to_db()
 
@@ -393,10 +446,14 @@ def edit_journey_item(
             #         st.rerun(scope="fragment")
 
             edit_col, _, remove_col = st.columns([0.3, 0.4, 0.3])
-            if as_children and journey_item.item_type not in [JourneyItemType.ACTION] and edit_col.button(
-                f"Edit "+JourneyItemType.next(journey_item.item_type).value + "s",
-                key=f"open_button_{journey_item.id}",
-                use_container_width=True,
+            if (
+                as_children
+                and journey_item.item_type not in [JourneyItemType.ACTION]
+                and edit_col.button(
+                    f"Edit " + JourneyItemType.next(journey_item.item_type).value + "s",
+                    key=f"open_button_{journey_item.id}",
+                    use_container_width=True,
+                )
             ):
                 open_item(
                     journey_item,
@@ -404,13 +461,15 @@ def edit_journey_item(
                     JourneyItemType.MODULE == journey_item.item_type,
                 )
 
-            with remove_col.popover("Remove "+journey_item.item_type.value, use_container_width=True):
+            with remove_col.popover(
+                "Remove " + journey_item.item_type.value, use_container_width=True
+            ):
                 if st.button(
                     f"Are you sure you want to remove:\n\n{journey_item.title}?",
                     key=f"delete_button_{journey_item.id}",
                     use_container_width=True,
                 ):
-                    parent:JourneyItem = all_children[journey_item.parent_id]
+                    parent: JourneyItem = all_children[journey_item.parent_id]
                     parent.remove_child(journey_item)
                     parent.save_to_db()
                     journey.reset_cache()
@@ -459,12 +518,21 @@ def edit_item(item: JourneyItem, journey: JourneyItem, show_children=False):
     #     ):
     #         continue
 
-    if item.item_type != JourneyItemType.JOURNEY and item.parent_id:
-        if st.button("Edit " + JourneyItemType.previous(item.item_type).value.capitalize(), key="edit_parent_"+item.parent_id):
+    if (
+        item.item_type != JourneyItemType.JOURNEY
+        and item.item_type != JourneyItemType.SECTION
+    ) and item.parent_id:
+        if st.button(
+            "Edit " + JourneyItemType.previous(item.item_type).value.capitalize(),
+            key="edit_parent_" + item.parent_id,
+        ):
             open_item(item.parent_id, journey)
-    if item.item_type == JourneyItemType.JOURNEY and not st.session_state.get("journey_simple_edit", False):
-        if st.button("Edit journey", key="edit_parent_"+journey.id):
-            st.session_state["journey_edit_id"] = item.id
+    if (
+        item.item_type == JourneyItemType.JOURNEY
+        or item.item_type == JourneyItemType.SECTION
+    ) and not st.session_state.get("journey_simple_edit", False):
+        if st.button("View journey", key="edit_parent_" + journey.id):
+            st.session_state["journey_edit_id"] = journey.id
             del st.session_state["journey_edit_item_id"]
             del st.session_state["journey_edit_item_show_children"]
             st.switch_page("pages/journey_edit.py")
@@ -513,7 +581,10 @@ def edit_item(item: JourneyItem, journey: JourneyItem, show_children=False):
         elif JourneyItemType.SECTION == item.item_type:
             item_type = JourneyItemType.MODULE
 
-        if st.button("Add " + JourneyItemType.next(item.item_type).value, key="add_child_" + item.id):
+        if st.button(
+            "Add " + JourneyItemType.next(item.item_type).value,
+            key="add_child_" + item.id,
+        ):
             new_item = JourneyItem.create_new(
                 {
                     "parent_id": item.id,
@@ -536,7 +607,7 @@ def edit_item(item: JourneyItem, journey: JourneyItem, show_children=False):
             journey.reset_cache()
             st.rerun()
 
-    _, save_col = st.columns([0.8, 0.2])
+    _, save_col = st.columns([0.7, 0.3])
 
     if len(changes) > 0:
         for change in changes:
@@ -545,7 +616,7 @@ def edit_item(item: JourneyItem, journey: JourneyItem, show_children=False):
         st.rerun()
 
     if save_col.button(
-        "Done",
+        "Return to Journey",
         use_container_width=True,
         type="primary",
         key="save_button_" + id_str,

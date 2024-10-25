@@ -322,23 +322,11 @@ def render_journey_card(item: JourneyItem):
     if item.icon:
         st.image(get_image(item.icon, path="icon_files"))
 
-    st.write("Open journey")
-    col1, col2, col3 = st.columns([1, 1, 1])
-    if col1.button(
-        "#1", key=f"journey_{item.id}_open", type="primary", use_container_width=True
+    if st.button(
+        "Open journey", key=f"journey_{item.id}_open", type="primary", use_container_width=True
     ):
         st.session_state["journey_edit_id"] = item.id
         st.switch_page("pages/journey_edit.py")
-    if col2.button(
-        "#2", key=f"journey_{item.id}_open2", type="primary", use_container_width=True
-    ):
-        st.session_state["journey_edit_id"] = item.id
-        st.switch_page("pages/journey_edit_2.py")
-    if col3.button(
-        "#3", key=f"journey_{item.id}_open3", type="primary", use_container_width=True
-    ):
-        st.session_state["journey_simple_edit"] = True
-        open_item(item, item, False)
     but1, but2 = st.columns([1, 1])
     with but1.popover(
         ActionSymbol.duplicate.value,
@@ -441,7 +429,7 @@ def complete_journey_item(
         run_complete(journey_item_progress, feedback=feedback if feedback else None)
 
 
-def write_action_ui(journey_item: JourneyItem, journey:JourneyItem=None, journey_item_progress:JourneyItemProgress=None, container=None, task_container=None, no_col=False):
+def write_action_ui(journey_item: JourneyItem, journey:JourneyItem=None, journey_item_progress:JourneyItemProgress=None, container=None, task_container=None):
     if container is None:
         container = st.container()
     with container:
@@ -453,40 +441,41 @@ def write_action_ui(journey_item: JourneyItem, journey:JourneyItem=None, journey
         media_types = [ActionItemType.VIDEO, ActionItemType.IMAGE, ActionItemType.AUDIO]
 
         if not journey_item_progress and journey_item.action.action_type in media_types:
-            container = st.expander(journey_item.action.title)
+            action_container = st.expander(journey_item.action.title)
         else:
-            container = st.empty()
+            if not journey_item_progress:
+                action_container = st.empty()
+            else:
+                _, action_container, _ = st.columns([0.025, 0.8, 0.025])
 
 
-        # Render media items within the content container
-        with container:
+        # Render media items within the contentaction_container
+        with action_container:
             if journey_item.action.action_type in media_types:
-                if no_col:
-                    col1 = st.empty()
-                else:
-                    _, col1, _ = st.columns([0.025, 0.8, 0.025])
                 if journey_item.action.action_type == ActionItemType.VIDEO and journey_item.action.extras:
-                    col1.video(journey_item.action.extras.get("url"))
+                    st.video(journey_item.action.extras.get("url"))
 
                 elif journey_item.action.action_type == ActionItemType.IMAGE and journey_item.action.extras:
-                    col1.image(journey_item.action.extras.get("url"))
+                    st.image(journey_item.action.extras.get("url"))
 
                 elif journey_item.action.action_type == ActionItemType.AUDIO and journey_item.action.extras:
-                    col1.audio(journey_item.action.extras.get("url"))
+                    st.audio(journey_item.action.extras.get("url"))
             elif not journey_item_progress:
+                text = "\n\n##### Actions"
                 if journey_item.action.action_type == ActionItemType.LINK and journey_item.action.extras and journey_item.action.extras.get("url"):
                     link_title = journey_item.action.extras.get("url_title", "Link")
                     link_url = journey_item.action.extras.get("url")
                     if link_url:
-                        st.write(f" * {journey_item.action.title}\n\n\t[{link_title}]({link_url})")
+                        text += f"\n\n * {journey_item.action.title}\n\n\t[{link_title}]({link_url})"
 
                 elif journey_item.action.action_type == ActionItemType.CALENDAR and journey_item.action.extras and journey_item.action.extras.get("url"):
                     link_url = journey_item.action.extras.get("url")
                     if link_url:
-                        st.write(f" - {journey_item.action.title}: [Select a slot]({link_url})")
+                        text += f"\n\n - {journey_item.action.title}: [Select a slot]({link_url})"
                 else:
-                    st.write(f" - {journey_item.action.title}")
-                        # st.write(f"Calendar: {calendar_info}")
+                    text += f"\n\n - {journey_item.action.title}"
+                            # st.write(f"Calendar: {calendar_info}")
+                st.write(text)
 
         # elif journey_item.action.action_type == ActionItemType.REFERENCE:
         #     # Process and display references if any

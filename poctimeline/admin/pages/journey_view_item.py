@@ -147,10 +147,19 @@ def view_modules_items(
             "Action:" if len(item.children) == 1 else "Actions:"
         )
         for child in item.children:
-            # changes +=
-            view_journey_item(
-                child, journey, journey_progress, content_col, icon_col, task_container
+            journey_item_progress = (
+                JourneyItemProgress.get(
+                    journey_item_id=child.id,
+                    user_id=get_db_user(email=st.session_state.get("username")).id,
+                )
+                if journey_progress is None
+                else journey_progress.get_by_journey_item(child)
             )
+            if journey_item_progress:
+                # changes +=
+                view_journey_item(
+                    child, journey, journey_progress, content_col, icon_col, task_container
+                )
 
     if len(changes) > 0:
         for change in changes:

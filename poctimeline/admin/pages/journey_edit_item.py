@@ -469,11 +469,20 @@ def edit_journey_item(
                     key=f"delete_button_{journey_item.id}",
                     use_container_width=True,
                 ):
-                    parent: JourneyItem = all_children[journey_item.parent_id]
+                    if journey_item.parent_id == journey.id:
+                        parent: JourneyItem = journey
+                    else:
+                        parent: JourneyItem = all_children[journey_item.parent_id]
                     parent.remove_child(journey_item)
                     parent.save_to_db()
                     journey.reset_cache()
-                    st.rerun()
+                    if parent.id == journey.id:
+                        st.session_state["journey_edit_id"] = journey.id
+                        del st.session_state["journey_edit_item_id"]
+                        del st.session_state["journey_edit_item_show_children"]
+                        st.switch_page("pages/journey_edit.py")
+                    else:
+                        st.rerun()
 
             # ancestor.item_type = st.selectbox(
             #     "Item Type", options=[e.value for e in JourneyItemType]
